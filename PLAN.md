@@ -19,7 +19,7 @@ This opens a second route to co-op: **revive the engine's own client/server path
 ## Phases
 
 ### Phase 0 — Tooling and ground truth *(in progress)*
-- Install: JDK 21, Ghidra 12.1.4, REA MCP (Ghidra backend), x32dbg, VS 2022 Build Tools (Win32), Ninja, ImHex, PE-bear, 7-Zip, ReClass.NET. Cheat Engine: user installs manually (bundled-offer installer).
+- Install: JDK 21, Ghidra 12.1.4, REA MCP (Ghidra backend), x32dbg, VS 2022 Build Tools (Win32), Ninja, ImHex, PE-bear, 7-Zip, ReClass.NET. Cheat Engine dropped (see Decisions).
 - Sandbox game copy at `game/` (never mod the original install).
 - Hashes, imports, export catalogs recorded (`re/exports/`, `MEMORY.md`).
 - Headless Ghidra projects for `Main7.exe`, `EngineDll7.dll`, `CommonDll7.dll`, `GameDll7.dll`.
@@ -64,7 +64,11 @@ Host-run mission scripts, client teleport on load, mission flags replicated, mel
 
 Rules: every agent reads `CLAUDE.md` + `MEMORY.md` first; writes findings to `re/notes/` and verified facts to `MEMORY.md` with evidence (address, export name, or log line); never touches the original install; one owner per file per wave.
 
-## Open decisions for the user
-- Slow motion in co-op: disable, or host-only?
-- MVP scope: free-hunt only (recommended), or early Alaska missions too?
+## Decisions (user, 2026-10-15)
+- Slow motion: **disabled for all players** in co-op (no host-only mode).
+- MVP scope: **free-hunt areas only**. Story missions stay in Phase 7.
+- Cheat Engine: **not used** (Windows Defender blocks the installer as PUA). Memory work uses ReClass.NET, x32dbg, and logging/memory-dump panels inside our own ASI.
+- Game window may pop up during automated runtime tests.
+
+## Open decisions
 - Project name for release (neutral, no trademarks).

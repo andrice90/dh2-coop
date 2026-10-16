@@ -8,3 +8,8 @@ mod/build/
 *.pdb
 *.obj
 re/ghidra-slots/
+re/notes/*.c
+re/notes/*.txt
+re/notes/strings/
+re/jobs/*.tmp
+__pycache__/

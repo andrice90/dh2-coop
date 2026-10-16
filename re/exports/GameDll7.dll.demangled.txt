@@ -1,0 +1,133 @@
+??0cHunterProfile@@QAE@ABV0@@Z	public: __thiscall cHunterProfile::cHunterProfile(class cHunterProfile const &)
+??0cHunterProfile@@QAE@XZ	public: __thiscall cHunterProfile::cHunterProfile(void)
+??0cMOD_AmmoDef@@IAE@XZ	protected: __thiscall cMOD_AmmoDef::cMOD_AmmoDef(void)
+??0cMOD_AmmoDef@@QAE@ABV0@@Z	public: __thiscall cMOD_AmmoDef::cMOD_AmmoDef(class cMOD_AmmoDef const &)
+??0cMOD_ItemDef@@IAE@XZ	protected: __thiscall cMOD_ItemDef::cMOD_ItemDef(void)
+??0cMOD_ItemDef@@QAE@ABV0@@Z	public: __thiscall cMOD_ItemDef::cMOD_ItemDef(class cMOD_ItemDef const &)
+??0cMOD_MedDef@@IAE@XZ	protected: __thiscall cMOD_MedDef::cMOD_MedDef(void)
+??0cMOD_MedDef@@QAE@ABV0@@Z	public: __thiscall cMOD_MedDef::cMOD_MedDef(class cMOD_MedDef const &)
+??0cMOD_RadioDef@@IAE@XZ	protected: __thiscall cMOD_RadioDef::cMOD_RadioDef(void)
+??0cMOD_RadioDef@@QAE@ABV0@@Z	public: __thiscall cMOD_RadioDef::cMOD_RadioDef(class cMOD_RadioDef const &)
+??0cMOD_WeaponDef@@IAE@XZ	protected: __thiscall cMOD_WeaponDef::cMOD_WeaponDef(void)
+??0cMOD_WeaponDef@@QAE@ABV0@@Z	public: __thiscall cMOD_WeaponDef::cMOD_WeaponDef(class cMOD_WeaponDef const &)
+??1cHunterProfile@@UAE@XZ	public: virtual __thiscall cHunterProfile::~cHunterProfile(void)
+??1cMOD_AmmoDef@@MAE@XZ	protected: virtual __thiscall cMOD_AmmoDef::~cMOD_AmmoDef(void)
+??1cMOD_ItemDef@@MAE@XZ	protected: virtual __thiscall cMOD_ItemDef::~cMOD_ItemDef(void)
+??1cMOD_MedDef@@MAE@XZ	protected: virtual __thiscall cMOD_MedDef::~cMOD_MedDef(void)
+??1cMOD_RadioDef@@MAE@XZ	protected: virtual __thiscall cMOD_RadioDef::~cMOD_RadioDef(void)
+??1cMOD_WeaponDef@@MAE@XZ	protected: virtual __thiscall cMOD_WeaponDef::~cMOD_WeaponDef(void)
+??4cHunterProfile@@QAEAAV0@ABV0@@Z	public: class cHunterProfile & __thiscall cHunterProfile::operator=(class cHunterProfile const &)
+??4cMOD_AmmoDef@@QAEAAV0@ABV0@@Z	public: class cMOD_AmmoDef & __thiscall cMOD_AmmoDef::operator=(class cMOD_AmmoDef const &)
+??4cMOD_ItemDef@@QAEAAV0@ABV0@@Z	public: class cMOD_ItemDef & __thiscall cMOD_ItemDef::operator=(class cMOD_ItemDef const &)
+??4cMOD_MedDef@@QAEAAV0@ABV0@@Z	public: class cMOD_MedDef & __thiscall cMOD_MedDef::operator=(class cMOD_MedDef const &)
+??4cMOD_RadioDef@@QAEAAV0@ABV0@@Z	public: class cMOD_RadioDef & __thiscall cMOD_RadioDef::operator=(class cMOD_RadioDef const &)
+??4cMOD_WeaponDef@@QAEAAV0@ABV0@@Z	public: class cMOD_WeaponDef & __thiscall cMOD_WeaponDef::operator=(class cMOD_WeaponDef const &)
+??_7cHunterProfile@@6B@	const cHunterProfile::`vftable'
+??_7cMOD_AmmoDef@@6B@	const cMOD_AmmoDef::`vftable'
+??_7cMOD_ItemDef@@6B@	const cMOD_ItemDef::`vftable'
+??_7cMOD_MedDef@@6B@	const cMOD_MedDef::`vftable'
+??_7cMOD_RadioDef@@6B@	const cMOD_RadioDef::`vftable'
+??_7cMOD_WeaponDef@@6B@	const cMOD_WeaponDef::`vftable'
+?AddExtraAmmo@cHunterProfile@@QAEXPBDH@Z	public: void __thiscall cHunterProfile::AddExtraAmmo(char const *,int)
+?AddItemAmmo@cHunterProfile@@QAEXPBDHH@Z	public: void __thiscall cHunterProfile::AddItemAmmo(char const *,int,int)
+?CreateModel@cMOD_AmmoDef@@SAPAXXZ	public: static void * __cdecl cMOD_AmmoDef::CreateModel(void)
+?CreateModel@cMOD_ItemDef@@SAPAXXZ	public: static void * __cdecl cMOD_ItemDef::CreateModel(void)
+?CreateModel@cMOD_MedDef@@SAPAXXZ	public: static void * __cdecl cMOD_MedDef::CreateModel(void)
+?CreateModel@cMOD_RadioDef@@SAPAXXZ	public: static void * __cdecl cMOD_RadioDef::CreateModel(void)
+?CreateModel@cMOD_WeaponDef@@SAPAXXZ	public: static void * __cdecl cMOD_WeaponDef::CreateModel(void)
+?DecreaseHealth@cMOD_MedDef@@QAEXM@Z	public: void __thiscall cMOD_MedDef::DecreaseHealth(float)
+?Destroy@cMOD_AmmoDef@@UAEXXZ	public: virtual void __thiscall cMOD_AmmoDef::Destroy(void)
+?Destroy@cMOD_ItemDef@@UAEXXZ	public: virtual void __thiscall cMOD_ItemDef::Destroy(void)
+?Destroy@cMOD_MedDef@@UAEXXZ	public: virtual void __thiscall cMOD_MedDef::Destroy(void)
+?Destroy@cMOD_RadioDef@@UAEXXZ	public: virtual void __thiscall cMOD_RadioDef::Destroy(void)
+?Destroy@cMOD_WeaponDef@@UAEXXZ	public: virtual void __thiscall cMOD_WeaponDef::Destroy(void)
+?FindItem@cHunterProfile@@QAEHPBD@Z	public: int __thiscall cHunterProfile::FindItem(char const *)
+?GetAmmoCount@cHunterProfile@@QAEXAAH@Z	public: void __thiscall cHunterProfile::GetAmmoCount(int &)
+?GetAmmoLeft@cMOD_WeaponDef@@QBEHXZ	public: int __thiscall cMOD_WeaponDef::GetAmmoLeft(void)const 
+?GetAmmoProps@cHunterProfile@@QAEXPAUtAmmoProps@@@Z	public: void __thiscall cHunterProfile::GetAmmoProps(struct tAmmoProps *)
+?GetAmmoSpread@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetAmmoSpread(void)const 
+?GetBulSkin@cMOD_WeaponDef@@QBEPADXZ	public: char * __thiscall cMOD_WeaponDef::GetBulSkin(void)const 
+?GetClipSize@cMOD_AmmoDef@@QBEHXZ	public: int __thiscall cMOD_AmmoDef::GetClipSize(void)const 
+?GetClipSize@cMOD_WeaponDef@@QBEHXZ	public: int __thiscall cMOD_WeaponDef::GetClipSize(void)const 
+?GetCurrentMission@cHunterProfile@@QAEEXZ	public: unsigned char __thiscall cHunterProfile::GetCurrentMission(void)
+?GetCurrentMissionType@cHunterProfile@@QAEHXZ	public: int __thiscall cHunterProfile::GetCurrentMissionType(void)
+?GetDamage@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetDamage(void)const 
+?GetFireProcentF1@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetFireProcentF1(void)const 
+?GetFireProcentF2@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetFireProcentF2(void)const 
+?GetFixZoom@cMOD_WeaponDef@@QBEHXZ	public: int __thiscall cMOD_WeaponDef::GetFixZoom(void)const 
+?GetFriction@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetFriction(void)const 
+?GetGroupIconIdx@cMOD_ItemDef@@QBEHXZ	public: int __thiscall cMOD_ItemDef::GetGroupIconIdx(void)const 
+?GetHUDName@cMOD_ItemDef@@QBEPADXZ	public: char * __thiscall cMOD_ItemDef::GetHUDName(void)const 
+?GetHealth@cMOD_MedDef@@QBEMXZ	public: float __thiscall cMOD_MedDef::GetHealth(void)const 
+?GetIconIdx@cMOD_ItemDef@@QBE?AU?$tRect@M@@XZ	public: struct tRect<float> __thiscall cMOD_ItemDef::GetIconIdx(void)const 
+?GetItemAmmoClip@cHunterProfile@@QAEHPBD@Z	public: int __thiscall cHunterProfile::GetItemAmmoClip(char const *)
+?GetItemAmmoExtra@cHunterProfile@@QAEHPBD@Z	public: int __thiscall cHunterProfile::GetItemAmmoExtra(char const *)
+?GetItemAmmoLeft@cHunterProfile@@QAEHPBD@Z	public: int __thiscall cHunterProfile::GetItemAmmoLeft(char const *)
+?GetKickDamage@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetKickDamage(void)const 
+?GetLastmap@cHunterProfile@@QAEPADXZ	public: char * __thiscall cHunterProfile::GetLastmap(void)
+?GetMapToBeStarted@cHunterProfile@@QAEPADXZ	public: char * __thiscall cHunterProfile::GetMapToBeStarted(void)
+?GetMass@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetMass(void)const 
+?GetMinZoom@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetMinZoom(void)const 
+?GetMissionStatus@cHunterProfile@@QAEPAUtMissionStatus@@H@Z	public: struct tMissionStatus * __thiscall cHunterProfile::GetMissionStatus(int)
+?GetMissionStatus@cHunterProfile@@QAEPAUtMissionStatus@@XZ	public: struct tMissionStatus * __thiscall cHunterProfile::GetMissionStatus(void)
+?GetPrimaryFireImpulseOnAnimal@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetPrimaryFireImpulseOnAnimal(void)const 
+?GetReplicator@cMOD_AmmoDef@@UBEABVcModelReplicator@@XZ	public: virtual class cModelReplicator const & __thiscall cMOD_AmmoDef::GetReplicator(void)const 
+?GetReplicator@cMOD_ItemDef@@UBEABVcModelReplicator@@XZ	public: virtual class cModelReplicator const & __thiscall cMOD_ItemDef::GetReplicator(void)const 
+?GetReplicator@cMOD_MedDef@@UBEABVcModelReplicator@@XZ	public: virtual class cModelReplicator const & __thiscall cMOD_MedDef::GetReplicator(void)const 
+?GetReplicator@cMOD_RadioDef@@UBEABVcModelReplicator@@XZ	public: virtual class cModelReplicator const & __thiscall cMOD_RadioDef::GetReplicator(void)const 
+?GetReplicator@cMOD_WeaponDef@@UBEABVcModelReplicator@@XZ	public: virtual class cModelReplicator const & __thiscall cMOD_WeaponDef::GetReplicator(void)const 
+?GetReplicatorRef@cMOD_AmmoDef@@SAABVcModelReplicator@@XZ	public: static class cModelReplicator const & __cdecl cMOD_AmmoDef::GetReplicatorRef(void)
+?GetReplicatorRef@cMOD_ItemDef@@SAABVcModelReplicator@@XZ	public: static class cModelReplicator const & __cdecl cMOD_ItemDef::GetReplicatorRef(void)
+?GetReplicatorRef@cMOD_MedDef@@SAABVcModelReplicator@@XZ	public: static class cModelReplicator const & __cdecl cMOD_MedDef::GetReplicatorRef(void)
+?GetReplicatorRef@cMOD_RadioDef@@SAABVcModelReplicator@@XZ	public: static class cModelReplicator const & __cdecl cMOD_RadioDef::GetReplicatorRef(void)
+?GetReplicatorRef@cMOD_WeaponDef@@SAABVcModelReplicator@@XZ	public: static class cModelReplicator const & __cdecl cMOD_WeaponDef::GetReplicatorRef(void)
+?GetSecFireImpulseOnAnimal@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetSecFireImpulseOnAnimal(void)const 
+?GetShiftXAxisF1@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetShiftXAxisF1(void)const 
+?GetShiftXAxisF2@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetShiftXAxisF2(void)const 
+?GetShiftYAxisF1@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetShiftYAxisF1(void)const 
+?GetShiftYAxisF2@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetShiftYAxisF2(void)const 
+?GetSound@cMOD_RadioDef@@QBEPADXZ	public: char * __thiscall cMOD_RadioDef::GetSound(void)const 
+?GetSpeed@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetSpeed(void)const 
+?GetSpjPath@cMOD_ItemDef@@QBEPADXZ	public: char * __thiscall cMOD_ItemDef::GetSpjPath(void)const 
+?GetTexSizeX@cMOD_ItemDef@@QBEHXZ	public: int __thiscall cMOD_ItemDef::GetTexSizeX(void)const 
+?GetTexSizeY@cMOD_ItemDef@@QBEHXZ	public: int __thiscall cMOD_ItemDef::GetTexSizeY(void)const 
+?GetType@cMOD_AmmoDef@@QBEPADXZ	public: char * __thiscall cMOD_AmmoDef::GetType(void)const 
+?GetType@cMOD_WeaponDef@@QBEHXZ	public: int __thiscall cMOD_WeaponDef::GetType(void)const 
+?GetWPower@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetWPower(void)const 
+?GetZoomPower@cMOD_WeaponDef@@QBEMXZ	public: float __thiscall cMOD_WeaponDef::GetZoomPower(void)const 
+?InitStatus@cHunterProfile@@QAEXXZ	public: void __thiscall cHunterProfile::InitStatus(void)
+?Load@cMOD_AmmoDef@@UAEXPAVcFile@@@Z	public: virtual void __thiscall cMOD_AmmoDef::Load(class cFile *)
+?Load@cMOD_ItemDef@@UAEXPAVcFile@@@Z	public: virtual void __thiscall cMOD_ItemDef::Load(class cFile *)
+?Load@cMOD_MedDef@@UAEXPAVcFile@@@Z	public: virtual void __thiscall cMOD_MedDef::Load(class cFile *)
+?Load@cMOD_RadioDef@@UAEXPAVcFile@@@Z	public: virtual void __thiscall cMOD_RadioDef::Load(class cFile *)
+?Load@cMOD_WeaponDef@@UAEXPAVcFile@@@Z	public: virtual void __thiscall cMOD_WeaponDef::Load(class cFile *)
+?ResetExtraAmmo@cHunterProfile@@QAEXPBD@Z	public: void __thiscall cHunterProfile::ResetExtraAmmo(char const *)
+?ResetItemAmmo@cHunterProfile@@QAEXXZ	public: void __thiscall cHunterProfile::ResetItemAmmo(void)
+?RestoreProfile@cHunterProfile@@QAEXPAUtMissionStatus@@H@Z	public: void __thiscall cHunterProfile::RestoreProfile(struct tMissionStatus *,int)
+?Save@cMOD_AmmoDef@@UAEXPAU_iobuf@@@Z	public: virtual void __thiscall cMOD_AmmoDef::Save(struct _iobuf *)
+?Save@cMOD_ItemDef@@UAEXPAU_iobuf@@@Z	public: virtual void __thiscall cMOD_ItemDef::Save(struct _iobuf *)
+?Save@cMOD_MedDef@@UAEXPAU_iobuf@@@Z	public: virtual void __thiscall cMOD_MedDef::Save(struct _iobuf *)
+?Save@cMOD_RadioDef@@UAEXPAU_iobuf@@@Z	public: virtual void __thiscall cMOD_RadioDef::Save(struct _iobuf *)
+?Save@cMOD_WeaponDef@@UAEXPAU_iobuf@@@Z	public: virtual void __thiscall cMOD_WeaponDef::Save(struct _iobuf *)
+?Set@cMOD_AmmoDef@@UAEHPBD0@Z	public: virtual int __thiscall cMOD_AmmoDef::Set(char const *,char const *)
+?Set@cMOD_ItemDef@@UAEHPBD0@Z	public: virtual int __thiscall cMOD_ItemDef::Set(char const *,char const *)
+?Set@cMOD_MedDef@@UAEHPBD0@Z	public: virtual int __thiscall cMOD_MedDef::Set(char const *,char const *)
+?Set@cMOD_RadioDef@@UAEHPBD0@Z	public: virtual int __thiscall cMOD_RadioDef::Set(char const *,char const *)
+?Set@cMOD_WeaponDef@@UAEHPBD0@Z	public: virtual int __thiscall cMOD_WeaponDef::Set(char const *,char const *)
+?SetAmmoProps@cHunterProfile@@QAEXPAUtAmmoProps@@@Z	public: void __thiscall cHunterProfile::SetAmmoProps(struct tAmmoProps *)
+?SetCurrentMission@cHunterProfile@@QAEXE@Z	public: void __thiscall cHunterProfile::SetCurrentMission(unsigned char)
+?SetItemAmmo@cHunterProfile@@QAEXPBDHH@Z	public: void __thiscall cHunterProfile::SetItemAmmo(char const *,int,int)
+?SetLastMap@cHunterProfile@@QAEXPBD@Z	public: void __thiscall cHunterProfile::SetLastMap(char const *)
+?SetMapIsComplete@cHunterProfile@@QAEXXZ	public: void __thiscall cHunterProfile::SetMapIsComplete(void)
+?SetMissionStatus@cHunterProfile@@QAEXUtMissionStatus@@E@Z	public: void __thiscall cHunterProfile::SetMissionStatus(struct tMissionStatus,unsigned char)
+?SkipBonus@cHunterProfile@@QAEXXZ	public: void __thiscall cHunterProfile::SkipBonus(void)
+?SkipHunting@cHunterProfile@@QAEXXZ	public: void __thiscall cHunterProfile::SkipHunting(void)
+?StoreItemProps@cHunterProfile@@QAEXPBDHH@Z	public: void __thiscall cHunterProfile::StoreItemProps(char const *,int,int)
+?UpdateSaveSlot@cHunterProfile@@QAEXXZ	public: void __thiscall cHunterProfile::UpdateSaveSlot(void)
+?m_replModel@cMOD_AmmoDef@@2VcModelReplicator@@A	public: static class cModelReplicator cMOD_AmmoDef::m_replModel
+?m_replModel@cMOD_ItemDef@@2VcModelReplicator@@A	public: static class cModelReplicator cMOD_ItemDef::m_replModel
+?m_replModel@cMOD_MedDef@@2VcModelReplicator@@A	public: static class cModelReplicator cMOD_MedDef::m_replModel
+?m_replModel@cMOD_RadioDef@@2VcModelReplicator@@A	public: static class cModelReplicator cMOD_RadioDef::m_replModel
+?m_replModel@cMOD_WeaponDef@@2VcModelReplicator@@A	public: static class cModelReplicator cMOD_WeaponDef::m_replModel
+InitGameDll	InitGameDll
+InitInterfaceDll	InitInterfaceDll

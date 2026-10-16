@@ -19,7 +19,8 @@ Format: fact — evidence. Add only verified items; hypotheses go in `re/notes/`
 ## Module layout
 - Load order: `InitEngineDll`, `InitCommonDll`, then `.\..\data\GAMEDLL7.DLL` — `debug.log` 4-5, 19.
 - Home path `.\..\data\`; assets in `Data\data.arc` (294 MB, entries begin with zlib header `78 9C`), `shaders.mtp` multi-file (98 files) — `debug.log` 7, 17; hex dump.
-- Exports: EngineDll7 8587 (571 classes), CommonDll7 3174 (199), GameDll7 133 (12) — `re/exports/*.txt`.
+- Exports: EngineDll7 8587 entries / 8192 distinct names (395 entries have no name; 571 classes), CommonDll7 3174 (199), GameDll7 133 (12) — PE export directory, `re/exports/*.txt`; demangled in `re/exports/*.demangled.txt`.
+- Multiplayer surface exists in retail: Main7.exe strings `sv_multiplayer`, `sv_port`, `sv_password`, `sv_fps`, `sv_changeMap`, `cl_join %s`, `cl_playerName`, `cl_password`, `cl_disconnect`, `cfLobby`, switch `-join`; EngineDll7 `-dedicated` and debug strings for `cLocalDriver::*` and `cRdpDriver::*` (Listen, Connect, RequestServerList, GetServerInfo, RxTx); GameDll7 `-spmap` — `re/notes/strings/*.txt`. Whether they work end-to-end: unverified.
 - EngineDll7 imports: `d3d8!Direct3DCreate8`, `d3d9!Direct3DCreate9`, `DINPUT8!DirectInput8Create`, `WS2_32` (socket/bind/sendto/recvfrom/select), `binkw32`, `MSACM32`, `WINMM` — pefile.
 - No useful RTTI (only exception classes); names come from exports instead.
 
