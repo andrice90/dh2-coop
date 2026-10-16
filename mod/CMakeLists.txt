@@ -71,14 +71,13 @@ FetchContent_Declare(enet
 
 FetchContent_MakeAvailable(safetyhook spdlog imgui enet)
 
-# ---- imgui (added, not wired yet) --------------------------------------------
+# ---- imgui (DX8 backend lives in src/ui; no D3D9 device) ----------------------
 add_library(imgui_lib STATIC
   ${imgui_SOURCE_DIR}/imgui.cpp
   ${imgui_SOURCE_DIR}/imgui_draw.cpp
   ${imgui_SOURCE_DIR}/imgui_tables.cpp
   ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-  ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
-  ${imgui_SOURCE_DIR}/backends/imgui_impl_dx9.cpp)
+  ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp)
 target_include_directories(imgui_lib PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
 target_compile_features(imgui_lib PUBLIC cxx_std_17)
 
@@ -102,7 +101,7 @@ foreach(src IN LISTS DH2_SOURCES)
 endforeach()
 
 add_library(dh2coop SHARED ${DH2_SOURCES})
-target_include_directories(dh2coop PRIVATE src)
+target_include_directories(dh2coop PRIVATE src "${CMAKE_CURRENT_SOURCE_DIR}/third_party/d3d8")
 target_compile_features(dh2coop PRIVATE cxx_std_20)
 target_compile_options(dh2coop PRIVATE /W4 /permissive- /wd4100)
 target_link_libraries(dh2coop PRIVATE safetyhook::safetyhook spdlog::spdlog enet_lib imgui_lib dbghelp)

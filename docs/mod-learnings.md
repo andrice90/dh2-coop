@@ -41,6 +41,10 @@ Practical knowledge for building, injecting, hooking, testing and orchestrating.
 - Hooking an exported engine function only catches calls that go through that body: `cObjManager::Get` is never called by game code (inlined/unused), `AddEntity(cObjEntity*)` is (Main7's override calls the engine body). Check the importers of an export (pefile import walk) before choosing a hook — 2026-10-16.
 - Lead-owned modules live in `mod/src/coop/` (`coop.cpp` session + console commands + background flag, `player_tracker.cpp`, `slowmo.cpp`) and `mod/src/engine/console_cmds.*` — 2026-10-16.
 
+- **Overlay (P2b):** Dear ImGui with our own DX8 backend `mod/src/ui/imgui_impl_dx8.*` (ported from imgui_impl_dx9: `SetVertexShader(FVF)`, `SetIndices(ib, base)`, per-frame `CreateStateBlock(D3DSBT_ALL)`/`ApplyStateBlock`, own `BeginScene`/`EndScene` inside the Present callback). F8 toggles (foreground only). `[Overlay] Enabled=1` in `dh2coop.ini`. Screenshots: `re/notes/p2b-overlay*.png` — 2026-10-16.
+- **License trap:** mingw-w64's `d3d8.h` is a Wine import (LGPL, `__WINE_D3D8_H`). We ship an original minimal COM declaration in `mod/third_party/d3d8/` instead. Check provenance of any vendored header — 2026-10-16.
+- Free-hunt start shows a "CHOOSE ITEM" weapon menu over the map before play; overlay draws above it — 2026-10-16.
+
 ## Orchestration
 - Workers: Grok Build CLI `grok` pinned to `-m grok-4.7`, headless via `tools-src/grokjob.ps1` (prompt `re/jobs/<name>.md` + `_rules.md`). Permission mode `auto` works headless (runs shell, writes files). `bypassPermissions` is blocked by Claude Code's auto-mode classifier — don't use it — 2026-10-16.
 - `--output-format plain` prints only at the end; a running job's log shows just the start line.

@@ -1,0 +1,257 @@
+// Minimal Direct3D 8 types for the co-op overlay.
+// Numeric values match the D3D8 COM contract (Reset is device slot 14).
+// Not a copy of the Wine/mingw-w64 headers or the Microsoft SDK. See README.md.
+#pragma once
+
+#include <windows.h>
+
+typedef DWORD D3DCOLOR;
+
+enum D3DFORMAT {
+    D3DFMT_UNKNOWN = 0,
+    D3DFMT_A8R8G8B8 = 21,
+    D3DFMT_INDEX16 = 101,
+    D3DFMT_INDEX32 = 102
+};
+
+enum D3DDEVTYPE {
+    D3DDEVTYPE_HAL = 1,
+    D3DDEVTYPE_REF = 2,
+    D3DDEVTYPE_SW = 3
+};
+
+enum D3DPOOL {
+    D3DPOOL_DEFAULT = 0,
+    D3DPOOL_MANAGED = 1,
+    D3DPOOL_SYSTEMMEM = 2,
+    D3DPOOL_SCRATCH = 3
+};
+
+enum D3DMULTISAMPLE_TYPE {
+    D3DMULTISAMPLE_NONE = 0
+};
+
+enum D3DSWAPEFFECT {
+    D3DSWAPEFFECT_DISCARD = 1,
+    D3DSWAPEFFECT_FLIP = 2,
+    D3DSWAPEFFECT_COPY = 3
+};
+
+enum D3DBACKBUFFER_TYPE {
+    D3DBACKBUFFER_TYPE_MONO = 0,
+    D3DBACKBUFFER_TYPE_LEFT = 1,
+    D3DBACKBUFFER_TYPE_RIGHT = 2
+};
+
+enum D3DPRIMITIVETYPE {
+    D3DPT_POINTLIST = 1,
+    D3DPT_LINELIST = 2,
+    D3DPT_LINESTRIP = 3,
+    D3DPT_TRIANGLELIST = 4,
+    D3DPT_TRIANGLESTRIP = 5,
+    D3DPT_TRIANGLEFAN = 6
+};
+
+enum D3DRENDERSTATETYPE {
+    D3DRS_ZENABLE = 7,
+    D3DRS_FILLMODE = 8,
+    D3DRS_SHADEMODE = 9,
+    D3DRS_ZWRITEENABLE = 14,
+    D3DRS_ALPHATESTENABLE = 15,
+    D3DRS_SRCBLEND = 19,
+    D3DRS_DESTBLEND = 20,
+    D3DRS_CULLMODE = 22,
+    D3DRS_ALPHABLENDENABLE = 27,
+    D3DRS_FOGENABLE = 28,
+    D3DRS_SPECULARENABLE = 29,
+    D3DRS_RANGEFOGENABLE = 48,
+    D3DRS_STENCILENABLE = 52,
+    D3DRS_CLIPPING = 136,
+    D3DRS_LIGHTING = 137,
+    D3DRS_COLORVERTEX = 141,
+    D3DRS_COLORWRITEENABLE = 168,
+    D3DRS_BLENDOP = 171
+};
+
+enum D3DBLEND {
+    D3DBLEND_ZERO = 1,
+    D3DBLEND_ONE = 2,
+    D3DBLEND_SRCCOLOR = 3,
+    D3DBLEND_INVSRCCOLOR = 4,
+    D3DBLEND_SRCALPHA = 5,
+    D3DBLEND_INVSRCALPHA = 6
+};
+
+enum D3DBLENDOP {
+    D3DBLENDOP_ADD = 1,
+    D3DBLENDOP_SUBTRACT = 2,
+    D3DBLENDOP_REVSUBTRACT = 3,
+    D3DBLENDOP_MIN = 4,
+    D3DBLENDOP_MAX = 5
+};
+
+enum D3DCULL {
+    D3DCULL_NONE = 1,
+    D3DCULL_CW = 2,
+    D3DCULL_CCW = 3
+};
+
+enum D3DFILLMODE {
+    D3DFILL_POINT = 1,
+    D3DFILL_WIREFRAME = 2,
+    D3DFILL_SOLID = 3
+};
+
+enum D3DSHADEMODE {
+    D3DSHADE_FLAT = 1,
+    D3DSHADE_GOURAUD = 2,
+    D3DSHADE_PHONG = 3
+};
+
+enum D3DSTATEBLOCKTYPE {
+    D3DSBT_ALL = 1,
+    D3DSBT_PIXELSTATE = 2,
+    D3DSBT_VERTEXSTATE = 3
+};
+
+enum D3DTEXTURESTAGESTATETYPE {
+    D3DTSS_COLOROP = 1,
+    D3DTSS_COLORARG1 = 2,
+    D3DTSS_COLORARG2 = 3,
+    D3DTSS_ALPHAOP = 4,
+    D3DTSS_ALPHAARG1 = 5,
+    D3DTSS_ALPHAARG2 = 6,
+    D3DTSS_TEXCOORDINDEX = 11,
+    D3DTSS_ADDRESSU = 13,
+    D3DTSS_ADDRESSV = 14,
+    D3DTSS_BORDERCOLOR = 15,
+    D3DTSS_MAGFILTER = 16,
+    D3DTSS_MINFILTER = 17,
+    D3DTSS_MIPFILTER = 18,
+    D3DTSS_TEXTURETRANSFORMFLAGS = 24
+};
+
+enum D3DTEXTUREOP {
+    D3DTOP_DISABLE = 1,
+    D3DTOP_SELECTARG1 = 2,
+    D3DTOP_SELECTARG2 = 3,
+    D3DTOP_MODULATE = 4
+};
+
+enum D3DTEXTUREADDRESS {
+    D3DTADDRESS_WRAP = 1,
+    D3DTADDRESS_MIRROR = 2,
+    D3DTADDRESS_CLAMP = 3,
+    D3DTADDRESS_BORDER = 4
+};
+
+enum D3DTEXTUREFILTERTYPE {
+    D3DTEXF_NONE = 0,
+    D3DTEXF_POINT = 1,
+    D3DTEXF_LINEAR = 2,
+    D3DTEXF_ANISOTROPIC = 3
+};
+
+enum D3DTRANSFORMSTATETYPE {
+    D3DTS_VIEW = 2,
+    D3DTS_PROJECTION = 3,
+    D3DTS_TEXTURE0 = 16,
+    D3DTS_WORLD = 256
+};
+
+enum D3DRESOURCETYPE {
+    D3DRTYPE_SURFACE = 1,
+    D3DRTYPE_TEXTURE = 3,
+    D3DRTYPE_VERTEXBUFFER = 6,
+    D3DRTYPE_INDEXBUFFER = 7
+};
+
+#define D3DUSAGE_WRITEONLY 0x00000008L
+#define D3DUSAGE_DYNAMIC 0x00000200L
+#define D3DLOCK_READONLY 0x00000010L
+#define D3DLOCK_DISCARD 0x00002000L
+#define D3DLOCK_NOOVERWRITE 0x00001000L
+
+#define D3DFVF_XYZ 0x002
+#define D3DFVF_NORMAL 0x010
+#define D3DFVF_DIFFUSE 0x040
+#define D3DFVF_SPECULAR 0x080
+#define D3DFVF_TEX1 0x100
+
+#define D3DTA_DIFFUSE 0x00000000L
+#define D3DTA_CURRENT 0x00000001L
+#define D3DTA_TEXTURE 0x00000002L
+#define D3DTA_TFACTOR 0x00000003L
+
+#define D3DCOLORWRITEENABLE_RED 1
+#define D3DCOLORWRITEENABLE_GREEN 2
+#define D3DCOLORWRITEENABLE_BLUE 4
+#define D3DCOLORWRITEENABLE_ALPHA 8
+
+struct D3DVIEWPORT8 {
+    DWORD X;
+    DWORD Y;
+    DWORD Width;
+    DWORD Height;
+    float MinZ;
+    float MaxZ;
+};
+
+struct D3DMATRIX {
+    union {
+        struct {
+            float _11, _12, _13, _14;
+            float _21, _22, _23, _24;
+            float _31, _32, _33, _34;
+            float _41, _42, _43, _44;
+        };
+        float m[4][4];
+    };
+};
+
+struct D3DLOCKED_RECT {
+    INT Pitch;
+    void* pBits;
+};
+
+struct D3DSURFACE_DESC {
+    D3DFORMAT Format;
+    D3DRESOURCETYPE Type;
+    DWORD Usage;
+    D3DPOOL Pool;
+    UINT Size;
+    D3DMULTISAMPLE_TYPE MultiSampleType;
+    UINT Width;
+    UINT Height;
+};
+
+struct D3DDISPLAYMODE {
+    UINT Width;
+    UINT Height;
+    UINT RefreshRate;
+    D3DFORMAT Format;
+};
+
+struct D3DDEVICE_CREATION_PARAMETERS {
+    UINT AdapterOrdinal;
+    D3DDEVTYPE DeviceType;
+    HWND hFocusWindow;
+    DWORD BehaviorFlags;
+};
+
+// 13 fields, 4 bytes each. Matches the 52-byte struct in engine/d3d8_hooks.cpp.
+struct D3DPRESENT_PARAMETERS {
+    UINT BackBufferWidth;
+    UINT BackBufferHeight;
+    D3DFORMAT BackBufferFormat;
+    UINT BackBufferCount;
+    D3DMULTISAMPLE_TYPE MultiSampleType;
+    D3DSWAPEFFECT SwapEffect;
+    HWND hDeviceWindow;
+    BOOL Windowed;
+    BOOL EnableAutoDepthStencil;
+    D3DFORMAT AutoDepthStencilFormat;
+    DWORD Flags;
+    UINT FullScreen_RefreshRateInHz;
+    UINT FullScreen_PresentationInterval;
+};
