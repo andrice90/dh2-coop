@@ -22,6 +22,14 @@ struct LocalPlayerSample {
     float viewYaw = 0.f;    // degrees, atan2(z.x, z.z) — same convention as the hunter heading
     float viewPitch = 0.f;  // degrees, asin(z.y): + = looking up (verified: mouse up -> +16)
     Vec3 viewPos;           // camera (eye) position
+    // Actions (per-frame poll in the tracker). Crouch = eye height above the feet < 1.40 m (standing 1.71,
+    // crouched ~1.20; the cObjCharacterEx +0x204 crouch bit is not used by the hunter). Weapon state names come
+    // from cObjItemEx::GetCurrentState on the hunter's active item: Idle/Walk/Run/Fire/Reload.
+    bool crouched = false;
+    uint8_t weapon = 0;      // net::WeaponKind, from the active item's model name
+    bool firing = false;
+    bool reloading = false;
+    uint8_t shots = 0;       // increments on every transition into "Fire"
 };
 
 // Latest sample of the local hunter (game thread only). valid=false until found.

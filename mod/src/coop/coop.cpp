@@ -286,6 +286,10 @@ private:
         prev_ = s.pos;
         prev_tick_ = st.tickMs;
         have_prev_ = true;
+        st.flags = static_cast<uint16_t>((s.crouched ? net::kFlagCrouched : 0) | (s.reloading ? net::kFlagReloading : 0) |
+                                         (s.firing ? net::kFlagFiring : 0) |
+                                         ((s.shots << net::kShotCounterShift) & net::kShotCounterMask));
+        st.weaponId = s.weapon;
         st.health = 100;
         g_session.SendPlayerState(st);
     }

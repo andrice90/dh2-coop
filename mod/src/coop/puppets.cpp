@@ -36,6 +36,8 @@ struct Puppet {
     bool spawn_failed = false;
     std::string anim;
     float rel_box[6] = {};  // world AABB at spawn time (entity at origin) = model-relative AABB
+    int last_shots = -1;    // shot counter from PlayerState.flags bits 8-11
+    uint32_t fire_until = 0;  // ms: fire clip plays until then
 };
 
 constexpr uintptr_t kEntWorldBox = 0xC4;  // float[6] min xyz, max xyz — used by cBspTree::UpdateEntity
@@ -87,6 +89,8 @@ bool g_spike = false;           // [Puppets] Spike=1: one local test puppet circ
 bool g_anim_enabled = true;     // [Puppets] Animate=1
 bool g_physics = false;         // [Puppets] Physics=0: drop the puppet's physics body (see spawn_human)
 float g_y_offset = 0.f;         // [Puppets] YOffset (metres) added to the networked hunter y
+std::string g_crouch_clip = "coveridle";  // [Puppets] CrouchClip: NPC packs have no crouch-walk clip
+uint32_t g_fire_ms = 600;       // [Puppets] FireMs: how long the fire clip plays per shot
 void* g_spike_entity = nullptr;
 float g_spike_t = 0.f;
 float g_spike_wait = 0.f;
@@ -99,7 +103,8 @@ uint32_t now_ms() {
 
 // The player's own model (teenmm.skin) is only first-person arms ("fpshands1", teenmm1st.skin) — there is
 // no third-person player body. Puppets use a full NPC body instead ([Puppets] Model=, "hunter" = player model).
-std::string g_model = "objects/npc/mountainguide/mountainguide.skin,game.ap";
+// Weapon packs are appended so the armed clip sets (handgun3/*, shotgun1/*) resolve.
+std::string g_model = "objects/npc/mountainguide/mountainguide.skin,game.ap,shotgun1.ap,handgun3.ap";
 
 void* spawn_human(const char* why) {
     void* mgr = EntityManager();
@@ -129,27 +134,48 @@ void* spawn_human(const char* why) {
     return ent;
 }
 
-// Locomotion clip from horizontal velocity relative to the facing yaw. Names are the ones every 332-clip NPC
-// GAME.AP shares (re/notes/anim-names.md): standing idle is "idlenormalneutral" ("idle" is another clip);
-// there is no run-back/strafe clip, the NPC scripts reuse the walk ones.
-// Facing vector (sin yaw, cos yaw) is verified (hunter walk test); right = (cos yaw, -sin yaw) assumes the
-// D3D left-handed frame (x right when facing +z) — UNVERIFIED, swap left/right if strafes look mirrored.
-const char* choose_clip(float vx, float vz, float yawDeg) {
+// Clip choice from movement and the remote player's actions. Names: re/notes/anim-names.md.
+// Unarmed (GAME.AP, shared by 17 NPC bodies): standing idle is "idlenormalneutral" ("idle" is another clip);
+// no run-back/strafe clip, the NPC scripts reuse the walk ones. Armed sets live in SHOTGUN1.AP / HANDGUN3.AP
+// (prefixed names); the rifle has no NPC locomotion set, so it uses the shotgun one (two-handed long gun).
+// Facing vector (sin yaw, cos yaw); right = (cos yaw, -sin yaw) — verified: key A (strafe left) → walk/left.
+std::string choose_clip(Puppet& p, const net::InterpSample& s, uint32_t now) {
+    const char* prefix = "";
+    switch (s.weaponId) {
+        case net::kWeaponHandgun: prefix = "handgun3/"; break;
+        case net::kWeaponShotgun:
+        case net::kWeaponRifle:
+        case net::kWeaponOther: prefix = "shotgun1/"; break;
+        default: break;
+    }
+    const bool armed = *prefix != 0;
+    const int shots = (s.flags & net::kShotCounterMask) >> net::kShotCounterShift;
+    if (p.last_shots >= 0 && shots != p.last_shots && armed) p.fire_until = now + g_fire_ms;
+    p.last_shots = shots;
+    if (armed && now < p.fire_until) return std::string(prefix) + "fire";
+    if (armed && (s.flags & net::kFlagReloading))
+        return std::string(prefix) + (s.weaponId == net::kWeaponHandgun ? "reload" : "reload1");
+    if (s.flags & net::kFlagCrouched) return g_crouch_clip;
+
+    const float vx = s.velocity[0], vz = s.velocity[2];
     const float speed = std::sqrt(vx * vx + vz * vz);
-    if (speed < kWalkSpeed) return "idlenormalneutral";
-    const float y = yawDeg * 3.14159265f / 180.f;
+    if (speed < kWalkSpeed) return armed ? std::string(prefix) + "idlealertneutral" : "idlenormalneutral";
+    const float y = s.yaw * 3.14159265f / 180.f;
     const float fwd = vx * std::sin(y) + vz * std::cos(y);
     const float right = vx * std::cos(y) - vz * std::sin(y);
-    if (fwd >= std::fabs(right)) return speed < kRunSpeed ? "walk/forward" : "run/forward";
-    if (-fwd >= std::fabs(right)) return "walk/backward";
-    return right > 0.f ? "walk/right" : "walk/left";
+    if (fwd >= std::fabs(right)) {
+        if (speed >= kRunSpeed) return armed ? std::string(prefix) + "run" : "run/forward";
+        return armed ? std::string(prefix) + "walkforwardalert" : "walk/forward";
+    }
+    if (-fwd >= std::fabs(right)) return armed ? std::string(prefix) + "walkbackwardalert" : "walk/backward";
+    if (right > 0.f) return armed ? std::string(prefix) + "walkstraferightalert" : "walk/right";
+    return armed ? std::string(prefix) + "walkstrafeleftalert" : "walk/left";
 }
-
-void pick_anim(Puppet& p, const char* want) {
+void pick_anim(Puppet& p, const std::string& want) {
     if (!g_anim_enabled || !p.entity) return;
     if (p.anim == want) return;
     p.anim = want;
-    const bool ok = entity::SetAnim(p.entity, want);
+    const bool ok = entity::SetAnim(p.entity, want.c_str());
     spdlog::info("puppets: entity {:#x} anim '{}' -> {}", reinterpret_cast<uintptr_t>(p.entity), want, ok);
 }
 
@@ -163,6 +189,10 @@ void load_settings() {
     char yoff[32] = {};
     GetPrivateProfileStringA("Puppets", "YOffset", "0", yoff, sizeof yoff, ini.c_str());
     g_y_offset = static_cast<float>(std::atof(yoff));
+    char crouch[64] = {};
+    GetPrivateProfileStringA("Puppets", "CrouchClip", g_crouch_clip.c_str(), crouch, sizeof crouch, ini.c_str());
+    g_crouch_clip = crouch;
+    g_fire_ms = GetPrivateProfileIntA("Puppets", "FireMs", 600, ini.c_str());
     GetPrivateProfileStringA("Puppets", "Class", kDefaultClass, buf, sizeof buf, ini.c_str());
     g_class = buf;
     char model[260] = {};
@@ -224,7 +254,7 @@ public:
             }
             if (!p.entity) continue;
             place(p, {s.pos[0], s.pos[1] + g_y_offset, s.pos[2]}, s.yaw);
-            pick_anim(p, choose_clip(s.velocity[0], s.velocity[2], s.yaw));
+            pick_anim(p, choose_clip(p, s, now));
         }
     }
 

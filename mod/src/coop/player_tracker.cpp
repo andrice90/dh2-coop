@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -97,7 +98,46 @@ void __fastcall hk_SetCamera(void* self, void* /*edx*/, const char* cam) {
     g_setcam_hook->unsafe_thiscall<void>(self, cam);
 }
 
+// Hunter action state (CommonDll7 lead decompile): crouched = cObjCharacterEx +0x204 bit 1 (IsCrouched 0x14950);
+// current item index = cObjHumanEx +0x3c0 (SetCurrentItem 0x15150); items list +0x1d8. Weapon entities are
+// children of the hunter (parent id +0xA4 == hunter id); cObjItemEx::GetCurrentState (0x32c00) returns the
+// weapon model's body-state name, item activation state +0x1f0 (1/2 = active, IsActive 0x12bd0).
+using GetStateFn = const char*(__thiscall*)(void* item);
+GetStateFn g_item_state = nullptr;
+
+const char* guarded_item_state(void* item) {
+    __try {
+        return g_item_state(item);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
+    }
+}
+
+struct ActionState {
+    bool crouched = false;
+    uint8_t weapon = 0;
+    bool firing = false;
+    bool reloading = false;
+    uint8_t shots = 0;
+};
+ActionState g_act;
+
+uint8_t weapon_kind(const char* model) {
+    if (!model || !*model) return 0;
+    std::string m = model;
+    for (auto& ch : m) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    if (m.find("handgun") != std::string::npos || m.find("pistol") != std::string::npos) return 1;
+    if (m.find("shotgun") != std::string::npos || m.find("12ga") != std::string::npos) return 2;
+    if (m.find("rifle") != std::string::npos) return 3;
+    return 4;
+}
+
 void read_camera(LocalPlayerSample& s) {
+    s.crouched = g_act.crouched;
+    s.weapon = g_act.weapon;
+    s.firing = g_act.firing;
+    s.reloading = g_act.reloading;
+    s.shots = g_act.shots;
     if (g_view_cam_valid) {
         const Vec3& z = g_view_cam.z;
         s.viewValid = true;
@@ -170,6 +210,8 @@ public:
         g_dump_classes = core::find_export_as<DumpClassesKeysFn>(engine, "?DumpClassesKeys@cObjManager@@QAEXPBD@Z");
         void* add = core::find_export(engine, "?AddEntity@cObjManager@@UAEHPAVcObjEntity@@@Z");
         g_add_hook = core::install_hook("cObjManager::AddEntity(cObjEntity*)", add, reinterpret_cast<void*>(&hk_AddEntity));
+        if (HMODULE common = GetModuleHandleA("CommonDll7.dll"))
+            g_item_state = core::find_export_as<GetStateFn>(common, "?GetCurrentState@cObjItemEx@@UAEPBDXZ");
         void* setcam = core::find_export(engine, "?SetCamera@cRender@@UAEXABVcRenderCamera@@@Z");
         g_setcam_hook = core::install_hook("cRender::SetCamera", setcam, reinterpret_cast<void*>(&hk_SetCamera));
     }
@@ -194,6 +236,7 @@ public:
             g_view_cam_valid = true;
         }
         g_frame_cam_taken = false;
+        PollActions();
         since_scan_ += dt;
         if (since_scan_ < 1.f) return;
         since_scan_ = 0.f;
@@ -224,6 +267,7 @@ private:
         const uintptr_t vtAnimal = game + kVtAnimalRva;
         std::map<uintptr_t, int> hist;
         std::vector<void*> animals;
+        std::vector<void*> children;  // candidates; filtered to the hunter's children below
         void* hunter = nullptr;
 
         for (int i = 0; i < count; ++i) {
@@ -233,6 +277,7 @@ private:
             if (!core::safe_read(ent, vt) || !vt) continue;
             ++hist[vt];
             if (vt == vtHunter && !hunter) hunter = ent;
+            children.push_back(ent);
             if (diff_hunter_) DiffEntityAngle(i, ent, vt);
             if (vt == vtAnimal) animals.push_back(ent);
         }
@@ -272,6 +317,12 @@ private:
                              reinterpret_cast<uintptr_t>(hunter), s.id, parent, g_hunter_model);
             }
             g_local = s;
+            items_.clear();
+            for (void* e : children) {
+                int16_t parent = -1;
+                if (e != hunter && core::safe_read(static_cast<char*>(e) + kEntParent, parent) && parent == s.id)
+                    items_.push_back(e);
+            }
             if (diff_hunter_) DiffHunter(hunter);
             spdlog::info("tracker: hunter pos=({:.2f},{:.2f},{:.2f}) ang=({:.3f},{:.3f},{:.3f}) view {} yaw={:.2f} "
                          "pitch={:.2f} pos=({:.2f},{:.2f},{:.2f})",
@@ -338,6 +389,61 @@ private:
         angle_prev_[ent] = a;
     }
 
+    // Logs changes of crouch / current item / weapon state every frame (short events like fire would be missed
+    // by the 1 s scan). Diagnostic for networking actions to puppets.
+    void PollActions() {
+        if (!g_local.valid || !g_local.entity) return;
+        const char* h = static_cast<const char*>(g_local.entity);
+        // Crouch from eye height (view camera y - hunter feet y), with hysteresis.
+        Vec3 feet;
+        if (g_view_cam_valid && read_vec(g_local.entity, kEntPos, feet)) {
+            const float eye = g_view_cam.pos.y - feet.y;
+            if (!g_act.crouched && eye < 1.40f) g_act.crouched = true;
+            else if (g_act.crouched && eye > 1.50f) g_act.crouched = false;
+        }
+        int item = -1;
+        core::safe_read(h + 0x3c0, item);
+        if (g_act.crouched != act_crouched_ || item != act_item_) {
+            spdlog::info("tracker: action crouched={} item={}", g_act.crouched, item);
+            act_crouched_ = g_act.crouched;
+            act_item_ = item;
+        }
+        // Active item (weapon in hand): first child item with activation state 1/2.
+        bool found = false;
+        for (void* it : items_) {
+            int active = -1;
+            core::safe_read(static_cast<char*>(it) + 0x1f0, active);
+            if (active != 1 && active != 2) continue;
+            found = true;
+            const char* st = g_item_state ? guarded_item_state(it) : nullptr;
+            const std::string state = st ? core::safe_cstr(st, 64) : "";
+            const char* model = nullptr;
+            core::safe_read(static_cast<char*>(it) + kEntModelName, model);
+            const uint8_t kind = weapon_kind(model ? core::safe_cstr(model, 160).c_str() : nullptr);
+            const bool firing = state == "Fire";
+            if (firing && !g_act.firing) g_act.shots = static_cast<uint8_t>((g_act.shots + 1) & 0x0F);
+            g_act.firing = firing;
+            g_act.reloading = state.rfind("Reload", 0) == 0;
+            if (kind != g_act.weapon) {
+                spdlog::info("tracker: action weapon kind {} model='{}'", kind, model ? core::safe_cstr(model, 160) : "");
+                g_act.weapon = kind;
+            }
+            auto& prev = act_item_state_[it];
+            if (prev != state && state != "Idle" && state != "Walk" && state != "Run") {
+                spdlog::info("tracker: action weapon state '{}' shots={}", state, g_act.shots);
+            }
+            prev = state;
+            break;
+        }
+        if (!found) {
+            g_act.weapon = 0;
+            g_act.firing = g_act.reloading = false;
+        }
+    }
+    std::vector<void*> items_;
+    bool act_crouched_ = false;
+    int act_item_ = -2;
+    std::map<void*, std::string> act_item_state_;
     std::map<void*, Vec3> angle_prev_;
     bool diff_hunter_ = GetPrivateProfileIntA("Tracker", "DiffHunter", 0,
                                               (core::self_dir() / "dh2coop.ini").string().c_str()) != 0;

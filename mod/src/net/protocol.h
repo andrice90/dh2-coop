@@ -118,6 +118,16 @@ struct PlayerState {
     uint8_t health = 0;
 };
 
+// PlayerState.flags bits (Phase 3 actions). Bits 8-11: shot counter (mod 16), bumps once per shot so a puppet
+// replays the fire clip even when two shots fall between snapshots.
+constexpr uint16_t kFlagCrouched = 1u << 0;
+constexpr uint16_t kFlagReloading = 1u << 1;
+constexpr uint16_t kFlagFiring = 1u << 2;
+constexpr int kShotCounterShift = 8;
+constexpr uint16_t kShotCounterMask = 0x0F00;
+// PlayerState.weaponId values.
+enum WeaponKind : uint8_t { kWeaponNone = 0, kWeaponHandgun = 1, kWeaponShotgun = 2, kWeaponRifle = 3, kWeaponOther = 4 };
+
 struct Ping {
     uint32_t token = 0;
 };
