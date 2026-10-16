@@ -12,6 +12,7 @@
 
 #include "core/exports.h"
 #include "core/hook.h"
+#include "core/log.h"
 #include "core/module.h"
 #include "core/safe_mem.h"
 
@@ -28,6 +29,20 @@ constexpr uintptr_t kEntParent = 0xA4;   // int16, -1 = world-space
 constexpr uintptr_t kEntPos = 0xE8;      // tVect3 world position
 constexpr uintptr_t kEntAngle = 0xF4;    // tVect3 world angle
 constexpr uintptr_t kEntHealth = 0x19C;  // float, cObjScriptedEntity (animals)
+constexpr uintptr_t kEntModelName = 0xE0;  // char*, set by HandleKey("model_name") (lead decompile 0xbb660)
+
+// cObjManager::DumpClassesKeys(const char* file) — engine dumps every entity class and the keys it accepts.
+using DumpClassesKeysFn = void(__thiscall*)(void* mgr, const char* file);
+DumpClassesKeysFn g_dump_classes = nullptr;
+bool g_classes_dumped = false;
+
+void DumpClassesOnce(void* mgr) {
+    if (g_classes_dumped || !g_dump_classes || !mgr) return;
+    g_classes_dumped = true;
+    const std::string path = (core::self_dir() / "dh2coop-classes.txt").string();
+    g_dump_classes(mgr, path.c_str());
+    spdlog::info("tracker: DumpClassesKeys -> {}", path);
+}
 // GameDll7 vtable RVAs (Track B)
 constexpr uintptr_t kVtHunterRva = 0x106ff0;  // cScr_ModHunter
 constexpr uintptr_t kVtAnimalRva = 0xff470;   // cScrAnimal
@@ -100,6 +115,7 @@ public:
         void** slot = resolve_manager_slot(engine);
         g_manager_slot.store(slot);
         spdlog::info("tracker: load/save manager slot {}", core::describe_address(slot));
+        g_dump_classes = core::find_export_as<DumpClassesKeysFn>(engine, "?DumpClassesKeys@cObjManager@@QAEXPBD@Z");
         void* add = core::find_export(engine, "?AddEntity@cObjManager@@UAEHPAVcObjEntity@@@Z");
         g_add_hook = core::install_hook("cObjManager::AddEntity(cObjEntity*)", add, reinterpret_cast<void*>(&hk_AddEntity));
     }
@@ -161,6 +177,7 @@ private:
 
         if (!histogram_logged_) {
             histogram_logged_ = true;
+            DumpClassesOnce(mgr);
             std::vector<std::pair<int, uintptr_t>> rows;
             for (auto& [vt, n] : hist) rows.emplace_back(n, vt);
             std::sort(rows.rbegin(), rows.rend());
@@ -184,8 +201,10 @@ private:
             int16_t parent = 0;
             core::safe_read(reinterpret_cast<char*>(hunter) + kEntParent, parent);
             if (!g_local.valid) {
-                spdlog::info("tracker: local hunter entity {:#x} id={} parent={}", reinterpret_cast<uintptr_t>(hunter),
-                             s.id, parent);
+                const char* model = nullptr;
+                core::safe_read(reinterpret_cast<char*>(hunter) + kEntModelName, model);
+                spdlog::info("tracker: local hunter entity {:#x} id={} parent={} model_name='{}'",
+                             reinterpret_cast<uintptr_t>(hunter), s.id, parent, core::safe_cstr(model, 200));
             }
             g_local = s;
             spdlog::info("tracker: hunter pos=({:.2f},{:.2f},{:.2f}) ang=({:.3f},{:.3f},{:.3f})", s.pos.x, s.pos.y,
