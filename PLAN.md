@@ -60,9 +60,11 @@ Host-run mission scripts, client teleport on load, mission flags replicated, mel
 
 | Tier | Model | Owns |
 |---|---|---|
-| Lead / orchestrator | Claude Opus 5.5 (main session) | Job specs, review of every deliverable, route decision, sync architecture, merging verified facts into `MEMORY.md`, commits |
-| Workers | Grok 4.7 via Grok Build CLI (`grok`, headless) | All defined work: RE tracks, builds, runtime experiments, catalogs, tooling. Effort `xhigh` for critical RE, `high` by default, `medium` for mechanical jobs |
-| Escalation | Claude Opus subagent | Only when a Grok deliverable fails review twice or a task needs deep cross-checking |
+| Lead / expert | Claude Opus 5.5 (main session) | **Anything needing careful thought or expert knowledge:** engine hook design and implementation (calling conventions, vtables, pattern hooks, game-thread safety), non-trivial RE conclusions, sync/netcode architecture, route decisions; plus job specs, review of every deliverable, merging verified facts, commits |
+| Expert parallel | Claude Opus subagents | Expert tasks that can run in parallel with the lead (same bar as main thread) |
+| Workers | Grok 4.7 via Grok Build CLI (`grok`, headless) | **Well-defined, Sonnet-level work only:** scaffolding, build systems, scripts, standalone libraries with tests, mechanical RE (dumps, catalogs, inventories), runtime experiment runs with fixed steps. Effort `high` by default |
+
+Policy (user, 2026-10-16): Grok 4.7 is treated as Sonnet-level. If a job needs judgement on undocumented engine behavior, it goes to the lead or an Opus subagent, not Grok. Mixed jobs are split: Grok builds the scaffold, the lead does the expert part.
 
 Mechanics (since 2026-10-16): a job is a prompt file `re/jobs/<name>.md` (with `re/jobs/_rules.md` prepended) run by `tools-src/grokjob.ps1 -Name <name> [-Effort high]`. It uses Grok permission mode `auto` (never `bypassPermissions`) and writes its log to `re/jobs/<name>.out.log`. Each Ghidra job gets its own slot letter. Exactly one job per wave owns game launches.
 

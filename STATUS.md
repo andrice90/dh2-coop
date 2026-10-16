@@ -10,7 +10,8 @@ New session? Follow **Resume protocol** at the bottom. This file is the single s
 ## In flight
 | Job | Started | Owner | Log | Deliverable |
 |---|---|---|---|---|
-| p2a-core (xhigh) | 10:30 | Grok 4.7, slot E, **owns game launches** | `re/jobs/p2a-core.out.log` | module system, D3D8 Present frame hook, console API + `coop_*` commands, multi-instance mutex hook, `run-coop-local.ps1`, slow-mo off, player tracker; `docs/mod-architecture.md`, `re/notes/p2a-runtime.md` |
+| p2a-framework (high) | 10:40 | Grok 4.7, **owns game launches** | `re/jobs/p2a-framework.out.log` | scaffolding only: module system, probe→module, D3D8 Present `OnFrame`, basic `console::Exec`, multi-instance mutex hook, `run-coop-local.ps1`, crash dumps; `docs/mod-architecture.md`, `re/notes/p2a-runtime.md` |
+| lead-expert (main thread) | 10:45 | Claude Opus (lead) | `re/notes/lead-console-cmds.md`, `re/notes/lead-player-tracker.md`, `re/notes/lead-slowmo.md` | console command registration (`AddStaticFuncf` arg convention), slow-mo hook, player tracker → code in `mod/src/engine/console_cmds.*`, `mod/src/coop/**` once the framework lands |
 | p2c-net (high) | 10:30 | Grok 4.7, no game, no Ghidra | `re/jobs/p2c-net.out.log` | `mod/src/net/**` (Session, protocol v1, interpolation), `mod/net-test/` (`dh2net_test.exe`), `docs/net-protocol.md`, `re/notes/p2c-net.md` |
 
 File ownership is split so they can't collide: p2c owns only `mod/src/net/**` + `mod/net-test/**`; p2a owns the rest of `mod/` (CMake globs `src/**/*.cpp`). A job is finished when its log ends with `=== <name> end ... exit=N`.
@@ -35,6 +36,7 @@ File ownership is split so they can't collide: p2c owns only `mod/src/net/**` + 
 - None blocking. Watch: Claude usage limits (keep Claude to orchestration + review); two instances on one PC (DirectInput exclusive focus, windowed mode via loose cfg).
 
 ## Recent results (newest first)
+- 2026-10-16 10:40: **Delegation policy changed (user):** expert work → lead main thread / Opus subagents; Grok only for well-defined Sonnet-level work. p2a-core stopped (no files written) and replaced by p2a-framework (scaffold) + lead-expert tasks.
 - 2026-10-16 10:30: Phase 2 started: p2a-core + p2c-net launched on Grok.
 - 2026-10-16 10:25: Track D done → console API, console password, variable-dt loop, slow-mo cvar. Phase 1 complete.
 - 2026-10-16 10:10: Track B done → per-animal AI freeze, entity offsets.
