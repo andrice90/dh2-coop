@@ -1,0 +1,10 @@
+game/
+tools/
+re/ghidra/
+re/extracted/
+mod/build/
+*.log
+*.asi
+*.pdb
+*.obj
+re/ghidra-slots/

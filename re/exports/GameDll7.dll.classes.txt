@@ -1,0 +1,12 @@
+7cHunterProfile 1
+7cMOD_AmmoDef 1
+7cMOD_ItemDef 1
+7cMOD_MedDef 1
+7cMOD_RadioDef 1
+7cMOD_WeaponDef 1
+cHunterProfile 32
+cMOD_AmmoDef 14
+cMOD_ItemDef 18
+cMOD_MedDef 14
+cMOD_RadioDef 13
+cMOD_WeaponDef 34
