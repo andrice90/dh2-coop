@@ -327,6 +327,37 @@ void RequestLeave() {
     g_pending.kind = Pending::Kind::Leave;
 }
 
+SessionView Snapshot() {
+    SessionView v;
+    v.role = g_session.IsHost() ? "host" : (g_session.IsConnected() ? "client" : "offline");
+    v.localId = g_session.LocalPlayerId();
+    v.port = g_settings.port;
+    const auto& lp = LocalPlayer();
+    v.hunterFound = lp.valid;
+    v.hunterPos[0] = lp.pos.x;
+    v.hunterPos[1] = lp.pos.y;
+    v.hunterPos[2] = lp.pos.z;
+    v.hunterYaw = lp.angle.y;
+    v.animals = AnimalCount();
+    std::map<uint8_t, uint32_t> rtt;
+    for (const auto& p : g_session.Peers()) rtt[p.playerId] = p.rttMs;
+    for (const auto& [id, r] : g_remotes) {
+        if (v.remoteCount >= 4) break;
+        RemoteView& rv = v.remotes[v.remoteCount++];
+        rv.id = id;
+        rv.name = r.name;
+        rv.pos[0] = r.last.pos[0];
+        rv.pos[1] = r.last.pos[1];
+        rv.pos[2] = r.last.pos[2];
+        rv.yaw = r.last.yaw;
+        rv.packets = r.received;
+        // Host sees each client as a peer; a client has one peer (the host) whose rtt applies to everyone.
+        auto it = rtt.find(id);
+        rv.rttMs = it != rtt.end() ? it->second : (rtt.empty() ? 0 : rtt.begin()->second);
+    }
+    return v;
+}
+
 std::string StatusLine() {
     const char* role = g_session.IsHost() ? "host" : (g_session.IsConnected() ? "client" : "offline");
     const auto& lp = LocalPlayer();
