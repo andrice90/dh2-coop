@@ -150,6 +150,7 @@ std::atomic<uintptr_t> g_game_base{0};
 
 LocalPlayerSample g_local;
 int g_animals = 0;
+std::vector<void*> g_animal_list;
 std::string g_hunter_model;
 
 void** resolve_manager_slot(HMODULE engine) {
@@ -282,6 +283,7 @@ private:
             if (vt == vtAnimal) animals.push_back(ent);
         }
         g_animals = static_cast<int>(animals.size());
+        g_animal_list = animals;
 
         if (!histogram_logged_) {
             histogram_logged_ = true;
@@ -472,5 +474,6 @@ bool SampleLocalNow(LocalPlayerSample& out) {
     return true;
 }
 int AnimalCount() { return g_animals; }
+const std::vector<void*>& Animals() { return g_animal_list; }
 
 }  // namespace dh2::coop

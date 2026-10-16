@@ -1,6 +1,7 @@
 #include "engine/entity_api.h"
 
 #include <cstring>
+#include <string>
 
 #include <spdlog/spdlog.h>
 
@@ -168,6 +169,51 @@ int guarded_link_part(void* owner, void* child, const char* tag) {
     }
 }
 
+// Body state machine of model part 0 (pattern from cObjItemEx::GetCurrentState/Activate, CommonDll7): model vt
+// +0xf8 part count (short), +0xf0(0) part 0; part +0xd8 = state machine; vt +0x80 current state name,
+// vt +0x7c(name) switch state (Activate calls vt +0x60 first).
+void* body_states(void* ent) {
+    void* model = *reinterpret_cast<void**>(static_cast<char*>(ent) + 0xE4);
+    if (!model) return nullptr;
+    const short parts = reinterpret_cast<short(__thiscall*)(void*)>(slot(model, 0xf8))(model);
+    if (parts == 0) return nullptr;
+    void* part = reinterpret_cast<GetPartFn>(slot(model, 0xf0))(model, 0);
+    return part ? *reinterpret_cast<void**>(static_cast<char*>(part) + 0xd8) : nullptr;
+}
+
+const char* guarded_state_name(void* ent) {
+    __try {
+        void* sm = body_states(ent);
+        return sm ? reinterpret_cast<const char*(__thiscall*)(void*)>(slot(sm, 0x80))(sm) : nullptr;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
+    }
+}
+
+int guarded_set_state(void* ent, const char* name, bool reset) {
+    __try {
+        void* sm = body_states(ent);
+        if (!sm) return 0;
+        if (reset) reinterpret_cast<void(__thiscall*)(void*)>(slot(sm, 0x60))(sm);
+        reinterpret_cast<void(__thiscall*)(void*, const char*)>(slot(sm, 0x7c))(sm, name);
+        return 1;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+
+using FreezeFn = void(__thiscall*)(void* brain, int freeze);
+FreezeFn g_freeze_brain = nullptr;  // CommonDll7 cAIHuntBrain_Animal::FreezeBrain (brain +0x79)
+
+bool guarded_freeze(void* brain, int freeze) {
+    __try {
+        g_freeze_brain(brain, freeze);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
 bool guarded_remove(void* mgr, void* ent) {
     __try {
         reinterpret_cast<RemoveFn>(slot(mgr, kMgrRemove))(mgr, ent, 1);
@@ -237,6 +283,26 @@ bool UnlinkPhysics(void* ent) {
         if (!g_unlink) return false;
     }
     return guarded_unlink(ent);
+}
+
+std::string BodyStateName(void* ent) {
+    const char* s = ent ? guarded_state_name(ent) : nullptr;
+    if (!s) return {};
+    char buf[64] = {};
+    for (size_t i = 0; i + 1 < sizeof buf && s[i]; ++i) buf[i] = s[i];
+    return buf;
+}
+int SetBodyState(void* ent, const char* name, bool reset) { return (ent && name) ? guarded_set_state(ent, name, reset) : 0; }
+
+bool FreezeBrain(void* ent, bool freeze) {
+    if (!ent) return false;
+    if (!g_freeze_brain) {
+        if (HMODULE common = GetModuleHandleA("CommonDll7.dll"))
+            g_freeze_brain = core::find_export_as<FreezeFn>(common, "?FreezeBrain@cAIHuntBrain_Animal@@QAEXH@Z");
+        if (!g_freeze_brain) return false;
+    }
+    void* brain = *reinterpret_cast<void**>(static_cast<char*>(ent) + 0x200);  // cObjCharacterEx brain
+    return brain && guarded_freeze(brain, freeze ? 1 : 0);
 }
 
 int TagIndex(void* ent, const char* name) { return (ent && name && g_tag_index) ? guarded_tag_index(ent, name) : -2; }

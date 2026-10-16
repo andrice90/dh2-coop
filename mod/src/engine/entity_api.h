@@ -6,6 +6,7 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <string>
 
 namespace dh2::entity {
 
@@ -42,6 +43,14 @@ bool Detach(void* ent);
 // Binds child's model part 0 to the owner's bone `tag` (cScrEntity::LinkPart equivalent): the child then follows
 // the owner's animated bone. Returns 1 linked, 0 not found, -1 fault.
 int LinkPart(void* owner, void* child, const char* tag);
+// Body state machine of the entity's model part 0 (scripted bodies: animals, items, NPCs). Name of the current
+// state ("" if none/fault); switch to a named state (reset = call the machine's vt +0x60 first, as
+// cObjItemEx::Activate does). 1 ok, 0 no machine, -1 fault.
+std::string BodyStateName(void* ent);
+int SetBodyState(void* ent, const char* name, bool reset);
+// cAIHuntBrain_Animal::FreezeBrain on the entity's brain (+0x200): brain Update returns early (no senses, path,
+// body commands); animation and physics keep running.
+bool FreezeBrain(void* ent, bool freeze);
 // Manager vtable calls.
 int AddEntity(void* mgr, void* ent);                             // +0x10, returns index or -1 on fault
 bool RemoveEntity(void* mgr, void* ent);                         // +0x20 (ent, 1)

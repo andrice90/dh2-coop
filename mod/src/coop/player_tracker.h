@@ -2,6 +2,7 @@
 // Finds the live entity manager and the local hunter; samples transforms on the game thread.
 // Design + evidence: re/notes/lead-player-tracker.md.
 #include <cstdint>
+#include <vector>
 
 namespace dh2::coop {
 
@@ -38,6 +39,8 @@ const LocalPlayerSample& LocalPlayer();
 bool SampleLocalNow(LocalPlayerSample& out);
 // Number of animals seen in the last scan.
 int AnimalCount();
+// Animal entities (cScrAnimal, GameDll7 vtable +0xff470) from the last 1 s scan, in manager index order.
+const std::vector<void*>& Animals();
 // Live cObjManager (captured from AddEntity), nullptr until the first spawn.
 void* EntityManager();
 // The local hunter's model_name key (e.g. "Objects/Characters/Teenm/Body/teenmm.skin,game.ap,HUNTMAP4.ap"); "" if unknown.
