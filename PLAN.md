@@ -76,6 +76,8 @@ History: wave 1 (2026-10-15) used Claude Opus/Sonnet/Haiku subagents; the Haiku 
 
 ## Decisions (lead, 2026-10-16)
 - **Route E chosen** (Phase 1 gate): custom sync layer on ENet inside our ASI; host-authoritative. The engine's `cRdpDriver`/`cNetServer` are dead code with no replication, and single player has no client/server split to reuse (`re/notes/net-layer.md`, runtime UDP checks). Borrow the *shape* of `cSpServer` (host ticks world, client is a view). Reuse from the engine only: `-join`/`-dedicated`-style mutex bypass knowledge for running two instances on one PC (needed for local testing).
+- **Test maps:** `HUNTMAP4` (Argentina free-hunt: smallest hunt area, 2 spawn points, 4 red deer + 1 puma) for Phases 3–4; `MAPARENA` (bonus Aztec Temple, 377 KB, several predators) for Phase 5 combat. Both are non-story, consistent with the free-hunt MVP scope.
+- **Loose-file overrides are a mod tool:** files under `game\Data\` win over `data.arc`, so level scripts/configs can be overridden without repacking (e.g. animal placement in `WORLD.SCR`, if the VM compiles `.SCR` or we can ship `.XSC`). Investigate before writing spawn hooks in C++.
 - Two local instances need the `"GI UNIQUE MUTEX"` check bypassed; our ASI should handle this (hook `CreateMutexA` or pass `-join`) rather than relying on `-dedicated` (which disables rendering).
 
 ## Open decisions

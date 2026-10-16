@@ -50,5 +50,14 @@ Format: fact — evidence. Add only verified items; hypotheses go in `re/notes/`
 - Runtime (Track E, 2026-10-16): no UDP endpoint is bound in baseline, `-dedicated`, `-join 127.0.0.1`, `sv_multiplayer 1` via `Cfg\console.cfg`, or `-map` runs — `re/notes/runtime-*-udp.txt`. `-map` execs a nonexistent console symbol (`[CONSOLE ] symbol 'map' not found!`).
 - GameDll `MOD_SvParseMessage` (GameDll7 `0x3140`) handles only in-process message ids `0x87` and `0xff`.
 
+## Assets (Track C, `re/notes/assets.md`; reviewed 2026-10-16)
+- `data.arc`: 2048-byte sectors, 24-byte footer `ARC\0` v`0x100`, zlib directory of `ARCH` records; 9,612 entries, `arc_extract.py --verify` 0 problems. Extract = 9,710 files (+98 from `shaders.mtp`, magic `MULA`). Format spec in `re/scripts/arc_extract.py` docstring.
+- File lookup order (`cFileManager::Open` EngineDll7 `0x33e230`): home dir `.\..\data\` first, then `*.ARC`, then `*.ZIP`. **Loose files under `game\Data\` override the archive** — confirmed at runtime: a loose `Data\Cfg\console.cfg` was read and rewritten by the game (`re/notes/runtime-cfg-file-after.txt`).
+- `Cfg\console.cfg` syntax: `addvar <name> <type>; <name> = <value>` (loaded by `InitConsole` `0x329ec0` → `cConsole::Load` `0x1672c0`).
+- Two script systems: custom VM (`ScrVMCore.cpp`; `.SCR` text source, `.SPJ` project list, `.XSC` bytecode magic `46 53 01 01`, version 3 required by `cVMachine::LoadInfo` `0x287950`) and Lua 4.0 (`.OUT` bytecode `1B 4C 75 61 40`, 98 files). `.SCRIPT/.FX/.LUA/.INC/.SND` are text.
+- Maps: 29 BSPs. Free-hunt: `HUNTMAP1` Africa (missions id 13), `HUNTMAP2` Australia (14), `HUNTMAP3` Alaska (15), `HUNTMAP4` Argentina (16). Bonus: `MAPARENA` (17), `MAPISLAND` (18), `MAPTSAVO` (19). Story: `MAP1`…`MAP12C`. Each BSP's `world_properties` points to `scripts/levels/<map>/main.spj`, class `cMapTest`; hunter spawn entity `info_spawn_point`/`human`.
+- Animals are placed by level script: `WORLD.SCR` → `AddAnimal(ANIMAL_<SPECIES>, TRUE, "<bsp entity name>")`; species brains/health in `SCRIPTS\MODELS\ANIMALS\`. Free-hunt maps place 4 prey + 1 predator (HUNTMAP4: 4 red deer + 1 puma; 2 spawn points).
+- No multiplayer/lobby content exists in the archive (no `sv_multiplayer`, `cl_join`, `lobby`, `player2` in scripts/GUI/BSP text).
+
 ## Disc image
 - CloneCD set `Dngh2.ccd/.img/.sub/.cue`: track 1 MODE1/2352 data, track 2 audio — `.cue`. Mounts with Virtual CloneDrive.
