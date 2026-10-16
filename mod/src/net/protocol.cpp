@@ -1,0 +1,283 @@
+#include "net/protocol.h"
+
+#include <cstring>
+#include <utility>
+
+namespace net {
+
+const char* ToString(MsgId id) {
+    switch (id) {
+    case MsgId::Hello: return "Hello";
+    case MsgId::Welcome: return "Welcome";
+    case MsgId::Reject: return "Reject";
+    case MsgId::PlayerJoined: return "PlayerJoined";
+    case MsgId::PlayerLeft: return "PlayerLeft";
+    case MsgId::PlayerState: return "PlayerState";
+    case MsgId::Ping: return "Ping";
+    case MsgId::Pong: return "Pong";
+    }
+    return "Unknown";
+}
+
+const char* ToString(RejectReason reason) {
+    switch (reason) {
+    case RejectReason::None: return "none";
+    case RejectReason::VersionMismatch: return "version";
+    case RejectReason::LobbyFull: return "full";
+    case RejectReason::BadHello: return "bad-hello";
+    }
+    return "unknown";
+}
+
+void ByteWriter::U8(uint8_t v) { buf_.push_back(v); }
+
+void ByteWriter::U16(uint16_t v) {
+    buf_.push_back(static_cast<uint8_t>(v & 0xFF));
+    buf_.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
+}
+
+void ByteWriter::U32(uint32_t v) {
+    buf_.push_back(static_cast<uint8_t>(v & 0xFF));
+    buf_.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
+    buf_.push_back(static_cast<uint8_t>((v >> 16) & 0xFF));
+    buf_.push_back(static_cast<uint8_t>((v >> 24) & 0xFF));
+}
+
+void ByteWriter::F32(float v) {
+    uint32_t bits = 0;
+    static_assert(sizeof(float) == 4, "binary32");
+    std::memcpy(&bits, &v, 4);
+    U32(bits);
+}
+
+void ByteWriter::Bytes(const void* data, size_t n) {
+    const auto* b = static_cast<const uint8_t*>(data);
+    buf_.insert(buf_.end(), b, b + n);
+}
+
+void ByteWriter::Name(const char (&name)[kNameBytes]) { Bytes(name, kNameBytes); }
+
+ByteReader::ByteReader(const uint8_t* data, size_t len) : p_(data), n_(len), i_(0), ok_(data != nullptr || len == 0) {
+    if (len > 0 && data == nullptr) ok_ = false;
+}
+
+uint8_t ByteReader::U8() {
+    if (!ok_ || i_ + 1 > n_) {
+        ok_ = false;
+        return 0;
+    }
+    return p_[i_++];
+}
+
+uint16_t ByteReader::U16() {
+    if (!ok_ || i_ + 2 > n_) {
+        ok_ = false;
+        return 0;
+    }
+    const uint16_t v = static_cast<uint16_t>(p_[i_]) | (static_cast<uint16_t>(p_[i_ + 1]) << 8);
+    i_ += 2;
+    return v;
+}
+
+uint32_t ByteReader::U32() {
+    if (!ok_ || i_ + 4 > n_) {
+        ok_ = false;
+        return 0;
+    }
+    const uint32_t v = static_cast<uint32_t>(p_[i_]) | (static_cast<uint32_t>(p_[i_ + 1]) << 8) |
+                       (static_cast<uint32_t>(p_[i_ + 2]) << 16) | (static_cast<uint32_t>(p_[i_ + 3]) << 24);
+    i_ += 4;
+    return v;
+}
+
+float ByteReader::F32() {
+    const uint32_t bits = U32();
+    float v = 0.f;
+    std::memcpy(&v, &bits, 4);
+    return v;
+}
+
+void ByteReader::Bytes(void* dst, size_t n) {
+    if (!ok_ || i_ + n > n_) {
+        ok_ = false;
+        if (dst != nullptr && n > 0) std::memset(dst, 0, n);
+        return;
+    }
+    std::memcpy(dst, p_ + i_, n);
+    i_ += n;
+}
+
+void ByteReader::Name(char (&name)[kNameBytes]) { Bytes(name, kNameBytes); }
+
+namespace {
+
+template <typename T, typename Fill>
+std::optional<T> ParseExact(const uint8_t* data, size_t len, size_t expect, MsgId id, Fill fill) {
+    if (data == nullptr || len != expect || data[0] != static_cast<uint8_t>(id)) return std::nullopt;
+    ByteReader r(data + 1, len - 1);
+    T msg{};
+    fill(r, msg);
+    if (!r.ok() || r.remaining() != 0) return std::nullopt;
+    return msg;
+}
+
+}  // namespace
+
+std::vector<uint8_t> Encode(const Hello& msg) {
+    ByteWriter w;
+    w.U8(static_cast<uint8_t>(MsgId::Hello));
+    w.U8(msg.protoVersion);
+    w.U16(msg.gameBuild);
+    w.Name(msg.name);
+    return w.Take();
+}
+
+std::vector<uint8_t> Encode(const Welcome& msg) {
+    ByteWriter w;
+    w.U8(static_cast<uint8_t>(MsgId::Welcome));
+    w.U8(msg.playerId);
+    w.U32(msg.hostTick);
+    w.U8(msg.maxPlayers);
+    return w.Take();
+}
+
+std::vector<uint8_t> Encode(const Reject& msg) {
+    ByteWriter w;
+    w.U8(static_cast<uint8_t>(MsgId::Reject));
+    w.U8(static_cast<uint8_t>(msg.reason));
+    return w.Take();
+}
+
+std::vector<uint8_t> Encode(const PlayerJoined& msg) {
+    ByteWriter w;
+    w.U8(static_cast<uint8_t>(MsgId::PlayerJoined));
+    w.U8(msg.playerId);
+    w.Name(msg.name);
+    return w.Take();
+}
+
+std::vector<uint8_t> Encode(const PlayerLeft& msg) {
+    ByteWriter w;
+    w.U8(static_cast<uint8_t>(MsgId::PlayerLeft));
+    w.U8(msg.playerId);
+    return w.Take();
+}
+
+std::vector<uint8_t> Encode(const PlayerState& msg) {
+    ByteWriter w;
+    w.U8(static_cast<uint8_t>(MsgId::PlayerState));
+    w.U8(msg.playerId);
+    w.U16(msg.seq);
+    w.U32(msg.tickMs);
+    w.F32(msg.pos[0]);
+    w.F32(msg.pos[1]);
+    w.F32(msg.pos[2]);
+    w.F32(msg.yaw);
+    w.F32(msg.pitch);
+    w.F32(msg.velocity[0]);
+    w.F32(msg.velocity[1]);
+    w.F32(msg.velocity[2]);
+    w.U16(msg.flags);
+    w.U8(msg.weaponId);
+    w.U8(msg.health);
+    return w.Take();
+}
+
+std::vector<uint8_t> Encode(const Ping& msg) {
+    ByteWriter w;
+    w.U8(static_cast<uint8_t>(MsgId::Ping));
+    w.U32(msg.token);
+    return w.Take();
+}
+
+std::vector<uint8_t> Encode(const Pong& msg) {
+    ByteWriter w;
+    w.U8(static_cast<uint8_t>(MsgId::Pong));
+    w.U32(msg.token);
+    return w.Take();
+}
+
+std::vector<uint8_t> Encode(const Message& msg) {
+    return std::visit([](const auto& m) { return Encode(m); }, msg);
+}
+
+std::optional<Message> Decode(const uint8_t* data, size_t len) {
+    if (data == nullptr || len == 0) return std::nullopt;
+    switch (static_cast<MsgId>(data[0])) {
+    case MsgId::Hello: {
+        auto m = ParseExact<Hello>(data, len, kHelloBytes, MsgId::Hello, [](ByteReader& r, Hello& o) {
+            o.protoVersion = r.U8();
+            o.gameBuild = r.U16();
+            r.Name(o.name);
+        });
+        if (!m) return std::nullopt;
+        return Message{std::move(*m)};
+    }
+    case MsgId::Welcome: {
+        auto m = ParseExact<Welcome>(data, len, kWelcomeBytes, MsgId::Welcome, [](ByteReader& r, Welcome& o) {
+            o.playerId = r.U8();
+            o.hostTick = r.U32();
+            o.maxPlayers = r.U8();
+        });
+        if (!m) return std::nullopt;
+        return Message{std::move(*m)};
+    }
+    case MsgId::Reject: {
+        auto m = ParseExact<Reject>(data, len, kRejectBytes, MsgId::Reject, [](ByteReader& r, Reject& o) {
+            o.reason = static_cast<RejectReason>(r.U8());
+        });
+        if (!m) return std::nullopt;
+        return Message{std::move(*m)};
+    }
+    case MsgId::PlayerJoined: {
+        auto m = ParseExact<PlayerJoined>(data, len, kPlayerJoinedBytes, MsgId::PlayerJoined,
+                                           [](ByteReader& r, PlayerJoined& o) {
+                                               o.playerId = r.U8();
+                                               r.Name(o.name);
+                                           });
+        if (!m) return std::nullopt;
+        return Message{std::move(*m)};
+    }
+    case MsgId::PlayerLeft: {
+        auto m = ParseExact<PlayerLeft>(data, len, kPlayerLeftBytes, MsgId::PlayerLeft, [](ByteReader& r, PlayerLeft& o) {
+            o.playerId = r.U8();
+        });
+        if (!m) return std::nullopt;
+        return Message{std::move(*m)};
+    }
+    case MsgId::PlayerState: {
+        auto m = ParseExact<PlayerState>(data, len, kPlayerStateBytes, MsgId::PlayerState,
+                                          [](ByteReader& r, PlayerState& o) {
+                                              o.playerId = r.U8();
+                                              o.seq = r.U16();
+                                              o.tickMs = r.U32();
+                                              o.pos[0] = r.F32();
+                                              o.pos[1] = r.F32();
+                                              o.pos[2] = r.F32();
+                                              o.yaw = r.F32();
+                                              o.pitch = r.F32();
+                                              o.velocity[0] = r.F32();
+                                              o.velocity[1] = r.F32();
+                                              o.velocity[2] = r.F32();
+                                              o.flags = r.U16();
+                                              o.weaponId = r.U8();
+                                              o.health = r.U8();
+                                          });
+        if (!m) return std::nullopt;
+        return Message{std::move(*m)};
+    }
+    case MsgId::Ping: {
+        auto m = ParseExact<Ping>(data, len, kPingBytes, MsgId::Ping, [](ByteReader& r, Ping& o) { o.token = r.U32(); });
+        if (!m) return std::nullopt;
+        return Message{std::move(*m)};
+    }
+    case MsgId::Pong: {
+        auto m = ParseExact<Pong>(data, len, kPongBytes, MsgId::Pong, [](ByteReader& r, Pong& o) { o.token = r.U32(); });
+        if (!m) return std::nullopt;
+        return Message{std::move(*m)};
+    }
+    }
+    return std::nullopt;
+}
+
+}  // namespace net

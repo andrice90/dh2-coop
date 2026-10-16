@@ -1,0 +1,107 @@
+#pragma once
+
+// Host-authoritative ENet session. One object, both roles, no thread of its own.
+// Call Service() once per game frame on the game thread. See docs/net-protocol.md.
+
+#include "net/protocol.h"
+
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace net {
+
+enum class EventType : uint8_t {
+    Connected,
+    Disconnected,
+    TimedOut,
+    Hello,
+    Welcome,
+    Reject,
+    PlayerJoined,
+    PlayerLeft,
+    PlayerState,
+    Ping,
+    Pong,
+};
+
+struct Event {
+    EventType type = EventType::Connected;
+    uint8_t playerId = kInvalidPlayerId;
+    RejectReason reason = RejectReason::None;
+    uint8_t protoVersion = 0;
+    uint16_t gameBuild = 0;
+    uint8_t maxPlayers = 0;
+    uint32_t hostTick = 0;
+    uint32_t token = 0;
+    std::string name;
+    PlayerState state{};
+};
+
+struct PeerStats {
+    uint8_t playerId = kInvalidPlayerId;
+    std::string name;
+    uint32_t rttMs = 0;
+    float packetLoss = 0.f;  // ENet reliable loss, 0..1
+    uint64_t bytesIn = 0;    // v1 payload bytes
+    uint64_t bytesOut = 0;
+};
+
+class Session {
+public:
+    struct Identity {
+        std::string name = "Hunter";
+        uint8_t protoVersion = kProtocolVersion;
+        uint16_t gameBuild = kGameBuild;
+    };
+
+    using Handler = std::function<void(const Event&)>;
+
+    Session();
+    ~Session();
+    Session(const Session&) = delete;
+    Session& operator=(const Session&) = delete;
+
+    // maxClients is clamped to 1..3 so the lobby stays at or under 4 players.
+    bool StartHost(uint16_t port = kDefaultPort, int maxClients = kDefaultMaxClients, Identity id = {});
+    bool Join(const std::string& host, uint16_t port = kDefaultPort, Identity id = {});
+    void Disconnect();
+
+    // Non-blocking. Drains the socket and may emit events.
+    void Service();
+
+    bool IsHost() const;
+    bool IsConnected() const;
+    uint8_t LocalPlayerId() const;
+    uint16_t BoundPort() const;
+    int MaxPlayers() const;
+    // Milliseconds since StartHost. 0 on a client.
+    uint32_t HostTickMs() const;
+
+    std::vector<PeerStats> Peers() const;
+
+    // Fills playerId with the local id. Host broadcasts; a client sends to the host.
+    // The host rewrites a client's id before relaying, so the field cannot be spoofed.
+    bool SendPlayerState(const PlayerState& state);
+    bool SendPing(uint32_t token);
+
+    // True at most once per kStateIntervalMs. The first call is true.
+    // `nowMs` is a steady millisecond clock. Safe to call before connect.
+    bool ConsumeSendTick(uint32_t nowMs);
+
+    // If set, events go to the handler and are not queued. Do not call Service or
+    // Disconnect from the handler. If unset, DrainEvents() is the consumer.
+    void SetHandler(Handler handler);
+    std::vector<Event> DrainEvents();
+
+    // How many times this process has called enet_initialize. Overlapping sessions share one.
+    static int InitializeCount();
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+}  // namespace net

@@ -10,6 +10,8 @@ Practical knowledge for building, injecting, hooking, testing and orchestrating.
 - Python: use `py` (3.14); the `python` alias is the Microsoft Store stub. `pefile` installed for user.
 - Ghidra 12.1.4 + Temurin JDK 21 (`JAVA_HOME` set at user level). Headless projects: master `re/ghidra/DH2`, per-worker copies `re/ghidra-slots/<Letter>` (a Ghidra project allows one process at a time). `re/scripts/decomp.ps1` ≈ 7 s per call.
 
+- Net layer test: `mod\net-test\build.ps1 [-Clean]` builds and runs `dh2net_test.exe` (932 checks; loopback host + 3 clients on UDP 27420). Build scripts must run native tools as `cmd /c "<bat> 2>&1"`: under PS 5.1 + `ErrorActionPreference=Stop`, git's "Cloning into..." on stderr aborts the script when the host captures stderr — 2026-10-16.
+
 ## Injection and launch
 - Ultimate ASI Loader v9.7.4 works as `game\Bin\dinput8.dll` (EngineDll7 imports DINPUT8, so the proxy loads early). Our `dh2coop.asi` and the AlphaYellow FOV fix coexist — 2026-10-15.
 - Launch must be `Main7.exe +mod data` with working dir `Bin`; otherwise the home path is wrong and nothing loads. Use `run-game.ps1` (auto-mounts the disc image via `VCDMount.exe`) — 2026-10-15.
