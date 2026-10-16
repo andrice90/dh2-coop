@@ -5,6 +5,7 @@
 // free animals. Answers: does a frozen, physics-less animal stay where we put it, render, and animate by state name?
 #include <windows.h>
 
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -16,6 +17,8 @@
 #include <spdlog/spdlog.h>
 
 #include "coop/player_tracker.h"
+#include "core/exports.h"
+#include "core/hook.h"
 #include "core/log.h"
 #include "core/module.h"
 #include "core/safe_mem.h"
@@ -32,6 +35,15 @@ constexpr uintptr_t kEntHealth = 0x19C;
 class AnimalsModule;
 extern AnimalsModule* g_self;
 void prerender();
+
+// Spike diagnostic: was cObjEntity::Draw called for the controlled deer? (culling investigation)
+safetyhook::InlineHook* g_draw_hook = nullptr;
+std::atomic<void*> g_watch{nullptr};
+std::atomic<uint32_t> g_draws{0};
+void __fastcall hk_Draw(void* self, void* /*edx*/) {
+    if (self == g_watch.load(std::memory_order_relaxed)) g_draws.fetch_add(1, std::memory_order_relaxed);
+    g_draw_hook->unsafe_thiscall<void>(self);
+}
 
 bool g_log_states = true;
 bool g_spike = false;
@@ -55,6 +67,13 @@ public:
         spdlog::info("animals: logStates={} spike={}", g_log_states, g_spike);
         g_self = this;
         SetPreRenderCallback(&prerender);
+    }
+
+    void OnEngineReady(HMODULE engine) override {
+        if (g_spike) {
+            void* draw = core::find_export(engine, "?Draw@cObjEntity@@UAEXXZ");
+            g_draw_hook = core::install_hook("cObjEntity::Draw (animal diag)", draw, reinterpret_cast<void*>(&hk_Draw));
+        }
     }
 
     void OnMapLoaded(const char*) override {
@@ -171,6 +190,16 @@ public:
         box[3] = pos.x + rel_[3]; box[4] = pos.y + rel_[4]; box[5] = pos.z + rel_[5];
         entity::BspUpdate(spike_);
         last_ = {pos.x, pos.y, pos.z};
+        g_watch.store(spike_);
+        diag_t_ += 0.01f;
+        if (++diag_frames_ >= 50) {  // ~0.5 s at 100 fps
+            int link = -2;
+            core::safe_read(static_cast<char*>(spike_) + 0x124, link);
+            float clock = std::fmod(a * 57.2957795f, 360.f);  // circle angle: 0 = far point (12 o'clock)
+            spdlog::info("animals: diag circle={:.0f}deg draws/50f={} bsplink={} pos=({:.1f},{:.1f},{:.1f})", clock,
+                         g_draws.exchange(0), link, pos.x, pos.y, pos.z);
+            diag_frames_ = 0;
+        }
         drift_ = drift;
         pos_ = pos;
     }
@@ -184,6 +213,8 @@ private:
     float rel_[6] = {};
     Vec3 last_;
     float drift_ = 0.f;
+    float diag_t_ = 0.f;
+    int diag_frames_ = 0;
     entity::Vec3 pos_;
 };
 

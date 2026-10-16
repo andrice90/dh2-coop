@@ -38,6 +38,11 @@ This is a co-op mod for Cabela's Dangerous Hunts 2 (2005, Chameleon engine, D3D8
   - Damage: `cAIHuntAnimalInterface::FuncInflictDamage(void* animal, float dmg)` (CommonDll7, static cdecl) only subtracts health `+0x19C`.
 - **In flight:** `p4a-net-animals` (Grok job started 15:36, log `re/jobs/p4a-net-animals.out.log`). It adds the `AnimalStates`/`AnimalHit` messages in `mod/src/net/*` plus tests. If it finished, review it and run the tests. If it died (no `=== end` line in the log, no `grok` process), rerun with `.\tools-src\grokjob.ps1 -Name p4a-net-animals -Effort high`, or do it yourself from the spec.
 
+## Known issue to watch in P4b
+In the lead's solo experiment the controlled deer went invisible for part of the time **after large teleports**, even though the engine still called `Draw` on it every frame (`re/notes/lead-animals.md`, "Draw-hook result"). The first sync moves each client deer from its own random spawn point to the host's position, which is such a teleport.
+- If client deer flicker or vanish, record exactly when, and try the listed workaround (repeat the first placement for a few frames).
+- Don't dig into the engine skeleton code. That is lead work: write it into STATUS "Next steps".
+
 ## Your tasks, in order
 1. **P4a: finish and verify.**
    - Run `mod\net-test\build.ps1` and the test exe: all old tests plus the new ones pass.

@@ -45,6 +45,14 @@ forward their hits to the host.
     - Draw not called on the bad side: a BSP/link issue.
     - Draw called: a model-level frustum test (skeleton bounds).
   - Re-check in P4b with real, smoothly moving host positions; it may not occur there.
+- **Draw-hook result (15:47–15:50, `animals: diag` lines in `game\Bin\dh2coop.log`):**
+  - `cObjEntity::Draw` was called for the deer on **every frame** (133× `50/50` per half second, 4× BSP link 216, otherwise 222). That includes the phases where the user saw it vanish. **Not BSP/entity culling**: the model is drawn but invisible, so it is model-level culling or a bad skeleton.
+  - **User:** "visible for the whole circle until I moved to a new location, then the last few revolutions it appeared and disappeared."
+    - The spike's circle center follows the view yaw, so turning teleports the deer by up to ~16 m in one frame.
+    - **Hypothesis:** large teleports leave the dynamic skeleton / physics bones (and the model bounds derived from them) behind, so the model gets frustum-culled with stale bounds.
+  - **Impact on P4b:** the first sync teleports each client deer from its random local spawn to the host's position.
+    - If deer flicker after that, look into resetting the skeleton after a teleport. Candidates: EngineDll7 `cDynaSkeleton*` exports (`GetPhysModelPos`, `CreatePhysModel`), the model vt `+0x3c` SetPos, or the phys object's own teleport/velocity reset.
+    - Workaround to try first: run the first placement while the deer is hidden (`+0xC0` bit 0), or apply it 2–3 times on consecutive frames.
 
 ## Design (host-authoritative)
 
