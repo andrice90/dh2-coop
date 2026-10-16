@@ -14,6 +14,8 @@ Two instances connect, exchange PlayerState at 20 Hz, show each other in the F8 
 | p3-anim-names (high) | Grok 4.7, no game | `re/jobs/p3-anim-names.out.log` | `re/scripts/ap_list.py`, `re/notes/anim-names.md` (idle/walk/run names; lead then updates `pick_anim` in `puppets.cpp`) |
 | p3-side-by-side (high) | Grok 4.7, **owns game launches** | `re/jobs/p3-side-by-side.out.log` | `run-coop-local.ps1` side-by-side + `-Capture`, `re/notes/p3-side-by-side.md` (background-stall measurements, screenshots in `re/notes/coop-local/`) |
 
+**p3-side-by-side finished 12:06 (not yet lead-reviewed):** windows placed side by side (game 640×480 at 0,0; game2 800×600 at 650,0 — size difference unexplained); `-Capture` works. 120 s run: **no stall on either side** (avg_dt ≈ 0.010 s throughout, rx ≈ 195/10 s) — but `-Capture` re-focuses windows every 10 s, so a long-unfocused instance was never tested; the stall remains open. Both hunters stayed at the spawn point (0,-1.69,0) → each puppet stands inside the other player's camera → nothing visible; for visual tests one player must walk away from the spawn. Details `re/notes/p3-side-by-side.md`.
+
 `re/jobs/p3-puppet-visibility.md` is **obsolete** (solved) — do not run it. The background-stall *fix* (next step 0) is lead work, not Grok.
 
 ## Latest result (~11:50)
