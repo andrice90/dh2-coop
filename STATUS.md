@@ -10,6 +10,7 @@ Two instances connect, exchange PlayerState at 20 Hz, show each other in the F8 
 
 ## In flight
 Nothing running. `re/jobs/p3-puppet-visibility.md` is **obsolete** (solved) — do not run it.
+**Ready for Grok (well-defined, mechanical):** `re/jobs/p3-anim-names.md` → `.\tools-src\grokjob.ps1 -Name p3-anim-names -Effort high` (lists NPC animation names so puppets get correct idle/walk/run; lead applies the mapping in `puppets.cpp` afterwards).
 
 ## Latest result (~11:50)
 Two-instance run (`run-coop-local.ps1 -Seconds 120`): **both instances spawned a puppet for the other player** (`puppets: spawned puppet (remote 1)` on host, `(remote 0)` on client) and switched animations idle → walk/forward → run/forward from the remote player's networked speed. No crashes. Visual confirmation from the user pending.
