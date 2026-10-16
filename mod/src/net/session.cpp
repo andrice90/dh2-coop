@@ -394,6 +394,26 @@ struct Session::Impl {
         Push(ev);
     }
 
+    void On(Remote& remote, const AnimalStates& states) {
+        if (hosting) return;
+        Event ev;
+        ev.type = EventType::AnimalStates;
+        ev.playerId = remote.playerId;
+        ev.animalStates = states;
+        Push(ev);
+    }
+
+    void On(Remote& remote, const AnimalHit& hit) {
+        if (!hosting || !remote.active) return;
+        AnimalHit fixed = hit;
+        fixed.shooterId = remote.playerId;
+        Event ev;
+        ev.type = EventType::AnimalHit;
+        ev.playerId = fixed.shooterId;
+        ev.animalHit = fixed;
+        Push(ev);
+    }
+
     void Dispatch(Remote& remote, const Message& msg) {
         std::visit([&](const auto& m) { On(remote, m); }, msg);
     }
@@ -544,6 +564,23 @@ struct Session::Impl {
         return Send(remote, bytes, kChannelState, false);
     }
 
+    bool SendAnimals(const AnimalStates& states) {
+        if (!host || !hosting) return false;
+        const auto bytes = Encode(states);
+        for (auto& rp : remotes) {
+            if (!rp->active) continue;
+            Send(rp.get(), bytes, kChannelState, false);
+        }
+        return true;
+    }
+
+    bool SendHit(const AnimalHit& hit) {
+        if (!host || hosting || !connected) return false;
+        Remote* remote = From(server);
+        if (!remote) return false;
+        return Send(remote, Encode(hit), kChannelEvents, true);
+    }
+
     bool SendPing(uint32_t token) {
         if (!host || (!hosting && !connected)) return false;
         Ping ping;
@@ -689,6 +726,10 @@ std::vector<PeerStats> Session::Peers() const { return impl_->Stats(); }
 bool Session::SendPlayerState(const PlayerState& state) { return impl_->SendState(state); }
 
 bool Session::SendPing(uint32_t token) { return impl_->SendPing(token); }
+
+bool Session::SendAnimalStates(const AnimalStates& states) { return impl_->SendAnimals(states); }
+
+bool Session::SendAnimalHit(const AnimalHit& hit) { return impl_->SendHit(hit); }
 
 bool Session::ConsumeSendTick(uint32_t nowMs) {
     if (!impl_->sendArmed || nowMs - impl_->lastSendMs >= kStateIntervalMs) {

@@ -1,6 +1,6 @@
 # DH2 co-op protocol v1
 
-Progress: spec and code done. `dh2net_test.exe` passed twice (932 checks, 0 failures) on 2026-10-16. Details in `re/notes/p2c-net.md`.
+Progress: spec and code done, including `AnimalStates` (id 9) and `AnimalHit` (id 10). `dh2net_test.exe` passed twice on 2026-10-16: 3294 checks, 0 failures (was 932 before these messages). Details in `re/notes/p2c-net.md` and `re/notes/p4a-net-animals.md`.
 
 This is the wire contract for `net::Session` (ENet, host-authoritative, star topology). The engine's own sockets are not used. The game never calls `WSAStartup`; `enet_initialize` does that, exactly once per process while any session is alive.
 
@@ -12,8 +12,8 @@ This is the wire contract for `net::Session` (ENet, host-authoritative, star top
 | Engine `sv_port` | 27318, dead. Do not use it. |
 | Address family | IPv4 only (ENet 1.3.18) |
 | Channel 0 | Reliable control: Hello, Welcome, Reject, PlayerJoined, PlayerLeft, Ping, Pong |
-| Channel 1 | Unreliable sequenced snapshots: PlayerState. No `UNSEQUENCED` flag, so ENet keeps order and may drop a stale snapshot. |
-| Channel 2 | Reliable events. Reserved for later shots, damage, and spawns. Nothing sends on it in v1. |
+| Channel 1 | Unreliable sequenced snapshots: PlayerState, AnimalStates. No `UNSEQUENCED` flag, so ENet keeps order and may drop a stale snapshot. |
+| Channel 2 | Reliable events: AnimalHit. |
 
 `Join` takes an IPv4 literal or a name that resolves to IPv4. Use `127.0.0.1` for same-PC tests.
 
@@ -29,11 +29,11 @@ Lobby cap is enforced in the handshake, not by hoping ENet runs out of slots. Th
 
 `Hello.protoVersion` must be `1` and `Hello.gameBuild` must be `434`. Anything else is `Reject` reason `VersionMismatch`, then the link is closed. Version is checked before the lobby-full check. A new build bumps `gameBuild` and does not reuse v1 ids.
 
-v1 payloads have **exact** sizes. Truncation and trailing bytes are malformed. Unknown ids are ignored by the session (logged) so a newer sender fails closed on an old host only at Hello, not by crashing.
+Fixed messages have **exact** sizes. `AnimalStates` varies with the animal count and each name length, and the buffer must be consumed exactly. Truncation, a count above 32, a name length above 31, and trailing bytes are malformed. Unknown ids are ignored by the session (logged) so a newer sender fails closed on an old host only at Hello, not by crashing.
 
 ## Byte order
 
-Every multi-byte integer is little-endian. Floats are IEEE-754 binary32, written as a little-endian uint32 of the raw bits. Names are 32 bytes, zero-padded. A name longer than 31 bytes is truncated and byte 31 is set to 0, so the field is always a C string.
+Every multi-byte integer is little-endian. Floats are IEEE-754 binary32, written as a little-endian uint32 of the raw bits. Player names are 32 bytes, zero-padded. A player name longer than 31 bytes is truncated and byte 31 is set to 0, so the field is always a C string. An animal body-state name is a `u8` length (0..31) followed by that many bytes and no trailing NUL. Encode keeps the first 31 bytes of a longer name.
 
 `net::ByteReader` reads only when the remaining length covers the field. A short buffer returns failure and does not touch memory past the span.
 
@@ -49,6 +49,8 @@ Every multi-byte integer is little-endian. Floats are IEEE-754 binary32, written
 | 6 | PlayerState | both, relayed | 1 unreliable sequenced | 44 | see below |
 | 7 | Ping | both | 0 reliable | 5 | `u32 token` |
 | 8 | Pong | both | 0 reliable | 5 | `u32 token` (echo) |
+| 9 | AnimalStates | H→C | 1 unreliable sequenced | 8 + entries | `u16 seq`, `u32 tickMs`, `u8 count`, then `count` entries |
+| 10 | AnimalHit | C→H | 2 reliable | 20 | `u8 shooterId`, `u16 animalId`, `f32 damage`, `f32 hitPos[3]` |
 
 `PlayerState` layout (44 bytes including the id):
 
@@ -68,6 +70,40 @@ Every multi-byte integer is little-endian. Floats are IEEE-754 binary32, written
 
 Flag bits in the `u16`: bit 0 crouch, bit 1 prone, bit 2 aiming, bit 3 firing, bit 4 dead. Bits 5–15 are reserved and must be sent as 0 until assigned.
 
+`AnimalStates` layout. The caller sends it at 20 Hz (`ConsumeSendTick`). `Session` does not throttle the call. Count is 0..32. Encode keeps the first 32 entries. An empty list is an 8-byte packet.
+
+| Offset | Type | Field |
+|---|---|---|
+| 0 | u8 | msg id `9` |
+| 1 | u16 | seq (host counter) |
+| 3 | u32 | tickMs (host clock, milliseconds) |
+| 7 | u8 | count |
+| 8 | entries | `count` times the entry below |
+
+`AnimalState` entry. Offsets are from the start of that entry. The name is raw bytes, not a C string.
+
+| Offset | Type | Field |
+|---|---|---|
+| 0 | u16 | id (entity id, for example 120–124) |
+| 2 | f32[3] | pos |
+| 14 | f32 | yaw, degrees. 0 faces +z, 90 faces +x |
+| 18 | f32 | health |
+| 22 | u8 | flags |
+| 23 | u8 | state length, 0..31 |
+| 24 | bytes | state, the body-state name |
+
+An entry with an empty name is 24 bytes. Flag bits: bit 0 dead, bit 1 parked/inactive, bit 2 frozen-on-host. Bits 3–7 are reserved. The wire keeps whatever the sender put in those bits.
+
+`AnimalHit` layout (20 bytes including the id). `hitPos` may be all zeros. The host sets `shooterId` from the sending peer's player id before queueing the event.
+
+| Offset | Type | Field |
+|---|---|---|
+| 0 | u8 | msg id `10` |
+| 1 | u8 | shooterId |
+| 2 | u16 | animalId |
+| 4 | f32 | damage |
+| 8 | f32[3] | hitPos |
+
 `Reject.reason`: 0 none, 1 `VersionMismatch`, 2 `LobbyFull`, 3 `BadHello`.
 
 `Welcome.playerId` is 0 for the host and 1..maxClients for clients. The lowest free id is reused after a leave. `hostTick` is milliseconds since the host called `StartHost` (steady clock). `maxPlayers` counts the host.
@@ -76,17 +112,17 @@ Flag bits in the `u16`: bit 0 crouch, bit 1 prone, bit 2 aiming, bit 3 firing, b
 
 ## Reserved id ranges
 
-Do not send these. They are named so later phases can add messages without shifting v1 ids.
+Ids 9 and 10 are assigned above. Do not send the ids in this table. They stay free so a later message can be added without shifting v1 ids.
 
-| Ids | Range | Later use | Planned channel |
-|---|---|---|---|
-| 9–15 | open v1 | unused | — |
-| 16–31 | control | future lobby / clock messages | 0 reliable |
-| 32–47 | AnimalState | host→client animal snapshots | 1 unreliable sequenced |
-| 48–63 | AnimalEvent | spawn, death, target change | 2 reliable |
-| 64–79 | HitRequest | client→host shot claim | 2 reliable |
-| 80–95 | DamageEvent | host→client damage / kill | 2 reliable |
-| 96–255 | future | unused | — |
+| Ids | Status |
+|---|---|
+| 11–15 | unused |
+| 16–31 | unused, reserved for later lobby / clock messages (channel 0) |
+| 32–47 | unused, reserved |
+| 48–63 | unused, reserved for later spawn, death, and target events (channel 2) |
+| 64–79 | unused, reserved for later hit messages (channel 2) |
+| 80–95 | unused, reserved for later damage / kill messages (channel 2) |
+| 96–255 | unused |
 
 ## Link close codes
 
@@ -170,6 +206,18 @@ if (session.IsConnected() && session.ConsumeSendTick(WallMs())) {
     st.seq = nextSeq++;
     session.SendPlayerState(st);
 }
+
+// Host, on the same 20 Hz tick:
+net::AnimalStates animals;
+animals.seq = nextAnimalSeq++;
+animals.tickMs = WallMs();
+session.SendAnimalStates(animals);  // false when this process is not the host
+
+// Client, when a local shot should count on the host:
+net::AnimalHit hit;
+hit.animalId = animalId;
+hit.damage = dropped;
+session.SendAnimalHit(hit);  // false on the host; EventType::AnimalHit arrives with shooterId set
 
 // Render, after the sim step, with the same WallMs clock:
 net::InterpSample sample;

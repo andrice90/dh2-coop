@@ -89,6 +89,65 @@ bool SameBytes(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
     return a.size() == b.size() && (a.empty() || std::memcmp(a.data(), b.data(), a.size()) == 0);
 }
 
+bool IsAscii(const std::string& s) {
+    for (unsigned char c : s) {
+        if (c < 0x20 || c > 0x7E) return false;
+    }
+    return true;
+}
+
+bool SameAnimal(const net::AnimalState& a, const net::AnimalState& b) {
+    if (a.id != b.id || a.flags != b.flags || a.state != b.state) return false;
+    if (std::memcmp(a.pos, b.pos, sizeof a.pos) != 0) return false;
+    if (std::memcmp(&a.yaw, &b.yaw, sizeof a.yaw) != 0) return false;
+    return std::memcmp(&a.health, &b.health, sizeof a.health) == 0;
+}
+
+bool SameAnimals(const net::AnimalStates& a, const net::AnimalStates& b) {
+    if (a.seq != b.seq || a.tickMs != b.tickMs || a.animals.size() != b.animals.size()) return false;
+    for (size_t i = 0; i < a.animals.size(); ++i) {
+        if (!SameAnimal(a.animals[i], b.animals[i])) return false;
+    }
+    return true;
+}
+
+bool SameHit(const net::AnimalHit& a, const net::AnimalHit& b) {
+    if (a.shooterId != b.shooterId || a.animalId != b.animalId) return false;
+    if (std::memcmp(&a.damage, &b.damage, sizeof a.damage) != 0) return false;
+    return std::memcmp(a.hitPos, b.hitPos, sizeof a.hitPos) == 0;
+}
+
+net::AnimalStates WireForm(net::AnimalStates msg) {
+    if (msg.animals.size() > net::kMaxAnimals) msg.animals.resize(net::kMaxAnimals);
+    for (auto& animal : msg.animals) {
+        if (animal.state.size() > net::kMaxAnimalStateChars) animal.state.resize(net::kMaxAnimalStateChars);
+    }
+    return msg;
+}
+
+net::AnimalStates MakeHerd() {
+    net::AnimalStates many;
+    many.seq = 9;
+    many.tickMs = 123456;
+    const std::string forty = "0123456789abcdefghijklmnopqrstuvwxyzABCD";
+    for (int i = 0; i < 32; ++i) {
+        net::AnimalState animal;
+        animal.id = static_cast<uint16_t>(120 + i);
+        animal.pos[0] = static_cast<float>(i) - 10.f;
+        animal.pos[1] = 0.25f * static_cast<float>(i);
+        animal.pos[2] = (i == 31) ? -10000.f : static_cast<float>(i);
+        animal.yaw = 90.f * static_cast<float>(i % 4);
+        animal.health = (i == 2) ? 0.f : 45.5f;
+        animal.flags = static_cast<uint8_t>(i & 0x7);
+        if (i == 0) animal.state = forty;
+        else if (i == 1) animal.state.clear();
+        else if (i % 2 == 0) animal.state = "Walk";
+        else animal.state = "IdleAttack";
+        many.animals.push_back(std::move(animal));
+    }
+    return many;
+}
+
 const char* EventName(net::EventType t) {
     switch (t) {
     case net::EventType::Connected: return "Connected";
@@ -102,6 +161,8 @@ const char* EventName(net::EventType t) {
     case net::EventType::PlayerState: return "PlayerState";
     case net::EventType::Ping: return "Ping";
     case net::EventType::Pong: return "Pong";
+    case net::EventType::AnimalStates: return "AnimalStates";
+    case net::EventType::AnimalHit: return "AnimalHit";
     }
     return "?";
 }
@@ -110,7 +171,10 @@ void TestCodec(Tally& t) {
     using namespace net;
     t.Check(ChannelFor(MsgId::PlayerState) == kChannelState, "state channel");
     t.Check(ChannelFor(MsgId::Hello) == kChannelControl, "hello channel");
+    t.Check(ChannelFor(MsgId::AnimalStates) == kChannelState, "animal state channel");
+    t.Check(ChannelFor(MsgId::AnimalHit) == kChannelEvents, "animal hit channel");
     t.Check(IsReliable(MsgId::Hello) && !IsReliable(MsgId::PlayerState), "reliability");
+    t.Check(!IsReliable(MsgId::AnimalStates) && IsReliable(MsgId::AnimalHit), "animal reliability");
 
     Hello hello;
     hello.protoVersion = 1;
@@ -201,6 +265,79 @@ void TestCodec(Tally& t) {
     auto mb = Encode(mixed);
     t.Check(SameBytes(mb, sb), "variant encode");
 
+    AnimalStates emptyAnimals;
+    emptyAnimals.seq = 1;
+    emptyAnimals.tickMs = 50;
+    auto emptyBytes = Encode(emptyAnimals);
+    auto emptyDec = Decode(emptyBytes.data(), emptyBytes.size());
+    t.Check(emptyBytes.size() == kAnimalStatesHeaderBytes && emptyBytes[0] == static_cast<uint8_t>(MsgId::AnimalStates) &&
+                emptyBytes[7] == 0,
+            "empty animal list size");
+    t.Check(emptyDec && std::holds_alternative<AnimalStates>(*emptyDec) && SameAnimals(std::get<AnimalStates>(*emptyDec), emptyAnimals),
+            "empty animal list round trip");
+    t.Check(emptyDec && std::holds_alternative<AnimalStates>(*emptyDec) &&
+                SameBytes(Encode(std::get<AnimalStates>(*emptyDec)), emptyBytes),
+            "empty animal list canonical");
+
+    const AnimalStates herd = MakeHerd();
+    t.Check(herd.animals.size() == 32 && herd.animals[0].state.size() == 40, "herd fixture is 32 with a 40-char name");
+    bool herdAscii = true;
+    for (const auto& animal : herd.animals) {
+        if (!IsAscii(animal.state)) herdAscii = false;
+    }
+    t.Check(herdAscii, "herd state names are ASCII");
+    auto herdBytes = Encode(herd);
+    auto herdDec = Decode(herdBytes.data(), herdBytes.size());
+    t.Check(herdBytes.size() > kAnimalStatesHeaderBytes && herdBytes[0] == static_cast<uint8_t>(MsgId::AnimalStates) &&
+                herdBytes[7] == 32,
+            "32-entry count byte");
+    t.Check(herdDec && std::holds_alternative<AnimalStates>(*herdDec), "32-entry type");
+    if (herdDec && std::holds_alternative<AnimalStates>(*herdDec)) {
+        const auto& m = std::get<AnimalStates>(*herdDec);
+        const AnimalStates expect = WireForm(herd);
+        t.Check(SameAnimals(m, expect), "32-entry fields");
+        t.Check(m.animals[0].state.size() == 31 && m.animals[0].state == herd.animals[0].state.substr(0, 31),
+                "40-char state truncated to 31");
+        t.Check(m.animals[1].state.empty(), "empty state name round trip");
+        t.Check(IsAscii(m.animals[0].state) && IsAscii(m.animals[3].state), "decoded state names stay ASCII");
+        t.Check(SameBytes(Encode(m), herdBytes), "32-entry canonical");
+        t.Check(SameBytes(Encode(Message{m}), herdBytes), "animal states variant encode");
+    }
+    AnimalStates over = herd;
+    AnimalState extraAnimal;
+    extraAnimal.id = 999;
+    extraAnimal.state = "nope";
+    over.animals.push_back(extraAnimal);
+    t.Check(SameBytes(Encode(over), herdBytes), "encode drops the 33rd animal");
+
+    AnimalState named;
+    named.id = 120;
+    named.state = std::string(31, 'a');
+    AnimalStates oneNamed;
+    oneNamed.animals.push_back(named);
+    auto namedBytes = Encode(oneNamed);
+    t.Check(namedBytes.size() == kAnimalStatesHeaderBytes + kAnimalStateFixedBytes + 31, "31-char entry size");
+
+    AnimalHit hit;
+    hit.shooterId = 0xFE;
+    hit.animalId = 0xABCD;
+    hit.damage = 12.5f;
+    hit.hitPos[0] = 1.f;
+    hit.hitPos[1] = 0.f;
+    hit.hitPos[2] = -4.f;
+    auto hitBytes = Encode(hit);
+    auto hitDec = Decode(hitBytes.data(), hitBytes.size());
+    t.Check(hitBytes.size() == kAnimalHitBytes && hitBytes[0] == static_cast<uint8_t>(MsgId::AnimalHit), "hit size");
+    t.Check(hitBytes[1] == 0xFE && hitBytes[2] == 0xCD && hitBytes[3] == 0xAB, "hit little-endian");
+    t.Check(hitDec && std::holds_alternative<AnimalHit>(*hitDec) && SameHit(std::get<AnimalHit>(*hitDec), hit), "hit round trip");
+    t.Check(hitDec && std::holds_alternative<AnimalHit>(*hitDec) && SameBytes(Encode(std::get<AnimalHit>(*hitDec)), hitBytes),
+            "hit canonical");
+    AnimalHit zeros;
+    auto zeroBytes = Encode(zeros);
+    auto zeroDec = Decode(zeroBytes.data(), zeroBytes.size());
+    t.Check(zeroDec && std::holds_alternative<AnimalHit>(*zeroDec) && SameHit(std::get<AnimalHit>(*zeroDec), zeros),
+            "zero hit round trip");
+
     Session tick;
     t.Check(tick.ConsumeSendTick(0), "send tick first");
     t.Check(!tick.ConsumeSendTick(49), "send tick hold");
@@ -229,6 +366,29 @@ void TestTruncation(Tally& t) {
         good.push_back(Encode(s));
         good.push_back(Encode(Ping{7}));
         good.push_back(Encode(Pong{7}));
+        AnimalStates empty;
+        empty.seq = 3;
+        empty.tickMs = 9;
+        good.push_back(Encode(empty));
+        AnimalStates one;
+        one.seq = 4;
+        one.tickMs = 10;
+        AnimalState deer;
+        deer.id = 120;
+        deer.pos[0] = 1.f;
+        deer.pos[1] = 0.4f;
+        deer.pos[2] = -2.f;
+        deer.yaw = 90.f;
+        deer.health = 45.f;
+        deer.state = "Walk";
+        one.animals.push_back(deer);
+        good.push_back(Encode(one));
+        AnimalHit shot;
+        shot.shooterId = 1;
+        shot.animalId = 122;
+        shot.damage = 1.f;
+        shot.hitPos[2] = 3.f;
+        good.push_back(Encode(shot));
     }
     for (const auto& buf : good) {
         t.Check(Decode(buf.data(), buf.size()).has_value(), "full buffer decodes");
@@ -264,11 +424,42 @@ void TestTruncation(Tally& t) {
         t.Check(back.has_value() && SameBytes(again, buf), "random exact packet is canonical");
     }
 
-    const uint8_t reserved[] = {16, 32, 47, 48, 63, 64, 79, 80, 95, 96, 255};
+    const uint8_t reserved[] = {11, 15, 16, 32, 47, 48, 63, 64, 79, 80, 95, 96, 255};
     for (uint8_t id : reserved) {
         uint8_t buf[8] = {id, 1, 2, 3, 4, 5, 6, 7};
         t.Check(!Decode(buf, sizeof buf).has_value(), "reserved id rejected");
     }
+
+    auto big = Encode(MakeHerd());
+    t.Check(Decode(big.data(), big.size()).has_value(), "32-entry buffer decodes");
+    for (size_t n = 0; n < big.size(); ++n) {
+        t.Check(!Decode(big.data(), n).has_value(), "32-entry truncated");
+    }
+    auto bigExtra = big;
+    bigExtra.push_back(0x5A);
+    t.Check(!Decode(bigExtra.data(), bigExtra.size()).has_value(), "32-entry trailing byte rejected");
+
+    std::vector<uint8_t> shortBody(kAnimalStatesHeaderBytes + 3, 0);
+    shortBody[0] = static_cast<uint8_t>(MsgId::AnimalStates);
+    shortBody[7] = 8;
+    t.Check(!Decode(shortBody.data(), shortBody.size()).has_value(), "count larger than remaining payload");
+
+    std::vector<uint8_t> tooMany(kAnimalStatesHeaderBytes + 33, 0);
+    tooMany[0] = static_cast<uint8_t>(MsgId::AnimalStates);
+    tooMany[7] = 33;
+    t.Check(!Decode(tooMany.data(), tooMany.size()).has_value(), "count 33 rejected");
+
+    AnimalState named;
+    named.id = 120;
+    named.state = std::string(31, 'a');
+    AnimalStates oneNamed;
+    oneNamed.animals.push_back(named);
+    auto nameBytes = Encode(oneNamed);
+    t.Check(nameBytes.size() == kAnimalStatesHeaderBytes + kAnimalStateFixedBytes + 31 && nameBytes[31] == 31,
+            "name length sits at the end of the fixed entry");
+    nameBytes[31] = 32;
+    nameBytes.push_back('b');
+    t.Check(!Decode(nameBytes.data(), nameBytes.size()).has_value(), "name length 32 rejected");
 }
 
 void TestInterp(Tally& t) {
@@ -398,6 +589,10 @@ struct Box {
     bool pingSeen = false;
     bool pongSeen = false;
     uint32_t pongToken = 0;
+    bool animalSeen = false;
+    net::AnimalStates animalGot{};
+    bool hitSeen = false;
+    net::AnimalHit hitGot{};
 };
 
 void OnEvent(Box& b, const net::Event& e) {
@@ -442,6 +637,14 @@ void OnEvent(Box& b, const net::Event& e) {
     case EventType::Pong:
         b.pongSeen = true;
         b.pongToken = e.token;
+        break;
+    case EventType::AnimalStates:
+        b.animalSeen = true;
+        b.animalGot = e.animalStates;
+        break;
+    case EventType::AnimalHit:
+        b.hitSeen = true;
+        b.hitGot = e.animalHit;
         break;
     default: break;
     }
@@ -564,6 +767,69 @@ Digest TestLoopback(Tally& t, bool* sectionOk) {
     t.Check(clients[0]->SendPing(0xA1B2C3D4u), "send ping");
     const bool pingOk = PumpFor(1000, boxes, [&] { return boxes[0].pingSeen && boxes[1].pongSeen && boxes[1].pongToken == 0xA1B2C3D4u; });
     t.Check(pingOk, "ping/pong token");
+
+    bool animalOk = false;
+    if (!handshake) {
+        t.Check(false, "animal loopback needs a lobby");
+    } else {
+        const bool roles = !clients[0]->SendAnimalStates(AnimalStates{}) && !host->SendAnimalHit(AnimalHit{});
+        t.Check(roles, "animal send roles");
+
+        AnimalStates snap;
+        snap.seq = 42;
+        snap.tickMs = 1000;
+        AnimalState deer;
+        deer.id = 120;
+        deer.pos[0] = 10.5f;
+        deer.pos[1] = 0.4f;
+        deer.pos[2] = -3.25f;
+        deer.yaw = 90.f;
+        deer.health = 45.f;
+        deer.state = "Walk";
+        AnimalState puma;
+        puma.id = 124;
+        puma.pos[0] = -10000.f;
+        puma.pos[1] = -10000.f;
+        puma.pos[2] = -10000.f;
+        puma.health = 100.f;
+        puma.flags = animal_flag::kParked;
+        puma.state = "Idle";
+        AnimalState dead;
+        dead.id = 121;
+        dead.pos[0] = 3.f;
+        dead.pos[1] = 1.f;
+        dead.pos[2] = 4.f;
+        dead.yaw = 180.f;
+        dead.flags = static_cast<uint8_t>(animal_flag::kDead | animal_flag::kFrozenOnHost);
+        dead.state = "fall";
+        snap.animals = {deer, puma, dead};
+
+        const bool sent = host->SendAnimalStates(snap);
+        t.Check(sent, "host sends AnimalStates");
+        const bool got = sent && PumpFor(1000, boxes, [&] {
+            return boxes[1].animalSeen && boxes[2].animalSeen && boxes[3].animalSeen;
+        });
+        const bool same = got && !boxes[0].animalSeen && SameAnimals(boxes[1].animalGot, snap) &&
+                          SameAnimals(boxes[2].animalGot, snap) && SameAnimals(boxes[3].animalGot, snap);
+        t.Check(same, "clients received AnimalStates");
+
+        AnimalHit hit;
+        hit.shooterId = 9;
+        hit.animalId = 122;
+        hit.damage = 12.5f;
+        hit.hitPos[0] = 1.25f;
+        hit.hitPos[2] = -4.f;
+        const bool hitSent = clients[0]->SendAnimalHit(hit);
+        t.Check(hitSent, "client sends AnimalHit");
+        const bool hitArrived = hitSent && PumpFor(1000, boxes, [&] { return boxes[0].hitSeen; });
+        AnimalHit expect = hit;
+        expect.shooterId = 1;
+        const bool hitSame = hitArrived && clients[0]->LocalPlayerId() == 1 && SameHit(boxes[0].hitGot, expect) &&
+                             !boxes[1].hitSeen && !boxes[2].hitSeen && !boxes[3].hitSeen;
+        t.Check(hitSame, "host received AnimalHit with shooterId");
+        animalOk = roles && same && hitSame;
+    }
+    sectionOk[11] = animalOk;
 
     const auto peers = host->Peers();
     t.Check(peers.size() == 3, "three peers");
@@ -698,8 +964,8 @@ int main() {
     const char* names[] = {
         "codec round-trip",     "truncated buffers", "interp + yaw wrap", "handshake ids 0..3",
         "PlayerJoined fan-out", "PlayerState relay", "reject version",    "reject full",
-        "PlayerLeft",           "host shutdown",     "enet_initialize once"};
-    constexpr int kSections = 11;
+        "PlayerLeft",           "host shutdown",     "enet_initialize once", "animal loopback"};
+    constexpr int kSections = 12;
     Section sections[kSections];
     for (int i = 0; i < kSections; ++i) sections[i].name = names[i];
 

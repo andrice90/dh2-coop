@@ -25,6 +25,8 @@ enum class EventType : uint8_t {
     PlayerState,
     Ping,
     Pong,
+    AnimalStates,
+    AnimalHit,
 };
 
 struct Event {
@@ -38,6 +40,8 @@ struct Event {
     uint32_t token = 0;
     std::string name;
     PlayerState state{};
+    AnimalStates animalStates{};
+    AnimalHit animalHit{};
 };
 
 struct PeerStats {
@@ -86,6 +90,12 @@ public:
     // The host rewrites a client's id before relaying, so the field cannot be spoofed.
     bool SendPlayerState(const PlayerState& state);
     bool SendPing(uint32_t token);
+
+    // Host only. Broadcasts on the unreliable snapshot channel. Returns false on a client.
+    bool SendAnimalStates(const AnimalStates& states);
+    // Client only. Reliable to the host. Returns false on the host.
+    // The host writes shooterId from the sending peer before the event is queued.
+    bool SendAnimalHit(const AnimalHit& hit);
 
     // True at most once per kStateIntervalMs. The first call is true.
     // `nowMs` is a steady millisecond clock. Safe to call before connect.

@@ -26,7 +26,7 @@ constexpr uint32_t kStateIntervalMs = 1000 / kStateHz;
 
 constexpr uint8_t kChannelControl = 0;  // reliable
 constexpr uint8_t kChannelState = 1;    // unreliable sequenced
-constexpr uint8_t kChannelEvents = 2;   // reliable, reserved
+constexpr uint8_t kChannelEvents = 2;   // reliable AnimalHit
 constexpr uint8_t kChannelCount = 3;
 
 // ENet disconnect data. 0 is a timeout (ENet forces 0) or the initiator's local event.
@@ -46,15 +46,23 @@ enum class MsgId : uint8_t {
     PlayerState = 6,
     Ping = 7,
     Pong = 8,
+    AnimalStates = 9,
+    AnimalHit = 10,
 };
 
-// Reserved. Do not send. See docs/net-protocol.md.
+// Ids 11-15 are unused. Ranges below stay unused. Do not send them. See docs/net-protocol.md.
 constexpr uint8_t kReservedControlBegin = 16;  // 16-31
 constexpr uint8_t kAnimalStateBegin = 32;      // 32-47
 constexpr uint8_t kAnimalEventBegin = 48;      // 48-63
 constexpr uint8_t kHitRequestBegin = 64;       // 64-79
 constexpr uint8_t kDamageEventBegin = 80;      // 80-95
 constexpr uint8_t kReservedFutureBegin = 96;   // 96-255
+
+constexpr uint8_t kMaxAnimals = 32;
+constexpr uint8_t kMaxAnimalStateChars = 31;
+constexpr size_t kAnimalStatesHeaderBytes = 8;  // id + seq + tickMs + count
+constexpr size_t kAnimalStateFixedBytes = 24;   // one entry, empty name
+constexpr size_t kAnimalHitBytes = 20;
 
 constexpr size_t kHelloBytes = 36;
 constexpr size_t kWelcomeBytes = 7;
@@ -136,13 +144,48 @@ struct Pong {
     uint32_t token = 0;
 };
 
-using Message = std::variant<Hello, Welcome, Reject, PlayerJoined, PlayerLeft, PlayerState, Ping, Pong>;
-
-constexpr uint8_t ChannelFor(MsgId id) {
-    return id == MsgId::PlayerState ? kChannelState : kChannelControl;
+namespace animal_flag {
+constexpr uint8_t kDead = 1u << 0;
+constexpr uint8_t kParked = 1u << 1;
+constexpr uint8_t kFrozenOnHost = 1u << 2;
 }
 
-constexpr bool IsReliable(MsgId id) { return id != MsgId::PlayerState; }
+// One animal in an AnimalStates snapshot. `state` is a body-state name.
+// Encode writes at most kMaxAnimalStateChars bytes. A longer string is truncated.
+struct AnimalState {
+    uint16_t id = 0;
+    float pos[3] = {};
+    float yaw = 0.f;
+    float health = 0.f;
+    uint8_t flags = 0;
+    std::string state;
+};
+
+// Host → clients, unreliable. `animals` encodes as a u8 count, at most kMaxAnimals.
+struct AnimalStates {
+    uint16_t seq = 0;
+    uint32_t tickMs = 0;
+    std::vector<AnimalState> animals;
+};
+
+// Client → host, reliable. The host sets shooterId from the sending peer's player id.
+struct AnimalHit {
+    uint8_t shooterId = kInvalidPlayerId;
+    uint16_t animalId = 0;
+    float damage = 0.f;
+    float hitPos[3] = {};
+};
+
+using Message = std::variant<Hello, Welcome, Reject, PlayerJoined, PlayerLeft, PlayerState, Ping, Pong, AnimalStates,
+                              AnimalHit>;
+
+constexpr uint8_t ChannelFor(MsgId id) {
+    if (id == MsgId::PlayerState || id == MsgId::AnimalStates) return kChannelState;
+    if (id == MsgId::AnimalHit) return kChannelEvents;
+    return kChannelControl;
+}
+
+constexpr bool IsReliable(MsgId id) { return id != MsgId::PlayerState && id != MsgId::AnimalStates; }
 
 inline void SetName(char (&dst)[kNameBytes], std::string_view src) {
     for (size_t i = 0; i < kNameBytes; ++i) dst[i] = 0;
@@ -206,9 +249,11 @@ std::vector<uint8_t> Encode(const PlayerLeft& msg);
 std::vector<uint8_t> Encode(const PlayerState& msg);
 std::vector<uint8_t> Encode(const Ping& msg);
 std::vector<uint8_t> Encode(const Pong& msg);
+std::vector<uint8_t> Encode(const AnimalStates& msg);
+std::vector<uint8_t> Encode(const AnimalHit& msg);
 std::vector<uint8_t> Encode(const Message& msg);
 
-// Exact size, matching id, all fields inside the span. Otherwise nullopt.
+// Matching id, every field inside the span, no trailing bytes. Otherwise nullopt.
 std::optional<Message> Decode(const uint8_t* data, size_t len);
 
 }  // namespace net

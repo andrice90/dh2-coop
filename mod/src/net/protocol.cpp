@@ -15,6 +15,8 @@ const char* ToString(MsgId id) {
     case MsgId::PlayerState: return "PlayerState";
     case MsgId::Ping: return "Ping";
     case MsgId::Pong: return "Pong";
+    case MsgId::AnimalStates: return "AnimalStates";
+    case MsgId::AnimalHit: return "AnimalHit";
     }
     return "Unknown";
 }
@@ -121,6 +123,38 @@ std::optional<T> ParseExact(const uint8_t* data, size_t len, size_t expect, MsgI
     return msg;
 }
 
+std::optional<AnimalStates> ParseAnimalStates(const uint8_t* data, size_t len) {
+    if (data == nullptr || len < kAnimalStatesHeaderBytes || data[0] != static_cast<uint8_t>(MsgId::AnimalStates)) {
+        return std::nullopt;
+    }
+    ByteReader r(data + 1, len - 1);
+    AnimalStates msg;
+    msg.seq = r.U16();
+    msg.tickMs = r.U32();
+    const uint8_t count = r.U8();
+    if (!r.ok() || count > kMaxAnimals || static_cast<size_t>(count) > r.remaining()) return std::nullopt;
+    msg.animals.reserve(count);
+    for (uint8_t i = 0; i < count; ++i) {
+        AnimalState animal;
+        animal.id = r.U16();
+        animal.pos[0] = r.F32();
+        animal.pos[1] = r.F32();
+        animal.pos[2] = r.F32();
+        animal.yaw = r.F32();
+        animal.health = r.F32();
+        animal.flags = r.U8();
+        const uint8_t nameLen = r.U8();
+        if (!r.ok() || nameLen > kMaxAnimalStateChars || static_cast<size_t>(nameLen) > r.remaining()) return std::nullopt;
+        uint8_t raw[kMaxAnimalStateChars];
+        r.Bytes(raw, nameLen);
+        if (!r.ok()) return std::nullopt;
+        animal.state.assign(reinterpret_cast<const char*>(raw), nameLen);
+        msg.animals.push_back(std::move(animal));
+    }
+    if (!r.ok() || r.remaining() != 0) return std::nullopt;
+    return msg;
+}
+
 }  // namespace
 
 std::vector<uint8_t> Encode(const Hello& msg) {
@@ -194,6 +228,41 @@ std::vector<uint8_t> Encode(const Pong& msg) {
     ByteWriter w;
     w.U8(static_cast<uint8_t>(MsgId::Pong));
     w.U32(msg.token);
+    return w.Take();
+}
+
+std::vector<uint8_t> Encode(const AnimalStates& msg) {
+    ByteWriter w;
+    w.U8(static_cast<uint8_t>(MsgId::AnimalStates));
+    w.U16(msg.seq);
+    w.U32(msg.tickMs);
+    const size_t count = msg.animals.size() > kMaxAnimals ? kMaxAnimals : msg.animals.size();
+    w.U8(static_cast<uint8_t>(count));
+    for (size_t i = 0; i < count; ++i) {
+        const AnimalState& animal = msg.animals[i];
+        w.U16(animal.id);
+        w.F32(animal.pos[0]);
+        w.F32(animal.pos[1]);
+        w.F32(animal.pos[2]);
+        w.F32(animal.yaw);
+        w.F32(animal.health);
+        w.U8(animal.flags);
+        const size_t nameLen = animal.state.size() > kMaxAnimalStateChars ? kMaxAnimalStateChars : animal.state.size();
+        w.U8(static_cast<uint8_t>(nameLen));
+        if (nameLen > 0) w.Bytes(animal.state.data(), nameLen);
+    }
+    return w.Take();
+}
+
+std::vector<uint8_t> Encode(const AnimalHit& msg) {
+    ByteWriter w;
+    w.U8(static_cast<uint8_t>(MsgId::AnimalHit));
+    w.U8(msg.shooterId);
+    w.U16(msg.animalId);
+    w.F32(msg.damage);
+    w.F32(msg.hitPos[0]);
+    w.F32(msg.hitPos[1]);
+    w.F32(msg.hitPos[2]);
     return w.Take();
 }
 
@@ -273,6 +342,23 @@ std::optional<Message> Decode(const uint8_t* data, size_t len) {
     }
     case MsgId::Pong: {
         auto m = ParseExact<Pong>(data, len, kPongBytes, MsgId::Pong, [](ByteReader& r, Pong& o) { o.token = r.U32(); });
+        if (!m) return std::nullopt;
+        return Message{std::move(*m)};
+    }
+    case MsgId::AnimalStates: {
+        auto m = ParseAnimalStates(data, len);
+        if (!m) return std::nullopt;
+        return Message{std::move(*m)};
+    }
+    case MsgId::AnimalHit: {
+        auto m = ParseExact<AnimalHit>(data, len, kAnimalHitBytes, MsgId::AnimalHit, [](ByteReader& r, AnimalHit& o) {
+            o.shooterId = r.U8();
+            o.animalId = r.U16();
+            o.damage = r.F32();
+            o.hitPos[0] = r.F32();
+            o.hitPos[1] = r.F32();
+            o.hitPos[2] = r.F32();
+        });
         if (!m) return std::nullopt;
         return Message{std::move(*m)};
     }
