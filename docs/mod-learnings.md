@@ -23,6 +23,7 @@ Practical knowledge for building, injecting, hooking, testing and orchestrating.
 ## Orchestration
 - Workers: Grok Build CLI `grok` pinned to `-m grok-4.7`, headless via `tools-src/grokjob.ps1` (prompt `re/jobs/<name>.md` + `_rules.md`). Permission mode `auto` works headless (runs shell, writes files). `bypassPermissions` is blocked by Claude Code's auto-mode classifier — don't use it — 2026-10-16.
 - `--output-format plain` prints only at the end; a running job's log shows just the start line.
+- Windows PowerShell 5.1 + `$ErrorActionPreference='Stop'` + `& native 2>&1` turns any stderr line into a terminating error. Grok writes "Auto-compacting conversation (81% full)..." to stderr, which killed Track B at ~25 min. Runner now uses `Start-Process -RedirectStandardOutput/-RedirectStandardError` (stderr → `re/jobs/<name>.err.log`); touch `$p.Handle` right after start or `ExitCode` comes back empty — 2026-10-16.
 - `cursor-agent` also works (`grok-4.7-*` models listed) but was ~4× slower than `grok` on the same prompt (150 s vs 37 s) — 2026-10-16.
 - Claude subagents can hit session usage limits mid-task and die without writing summaries. Mitigation: workers write deliverables incrementally; lead keeps `STATUS.md` current.
 - Only one worker per wave launches the game (shared sandbox, single disc mount, DirectInput exclusive mode).

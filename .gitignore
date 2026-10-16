@@ -13,3 +13,4 @@ re/notes/*.txt
 re/notes/strings/
 re/jobs/*.tmp
 __pycache__/
+re/jobs/*.stdout.tmp

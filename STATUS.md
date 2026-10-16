@@ -1,6 +1,6 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-16 08:45 (America/Chicago) by the Claude lead session.
+**Last updated:** 2026-10-16 09:05 (America/Chicago) by the Claude lead session.
 
 New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap, `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail.
 
@@ -11,7 +11,7 @@ New session? Follow **Resume protocol** at the bottom. This file is the single s
 | Job | Started | Owner | Log | Deliverable |
 |---|---|---|---|---|
 | track-a-net (xhigh) | 2026-10-16 08:39 | Grok 4.7, slot A | `re/jobs/track-a-net.out.log` | `re/notes/net-layer.md` |
-| track-b-objmodel | 08:39 | Grok 4.7, slot B | `re/jobs/track-b-objmodel.out.log` | `re/notes/object-model.md`, `mod/src/game/types_draft.h` |
+| track-b-objmodel (restart #1) | 09:04 | Grok 4.7, slot B | `re/jobs/track-b-objmodel.out.log` | `re/notes/object-model.md`, `mod/src/game/types_draft.h` |
 | track-c-assets | 08:39 | Grok 4.7, slot C | `re/jobs/track-c-assets.out.log` | `re/notes/assets.md` |
 | track-d-loop | 08:39 | Grok 4.7, slot D | `re/jobs/track-d-loop.out.log` | `re/notes/timing.md`, `re/notes/console.md` |
 | track-e-runtime | 08:39 | Grok 4.7, slot E, **owns game launches** | `re/jobs/track-e-runtime.out.log` | `re/notes/renderer.md`, `re/notes/runtime-*.txt` |
@@ -26,7 +26,8 @@ A job is finished when its log ends with `=== <name> end ... exit=N`. Plain-mode
 5. Pick MVP free-hunt test map (from assets.md).
 
 ## Blockers / risks
-- None blocking. Watch: Claude usage limits (keep Claude work to review + orchestration); two game instances on one PC may conflict (disc mount, DirectInput exclusive).
+- **A, C, D, E run under the old runner** (stderr bug): each dies the first time Grok auto-compacts. If one ends with exit 1 and no deliverable, rerun it with the fixed runner (`.\tools-src\grokjob.ps1 -Name <job> -Effort <effort>`; A uses `xhigh`).
+- No other blockers. Watch: Claude usage limits (keep Claude work to review + orchestration); two game instances on one PC may conflict (disc mount, DirectInput exclusive).
 
 ## Recent results (newest first)
 - 2026-10-16: Worker layer switched to Grok Build CLI (`grok -m grok-4.7`, permission mode `auto`; `bypassPermissions` is blocked by Claude Code's classifier). Runner `tools-src/grokjob.ps1`.
