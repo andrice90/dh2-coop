@@ -110,6 +110,19 @@ RVAs: EngineDll7 unless noted (CommonDll7 = "C", GameDll7 = "G").
   - `cRenderCamera` layout: X axis `+0x84`, Z axis/forward `+0xA4`, position `+0xB4`, projection type `+0xC4` (0 = perspective), FOV `+0xD0` (90). `cRender` keeps a copy at `+0x3c8`, so `GetCameraZAxis` = `+0x46c`.
   - yaw = atan2(z.x, z.z), which matches the heading convention exactly while walking (154.68 = 154.68). pitch = asin(z.y), positive = up (mouse up → +16°). The eye sits 1.71 m above hunter `+0xE8`.
   - Mouse: 400 DirectInput units ≈ 34.7° yaw.
+- **Hunter actions** (lead, runtime-verified 2026-10-16 15:06–15:21):
+  - The active weapon is a child entity of the hunter (parent id `+0xA4` = hunter id; idx 126, GameDll7 vtable `+0x102a70`). Its item activation state is `+0x1f0` (1/2 = active), and its model is the first-person skin (`objects/items/game/weapons/handgun31st/handgun3.skin`).
+  - `cObjItemEx::GetCurrentState` (CommonDll7 `0x32c00`) returns the weapon's body-state name: `Idle`/`Walk`/`Run`/`Fire`/`Reload`. That is a clean fire/reload signal.
+  - **Crouch:** the `cObjCharacterEx +0x204` bit 1 (`IsCrouched`) stays 0 for the hunter. Use eye height instead (view camera y − feet y): standing 1.71, crouched ~1.20.
+  - Current item index is `+0x3c0` (`SetCurrentItem`), and the items list is at `+0x1d8`. The free-hunt CHOOSE ITEM menu gives one weapon.
+  - Scripted LMB (`SendInput` mouse button) fires.
+- **Weapon in an NPC's hand** (lead, user/screenshot-verified 2026-10-16 15:21):
+  - Third-person models: `objects/items/game/weapons/<handgun3|shotgun1|rifle1>/<name>.skin`. The `*1ST` dirs are first-person. Each skin header references its `.model`, which holds the bones (`bolt`, `flame` = muzzle flash, `magazine`), vis keys, sounds, and clips named like the armed body clips without the prefix (`fire`, `reload`, `idlealertneutral`, `walkforwardalert`…).
+  - Recipe, as the NPC weapon scripts (`HGUNNPC/SGUNNPC/RIFLENPC.SCR`) do it:
+    1. `cObjEntity::Attach(parentId, GetTagIndex(hand), 1, {0,0,0})` (EngineDll7 `0xbc740`/`0xb9020`). This sets `+0xA4` parent, `+0xA6` tag, `+0xA8` flags, and the parent's child slots `+0x168`.
+    2. `LinkPart(owner, hand)`: owner model `GetTag(name)` (vt `+0xe4`) → `bone+0x138` controller → vt `+0x38`(child model part 0). This is the same as `cScrEntity::LinkPart` (CommonDll7 `0x3f590`).
+    3. **Play the matching clip on the weapon.** Without a clip the gun sits sideways in bind pose with the flame always visible.
+  - Hands: handgun `BipRHand` (tag 37 on mountainguide); shotgun and rifle `BipLHand`.
 - **Hunter `+0xE8` is the feet position** (despite `cObjEntity::GetEyePos` returning it): a puppet placed at a remote hunter's `+0xE8` stands on the ground (pixel check at 5.2 m, terrain +0.7 m). Hunter world AABB is a generic pos ±2 m box (no height info).
 
 ## Runtime probe (Track E, `re/notes/renderer.md`; reviewed 2026-10-16)
