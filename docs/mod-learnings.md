@@ -16,8 +16,19 @@ Practical knowledge for building, injecting, hooking, testing and orchestrating.
 - All engine DLLs relocate (EngineDll7 seen at 0x00CA0000; GameDll7 at 0x0E570000). Resolve by export name or pattern, log as `Module+RVA` — 2026-10-15.
 - `GameDll7.dll` is loaded late (≈30 s after process start in a `-developper -cheats` run, after intro/menu setup) and from `game\data\`. The probe catches it with `LdrRegisterDllNotification`; hooks into GameDll7 must be installed from that callback, not at ASI init — dh2coop.log 2026-10-15.
 
+## Testing loop
+- **Fast dev loop:** `.\run-game.ps1 -Seconds 60 -ExtraArgs '-developper -cheats -spmap HUNTMAP4'` loads straight into a hunt map (~30 s, mostly intro/menu init before GameDll7 loads). `-map` does NOT work — 2026-10-16.
+- **Windowed mode:** put any loose `game\Data\Cfg\console.cfg` in place → 640×480 windowed (needed to run two instances side by side). The game rewrites the file on exit, so keep a template copy elsewhere and restore it before each run. Without the file: fullscreen 640×480 @ 240 Hz — 2026-10-16.
+- Injected keys (`keybd_event` with scan codes) don't reach the game (DirectInput). In-game console key unconfirmed; test by hand (`` ` `` then F1–F12 with `-developper`). Prefer driving the game through our ASI (`cConsole::Exec`) over synthetic input.
+- Second process on one PC: `"GI UNIQUE MUTEX"` blocks it unless `-join`/`-dedicated` is on the command line (decompile; not yet tested). `-join x` harmlessly execs a missing `cl_join` command, so `-join 0` is a workable "allow second instance" flag until our ASI handles the mutex.
+- UDP check while the game runs: `Get-NetUDPEndpoint -OwningProcess <pid>` plus `netstat -ano -p udp`.
+- `re/scripts/runtime-exp.ps1` (Track E) wraps launch + log capture + UDP sampling per experiment.
+
 ## Hooking
 - safetyhook inline hooks on mangled exports (resolved with `GetProcAddress`) work: `cCmdLine::Search`, `cConsole::Exec`, `cBspTree::Load`, `cHunterProfile::{GetMapToBeStarted,GetLastmap,SetLastMap,SetCurrentMission,SetMapIsComplete}` — dh2coop.log 2026-10-15.
+- `cApplication::MainLoop` (EngineDll7 RVA `0x9e0b0`) was hooked and never entered — the real frame loop is elsewhere (Track D). Use the D3D8 `Present` hook as the per-frame callback until a game-tick hook is found — 2026-10-16.
+- To see console commands from cfg files, hook `cConsole::RealExec` as well as `cConsole::Exec` — 2026-10-16.
+- Build warning to ignore: safetyhook `os.windows.cpp` C4005 `NOMINMAX` redefinition; safetyhook v0.7.0 bumps the target to `/std:c++latest` — 2026-10-16.
 - Renderer is D3D8: one `IDirect3DDevice8`; `Present` called from `EngineDll7+0x354cfd`, `EndScene` from `EngineDll7+0x354b63`. `Direct3DCreate8` is called 3×, `Direct3DCreate9` 1× (probe/enumeration only; no D3D9 device) — dh2coop.log. Overlay (ImGui) must use a DX8 path (ImGui has no DX8 backend: use d3d8to9 or a custom DX8 renderer).
 
 ## Orchestration
@@ -26,4 +37,5 @@ Practical knowledge for building, injecting, hooking, testing and orchestrating.
 - Windows PowerShell 5.1 + `$ErrorActionPreference='Stop'` + `& native 2>&1` turns any stderr line into a terminating error. Grok writes "Auto-compacting conversation (81% full)..." to stderr, which killed Track B at ~25 min. Runner now uses `Start-Process -RedirectStandardOutput/-RedirectStandardError` (stderr → `re/jobs/<name>.err.log`); touch `$p.Handle` right after start or `ExitCode` comes back empty — 2026-10-16.
 - `cursor-agent` also works (`grok-4.7-*` models listed) but was ~4× slower than `grok` on the same prompt (150 s vs 37 s) — 2026-10-16.
 - Claude subagents can hit session usage limits mid-task and die without writing summaries. Mitigation: workers write deliverables incrementally; lead keeps `STATUS.md` current.
+- Windows PowerShell 5.1 `Get-Content -Raw` reads BOM-less UTF-8 as ANSI; writing it back mangles `—`/`→` into `â€”`. Edit docs with Write/Edit tools, or pass `-Encoding UTF8` on both read and write — 2026-10-16.
 - Only one worker per wave launches the game (shared sandbox, single disc mount, DirectInput exclusive mode).

@@ -59,5 +59,13 @@ Format: fact — evidence. Add only verified items; hypotheses go in `re/notes/`
 - Animals are placed by level script: `WORLD.SCR` → `AddAnimal(ANIMAL_<SPECIES>, TRUE, "<bsp entity name>")`; species brains/health in `SCRIPTS\MODELS\ANIMALS\`. Free-hunt maps place 4 prey + 1 predator (HUNTMAP4: 4 red deer + 1 puma; 2 spawn points).
 - No multiplayer/lobby content exists in the archive (no `sv_multiplayer`, `cl_join`, `lobby`, `player2` in scripts/GUI/BSP text).
 
+## Runtime probe (Track E, `re/notes/renderer.md`; reviewed 2026-10-16)
+- Renderer: D3D8 only. `Direct3DCreate8` ×3 (callers EngineDll7 `+0x352a3e`, `+0x35211c`, `+0x358f9e`), one HAL device (behavior `0x84` = mixed VP + multithreaded). `Present` called from EngineDll7 `+0x354cfd`, `EndScene` from `+0x354b63` (vtable slots 15 / 35). `Direct3DCreate9` (`+0x35a43b`) creates no device — `runtime-baseline-probe.txt`.
+- Default device: 640×480 `A8R8G8B8`, fullscreen, 240 Hz, `D3DPRESENT_INTERVAL_IMMEDIATE`. A loose `game\Data\Cfg\console.cfg` makes it **windowed** 640×480 (`r_windowed` default 1); the game rewrites that file on shutdown as an `addvar` dump. `game\Data\console.cfg` (wrong path) is ignored.
+- `cCmdLine::Search` returns the argv index or -1.
+- **`-spmap <MAP>` loads a map directly** (e.g. `+mod data -developper -cheats -spmap HUNTMAP1` → `cBspTree::Load('Bsp\HUNTMAP1.bsp')`, `[APP] map 'HUNTMAP1' loaded succesfully`) — `runtime-spmap-*.txt`. `-map <name>` does not work (execs missing symbol `map`).
+- `-join <host>` → `Exec("cl_join <host>")` at Main7 `+0xf55e` → `[CONSOLE ] symbol 'cl_join' not found!`. `-dedicated` → no D3D device, no menu map, no sockets.
+- `cConsole::Load` feeds cfg lines to `cConsole::RealExec` (not `Exec`); RealExec doesn't log unknown symbols.
+
 ## Disc image
 - CloneCD set `Dngh2.ccd/.img/.sub/.cue`: track 1 MODE1/2352 data, track 2 audio — `.cue`. Mounts with Virtual CloneDrive.
