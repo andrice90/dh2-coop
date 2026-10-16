@@ -1,4 +1,4 @@
-﻿#include "coop/puppets.h"
+#include "coop/puppets.h"
 
 #include <windows.h>
 
@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <string>
 
@@ -84,6 +85,8 @@ std::string g_class = kDefaultClass;
 bool g_enabled = true;
 bool g_spike = false;           // [Puppets] Spike=1: one local test puppet circling in front of the hunter
 bool g_anim_enabled = true;     // [Puppets] Animate=1
+bool g_physics = false;         // [Puppets] Physics=0: drop the puppet's physics body (see spawn_human)
+float g_y_offset = 0.f;         // [Puppets] YOffset (metres) added to the networked hunter y
 void* g_spike_entity = nullptr;
 float g_spike_t = 0.f;
 float g_spike_wait = 0.f;
@@ -114,13 +117,36 @@ void* spawn_human(const char* why) {
         spdlog::warn("puppets: spawn incomplete; puppet disabled for this map");
         return nullptr;
     }
+    if (!g_physics) {
+        // The physics step copies the body position back onto the entity every tick (puppet stuck at its
+        // spawn point, pushing the local hunter). A puppet is a pure visual: drop its body.
+        const bool ok = entity::UnlinkPhysics(ent);
+        uint32_t phys = 0;
+        core::safe_read(reinterpret_cast<char*>(ent) + 0x118, phys);
+        spdlog::info("puppets: unlinked physics -> {} (phys +0x118 now {:#x})", ok, phys);
+    }
     g_spawn_manager = mgr;
     return ent;
 }
 
-void pick_anim(Puppet& p, float speed) {
+// Locomotion clip from horizontal velocity relative to the facing yaw. Names are the ones every 332-clip NPC
+// GAME.AP shares (re/notes/anim-names.md): standing idle is "idlenormalneutral" ("idle" is another clip);
+// there is no run-back/strafe clip, the NPC scripts reuse the walk ones.
+// Facing vector (sin yaw, cos yaw) is verified (hunter walk test); right = (cos yaw, -sin yaw) assumes the
+// D3D left-handed frame (x right when facing +z) — UNVERIFIED, swap left/right if strafes look mirrored.
+const char* choose_clip(float vx, float vz, float yawDeg) {
+    const float speed = std::sqrt(vx * vx + vz * vz);
+    if (speed < kWalkSpeed) return "idlenormalneutral";
+    const float y = yawDeg * 3.14159265f / 180.f;
+    const float fwd = vx * std::sin(y) + vz * std::cos(y);
+    const float right = vx * std::cos(y) - vz * std::sin(y);
+    if (fwd >= std::fabs(right)) return speed < kRunSpeed ? "walk/forward" : "run/forward";
+    if (-fwd >= std::fabs(right)) return "walk/backward";
+    return right > 0.f ? "walk/right" : "walk/left";
+}
+
+void pick_anim(Puppet& p, const char* want) {
     if (!g_anim_enabled || !p.entity) return;
-    const char* want = speed < kWalkSpeed ? "idle" : (speed < kRunSpeed ? "walk/forward" : "run/forward");
     if (p.anim == want) return;
     p.anim = want;
     const bool ok = entity::SetAnim(p.entity, want);
@@ -133,13 +159,17 @@ void load_settings() {
     g_enabled = GetPrivateProfileIntA("Puppets", "Enabled", 1, ini.c_str()) != 0;
     g_spike = GetPrivateProfileIntA("Puppets", "Spike", 0, ini.c_str()) != 0;
     g_anim_enabled = GetPrivateProfileIntA("Puppets", "Animate", 1, ini.c_str()) != 0;
+    g_physics = GetPrivateProfileIntA("Puppets", "Physics", 0, ini.c_str()) != 0;
+    char yoff[32] = {};
+    GetPrivateProfileStringA("Puppets", "YOffset", "0", yoff, sizeof yoff, ini.c_str());
+    g_y_offset = static_cast<float>(std::atof(yoff));
     GetPrivateProfileStringA("Puppets", "Class", kDefaultClass, buf, sizeof buf, ini.c_str());
     g_class = buf;
     char model[260] = {};
     GetPrivateProfileStringA("Puppets", "Model", g_model.c_str(), model, sizeof model, ini.c_str());
     g_model = model;
-    spdlog::info("puppets: enabled={} spike={} animate={} class='{}' model='{}'", g_enabled, g_spike, g_anim_enabled,
-                 g_class, g_model);
+    spdlog::info("puppets: enabled={} spike={} animate={} physics={} yoffset={:.2f} class='{}' model='{}'", g_enabled,
+                 g_spike, g_anim_enabled, g_physics, g_y_offset, g_class, g_model);
 }
 
 class PuppetsModule : public dh2::Module {
@@ -172,6 +202,13 @@ public:
         if (!g_enabled) return;
         const auto& local = LocalPlayer();
         if (!local.valid) return;  // map not ready / hunter unknown
+        if (!hunter_box_logged_ && local.entity) {
+            // Feet vs +0xE8: is the hunter position the eye or the feet? (puppet height calibration)
+            hunter_box_logged_ = true;
+            float box[6] = {};
+            core::safe_copy(reinterpret_cast<char*>(local.entity) + kEntWorldBox, box, sizeof box);
+            spdlog::info("puppets: hunter pos.y={:.3f} world box y {:.3f}..{:.3f}", local.pos.y, box[1], box[4]);
+        }
         if (g_spike) Spike(dt, local);
 
         const uint32_t now = now_ms();
@@ -186,8 +223,8 @@ public:
                 if (p.entity) capture_rel_box(p);
             }
             if (!p.entity) continue;
-            place(p, {s.pos[0], s.pos[1], s.pos[2]}, s.yaw);
-            pick_anim(p, std::sqrt(s.velocity[0] * s.velocity[0] + s.velocity[2] * s.velocity[2]));
+            place(p, {s.pos[0], s.pos[1] + g_y_offset, s.pos[2]}, s.yaw);
+            pick_anim(p, choose_clip(s.velocity[0], s.velocity[2], s.yaw));
         }
     }
 
@@ -247,7 +284,7 @@ private:
         const entity::Vec3 pos{local.pos.x + 3.f * fx + side * fz, local.pos.y, local.pos.z + 3.f * fz - side * fx};
         const float yawDeg = spike_sign_ < 0 ? local.angle.y : local.angle.y + 180.f;  // face the camera
         place(spike_puppet_, pos, yawDeg);
-        pick_anim(spike_puppet_, 1.5f);
+        pick_anim(spike_puppet_, "walk/forward");
         log_accum_ += dt;
         if (log_accum_ >= 2.f) {
             log_accum_ = 0.f;
@@ -282,6 +319,7 @@ private:
     }
 
     Puppet spike_puppet_;
+    bool hunter_box_logged_ = false;
     int spike_sign_ = static_cast<int>(GetPrivateProfileIntA("Puppets", "SpikeSign", -1,
                                                              (core::self_dir() / "dh2coop.ini").string().c_str()));
     float log_accum_ = 0.f;

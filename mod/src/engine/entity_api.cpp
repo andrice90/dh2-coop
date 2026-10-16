@@ -1,4 +1,4 @@
-﻿#include "engine/entity_api.h"
+#include "engine/entity_api.h"
 
 #include <cstring>
 
@@ -98,6 +98,18 @@ int guarded_add(void* mgr, void* ent) {
     }
 }
 
+using UnlinkFn = void(__thiscall*)(void* self, int destroy);
+UnlinkFn g_unlink = nullptr;  // CommonDll7 cObjScriptedEntity::UnlinkWithPhysics (not overridden by cObjHumanEx)
+
+bool guarded_unlink(void* ent) {
+    __try {
+        g_unlink(ent, 1);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
 bool guarded_remove(void* mgr, void* ent) {
     __try {
         reinterpret_cast<RemoveFn>(slot(mgr, kMgrRemove))(mgr, ent, 1);
@@ -155,6 +167,16 @@ bool BspUpdate(void* ent) {
 }
 
 int UseServerValue() { return g_use_server ? *g_use_server : -1; }
+
+bool UnlinkPhysics(void* ent) {
+    if (!ent) return false;
+    if (!g_unlink) {
+        if (HMODULE common = GetModuleHandleA("CommonDll7.dll"))
+            g_unlink = core::find_export_as<UnlinkFn>(common, "?UnlinkWithPhysics@cObjScriptedEntity@@UAEXH@Z");
+        if (!g_unlink) return false;
+    }
+    return guarded_unlink(ent);
+}
 
 int AddEntity(void* mgr, void* ent) { return (mgr && ent) ? guarded_add(mgr, ent) : -1; }
 bool RemoveEntity(void* mgr, void* ent) { return mgr && ent && guarded_remove(mgr, ent); }

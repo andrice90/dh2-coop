@@ -30,6 +30,10 @@ bool BspUpdate(void* ent);
 // Current value of EngineDll7's `useServer` static (selects server/client BSP entity lists; set by
 // cBspTree::UseServer). -1 if unresolved.
 int UseServerValue();
+// cObjScriptedEntity::UnlinkWithPhysics(1) (CommonDll7 export): removes the physics body from the physics
+// manager and destroys it (+0x118 = 0). Without it the physics step writes the body position back over SetPos
+// and the body collides/pushes. cObjHumanEx::Update skips a null body.
+bool UnlinkPhysics(void* ent);
 // Manager vtable calls.
 int AddEntity(void* mgr, void* ent);                             // +0x10, returns index or -1 on fault
 bool RemoveEntity(void* mgr, void* ent);                         // +0x20 (ent, 1)

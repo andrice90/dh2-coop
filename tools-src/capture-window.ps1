@@ -2,7 +2,8 @@
 # Usage: .\tools-src\capture-window.ps1 -ProcessId 1234 -Out re\notes\shot.png
 param(
     [Parameter(Mandatory)][int]$ProcessId,
-    [Parameter(Mandatory)][string]$Out
+    [Parameter(Mandatory)][string]$Out,
+    [switch]$NoFocus  # side-by-side windows are visible without focus; focusing would steal DirectInput
 )
 $Out = [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $Out))  # GDI+ resolves relative paths against the process cwd
 Add-Type -AssemblyName System.Drawing
@@ -18,7 +19,7 @@ public static class Win {
 $p = Get-Process -Id $ProcessId
 $h = $p.MainWindowHandle
 if ($h -eq [IntPtr]::Zero) { throw "process $ProcessId has no main window" }
-[Win]::SetForegroundWindow($h) | Out-Null
+if (-not $NoFocus) { [Win]::SetForegroundWindow($h) | Out-Null }
 Start-Sleep -Milliseconds 400
 $r = New-Object Win+RECT
 [Win]::GetWindowRect($h, [ref]$r) | Out-Null

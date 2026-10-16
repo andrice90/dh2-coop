@@ -1,63 +1,70 @@
 ﻿# STATUS — resume here
 
-**Last updated:** 2026-10-16 11:35 (America/Chicago, system clock) by the Claude lead session (handoff at user's session limit).
+**Last updated:** 2026-10-16 13:50 (America/Chicago, system clock) by the Claude lead session.
 
 New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap, `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail.
 
 ## Current phase
-**Phase 2 done. Phase 3 (ghost mode) in progress — puppet rendering SOLVED (~11:45).**
-Two instances connect, exchange PlayerState at 20 Hz, show each other in the F8 overlay. Puppets are now visible: the player model is first-person arms only, so puppets use an NPC body (`[Puppets] Model=objects/npc/mountainguide/mountainguide.skin,game.ap`). Next: two-instance ghost test (each window shows the other player's puppet moving).
+**Phase 3 (ghost mode): core working (13:48).** Two local instances connect. Each one shows the other player as an NPC body (mountain guide) that follows the remote position and facing, stands on the ground, and switches walk clips by movement direction. This is verified by an automated test with screenshots. Still open in Phase 3: confirm the walk cycle animates (not a frozen pose), foot-slide/anim speed, and a hands-on test by the user.
 
-## In flight (started ~12:00, Claude session paused at usage limit — review both when back)
-| Job | Owner | Log | Deliverable |
-|---|---|---|---|
-| p3-anim-names (high) | Grok 4.7, no game | `re/jobs/p3-anim-names.out.log` | `re/scripts/ap_list.py`, `re/notes/anim-names.md` (idle/walk/run names; lead then updates `pick_anim` in `puppets.cpp`) |
-| p3-side-by-side (high) | Grok 4.7, **owns game launches** | `re/jobs/p3-side-by-side.out.log` | `run-coop-local.ps1` side-by-side + `-Capture`, `re/notes/p3-side-by-side.md` (background-stall measurements, screenshots in `re/notes/coop-local/`) |
+## In flight
+Nothing. No Grok jobs running.
 
-**p3-side-by-side finished 12:06 (not yet lead-reviewed):** windows placed side by side (game 640×480 at 0,0; game2 800×600 at 650,0 — size difference unexplained); `-Capture` works. 120 s run: **no stall on either side** (avg_dt ≈ 0.010 s throughout, rx ≈ 195/10 s) — but `-Capture` re-focuses windows every 10 s, so a long-unfocused instance was never tested; the stall remains open. Both hunters stayed at the spawn point (0,-1.69,0) → each puppet stands inside the other player's camera → nothing visible; for visual tests one player must walk away from the spawn. Details `re/notes/p3-side-by-side.md`.
-
-**p3-anim-names finished 12:07 (not yet lead-reviewed):** `re/notes/anim-names.md`, `re/scripts/ap_list.py`. Current `pick_anim` mapping (idle <0.6 m/s, walk/forward <5.5, run/forward) matches. Extras: `walk/backward`, `walk/left`, `walk/right`, death `fall` → `liedead`; weapon clips in `SHOTGUN1.AP`/`HANDGUN3.AP`. Same 332 names in 17 NPC `GAME.AP`s (any of those bodies can be swapped via `Model=`; **not** Poacher — its GAME.AP only has `blink`). Next: use backward/strafe clips from velocity vs yaw.
-
-`re/jobs/p3-puppet-visibility.md` is **obsolete** (solved) — do not run it. The background-stall *fix* (next step 0) is lead work, not Grok.
-
-## Latest result (~11:50)
-Two-instance run (`run-coop-local.ps1 -Seconds 120`): **both instances spawned a puppet for the other player** (`puppets: spawned puppet (remote 1)` on host, `(remote 0)` on client) and switched animations idle → walk/forward → run/forward from the remote player's networked speed. No crashes. Visual confirmation from the user pending.
-
-## User feedback on the two-instance run (~11:55)
-User saw both puppets but **they did not move/animate** when moving the other window's player. Logs explain most of it:
-- `game2` (unfocused at times) **stalled**: heartbeat fell to avg_dt 0.113 s (~9 fps) then stopped logging → its OnFrame/net pump stopped → host's rx for player 1 froze at seq 729 (`coop: remote 1 ... rx=711` constant).
-- The host's own hunter position did not change during the client's receive window (same pos with rising seq) → no movement to show.
-→ **`m_bAllowBackground=1` is not enough: an unfocused instance still throttles/pauses.** Puppet movement/animation cannot be judged until both instances run at full rate. Also: windows overlapped → hard to observe.
+## Latest results (13:35–13:50, lead)
+- **Grok deliverables reviewed and accepted:** p3-anim-names (`re/notes/anim-names.md`, `re/scripts/ap_list.py`) and p3-side-by-side (`run-coop-local.ps1` placement/capture, `re/notes/p3-side-by-side.md`). Facts merged into MEMORY.md.
+  - Correction: standing idle is `idlenormalneutral`, not `idle`.
+- **Background stall: not an engine throttle.**
+  - Decompile shows that with `m_bAllowBackground=1`, focus loss only unacquires DirectInput.
+  - `tools-src/focus-test.ps1` (13:37–13:40) ran both instances focused, unfocused, fully covered, minimized and restored. Both held avg_dt 0.010 s (~100 fps) and rx ≈ 19/s in every phase.
+  - The earlier ~9 fps stall is most likely a window drag: the Win32 modal move loop blocks the message pump. UNVERIFIED. Windows are now auto-placed, so no dragging is needed.
+- **Scripted input works:** `tools-src/game-input.ps1` sends scan-code `SendInput` to the foreground window, and DirectInput reads it. The CHOOSE ITEM menu closes with **Enter, Left, Enter** (user).
+- **Automated ghost test:** `tools-src/move-test.ps1`.
+- **Puppet stuck at spawn: FIXED.**
+  - Cause: the physics body (`+0x118`) is not moved by `SetPos`, and the physics step snaps the entity back to it. The overlapping capsules also pushed the puppet onto the hunter's head (user: "stacked, seeing the feet").
+  - Fix: `entity::UnlinkPhysics` (`cObjScriptedEntity::UnlinkWithPhysics(1)`) right after spawn (`[Puppets] Physics=0`, default).
+  - After the fix: the puppet translates, faces correctly, and has its feet on the ground (hunter `+0xE8` = feet, `YOffset=0`). Clips switch W→`walk/forward`, S→`walk/backward`, A→`walk/left`, D→`walk/right`, stop→`idlenormalneutral`.
+  - Screenshots: `re/notes/coop-local/move-134802-*`.
+- In progress at 13:50: frame burst (`re/notes/coop-local/burst-*.png`) to check that the legs actually animate.
 
 ## Next steps (in order)
-0. **Unfocused-instance stall (lead/expert):** find the real inactive-window throttle — decompile `cApplication` message handling for `WM_ACTIVATEAPP`/`WM_ACTIVATE` (debug.log prints "Application loses focus"), DirectInput unacquire path (`[INPUT] Input unacquire`), and any `Sleep` in `cApplication::Run` when inactive; patch so both instances keep simulating at ~100 fps. Verify with heartbeat in both `dh2coop.log`s while switching focus.
-0b. **Side-by-side windows (Grok, mechanical):** make `run-coop-local.ps1` place the two windows next to each other (e.g. after launch, `SetWindowPos` via a small C#/PowerShell helper: game at x=0, game2 at x=660) so both are visible; optional: a `[Overlay]` line showing "frames/s" and "rx/s" per remote to make stalls obvious.
-1. **Two-instance ghost test (logs ✔, visual pending):** `.\run-coop-local.ps1 -Seconds 120` with `[Puppets] Spike=0` (default in `mod/dh2coop.ini`); each `dh2coop.log` should show `puppets: spawned puppet (remote N)`; user confirms each window shows the other player's NPC body moving. Then tune: puppet y offset (hunter pos y is eye/feet-relative?), anim names for NPC GAME.AP (`walk/forward`, `run/forward`; "idle" name unverified), facing (`SetAngle` yaw; check it matches movement).
-2. Remove/guard the Draw diagnostic hook (only installed with `Spike=1`).
-3. Puppet animation quality: idle/walk/run via `SetAnim` (vt `+0x174`) from interpolated speed (already wired; verify visually).
-4. Phase 4 prep: animals — freeze brains on clients (`FreezeBrain`), host broadcasts transforms + body-command bits (`cAIHuntBrain_Animal::GetBodyCommands/SetBodyCommand`).
+1. **Walk cycle check:** compare `burst-0..5.png`.
+   - If the pose never changes, tick the animation ourselves: `cObjEntity::Update(dt)` calls model vt `+0x8c(dt)`. Either call the model tick, or check whether the manager skips Update for our entity.
+2. **Anim speed:** the hunter walks ≈ 5 m/s, and the NPC walk clip is slower, so feet may slide. Option: `cBodyStateMachine::SetAnimSpeedFactor`, or `run/forward` above ~3 m/s. Judge from the user test.
+3. **User hands-on test:** `.\run-coop-local.ps1`. It places both windows side by side and leaves them running.
+   - Close the menu in each window (Enter, Left, Enter), then walk around in one window and watch the other.
+   - Don't drag the windows.
+4. Remove/guard the Draw diagnostic hook (only installed with `Spike=1`), and delete obsolete spike code once ghost mode is stable.
+5. **Phase 4 prep (animals):**
+   - Freeze brains on clients (`FreezeBrain`).
+   - Host broadcasts transforms plus body-command bits (`cAIHuntBrain_Animal::GetBodyCommands/SetBodyCommand`).
+   - Animal physics may need the same unlink treatment on clients (see the puppet physics lesson in MEMORY).
+6. Spawn overlap: both players spawn on the same point. Puppets are now non-solid, so this is harmless. Later we could use HUNTMAP4's second spawn point for player 2.
 
 ## Done
-- **Phase 3 (partial, lead, 10:40–11:31):** puppet spawn recipe found and implemented (`mod/src/engine/entity_api.*`, `mod/src/coop/puppets.cpp`): `CreateEntity("obj_humanEx")` → `HandleKey("model_name")` → manager `AddEntity` → `Precache` → `Spawn` → per-frame `SetPos`/`SetAngle` + world AABB + `cBspTree::UpdateEntity`. Engine class list dumped (`game\Bin\dh2coop-classes.txt`, via `cObjManager::DumpClassesKeys`). Hunter model = `Objects/Characters/Teenm/Body/teenmm.skin,game.ap,HUNTMAP4.ap`. Details: `re/notes/lead-puppets.md`.
-- **P2b overlay (Grok, reviewed 11:06):** F8 ImGui overlay on D3D8 (session, positions, remotes, RTT). Screenshots `re/notes/p2b-overlay*.png`.
-- **Hunter transform (user walk test 10:24):** `+0xE8` world pos, `+0xF4.y` yaw degrees (atan2(dx,dz)).
-- **Phase 2 core (10:20):** host/client PlayerState exchange; console commands `coop_status/host/join/leave`; tracker; slow-mo block; background running; OnFrame gated to the main thread.
-- **Phase 1** (Route E) and **Phase 0** — see MEMORY.md.
+- **Phase 3 core (lead, 13:35–13:48):**
+  - Directional clip choice (`choose_clip` in `mod/src/coop/puppets.cpp`).
+  - Puppet physics unlink.
+  - Focus-stall investigation closed.
+  - Automated test tooling: `tools-src/focus-test.ps1`, `game-input.ps1`, `move-test.ps1`, `capture-window.ps1 -NoFocus`.
+- **Puppet rendering (11:45):** the NPC body is required, because the player model is first-person arms only.
+- **Puppet spawn recipe (10:40–11:31):** `CreateEntity("obj_humanEx")` → `HandleKey("model_name")` → `AddEntity` → `Precache` → `Spawn` → (now) `UnlinkPhysics`. Then per frame: `SetPos`/`SetAngle`, world AABB, and `cBspTree::UpdateEntity`. Details: `re/notes/lead-puppets.md`.
+- **P2b overlay** (F8), **hunter transform**, **Phase 2 core** (host/client PlayerState at 20 Hz, console commands, tracker, slow-mo block, background running), **Phase 1** (Route E), **Phase 0**: see MEMORY.md / PLAN.md.
 
 ## Blockers / risks
-- Puppet not rendered (see above). Free-hunt start has a "CHOOSE ITEM" menu that blocks automated screenshots (synthetic input doesn't reach DirectInput) — visual checks need the user or a menu-closing console command.
-- Claude usage limits — keep Claude to expert work + review.
-
-## Recent results (newest first)
-- 11:32: user: puppet not visible in any direction; collision felt.
-- 11:30: puppet BSP-linked (`+0x124` valid), AABB follows it, `+0x08&8` set; kind byte `+0xA7` experiment (4) no visible change.
-- 11:10: puppet spawns without crash (index 127); user collides with it.
-- 11:06: overlay reviewed and merged.
+- Animation may be frozen (step 1).
+- Claude usage limits: keep Claude on expert work and review; delegate mechanical jobs to Grok (`tools-src/grokjob.ps1`).
 
 ## Resume protocol (new session)
-1. Open the session in `D:\scary hunt\dh2coop` (loads `CLAUDE.md`; REA MCP is registered for this folder only).
-2. Read this file, then `PLAN.md` decisions, then skim `MEMORY.md`, then `re/notes/lead-puppets.md` (current problem).
-3. Check jobs: `Get-Process grok`, and for each in-flight log look for the `=== end` line. A job with no end line and no `grok` process was killed — rerun it: `.\tools-src\grokjob.ps1 -Name <job> -Effort <effort>`.
-4. `git status` / `git log -5` to see uncommitted work since the last checkpoint.
-5. Build: `.\mod\build.ps1`; solo test: `.\run-game.ps1 -ExtraArgs '-nointro -developper -cheats -spmap HUNTMAP4'` (no `-Seconds` when the user plays); two-instance test: `.\run-coop-local.ps1 -Seconds 100`; logs in `game\Bin\dh2coop.log`.
+1. Open the session in `D:\scary hunt\dh2coop` (loads `CLAUDE.md`; the REA MCP is registered for this folder only).
+2. Read this file, then the `PLAN.md` decisions, then skim `MEMORY.md`, then `re/notes/lead-puppets.md`.
+3. Check jobs:
+   - Run `Get-Process grok`.
+   - For each in-flight log, look for the `=== end` line.
+   - A job with no end line and no `grok` process was killed. Rerun it with `.\tools-src\grokjob.ps1 -Name <job> -Effort <effort>`.
+4. Run `git status` / `git log -5` to see uncommitted work since the last checkpoint.
+5. Build and test:
+   - Build: `.\mod\build.ps1`.
+   - Solo test: `.\run-game.ps1 -ExtraArgs '-nointro -developper -cheats -spmap HUNTMAP4'` (no `-Seconds` when the user plays).
+   - Automated two-instance tests: `.\tools-src\move-test.ps1` and `.\tools-src\focus-test.ps1`.
+   - Logs: `game\Bin\dh2coop.log`, `game2\Bin\dh2coop.log`.
 6. Continue with **Next steps** above. Update this file after every step and commit (timestamps from `Get-Date`). Edit docs with the Write/Edit tools, not PowerShell `Get-Content`/`Set-Content`.
