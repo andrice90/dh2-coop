@@ -1,6 +1,6 @@
 # DH2 co-op protocol v1
 
-Progress: spec and code done, including `AnimalStates` (id 9) and `AnimalHit` (id 10). `dh2net_test.exe` passed twice on 2026-10-16: 3294 checks, 0 failures (was 932 before these messages). Details in `re/notes/p2c-net.md` and `re/notes/p4a-net-animals.md`.
+Progress: spec and code done, including `AnimalStates` (id 9), `AnimalHit` (id 10), and `GameEvent` (id 48). `dh2net_test.exe` passed twice on 2026-10-16: 3406 checks, 0 failures (was 3294 before `GameEvent`). Details in `re/notes/p2c-net.md`, `re/notes/p4a-net-animals.md`, and `re/notes/p4c-events.md`.
 
 This is the wire contract for `net::Session` (ENet, host-authoritative, star topology). The engine's own sockets are not used. The game never calls `WSAStartup`; `enet_initialize` does that, exactly once per process while any session is alive.
 
@@ -13,7 +13,7 @@ This is the wire contract for `net::Session` (ENet, host-authoritative, star top
 | Address family | IPv4 only (ENet 1.3.18) |
 | Channel 0 | Reliable control: Hello, Welcome, Reject, PlayerJoined, PlayerLeft, Ping, Pong |
 | Channel 1 | Unreliable sequenced snapshots: PlayerState, AnimalStates. No `UNSEQUENCED` flag, so ENet keeps order and may drop a stale snapshot. |
-| Channel 2 | Reliable events: AnimalHit. |
+| Channel 2 | Reliable events: AnimalHit, GameEvent. |
 
 `Join` takes an IPv4 literal or a name that resolves to IPv4. Use `127.0.0.1` for same-PC tests.
 
@@ -51,6 +51,7 @@ Every multi-byte integer is little-endian. Floats are IEEE-754 binary32, written
 | 8 | Pong | both | 0 reliable | 5 | `u32 token` (echo) |
 | 9 | AnimalStates | H→C | 1 unreliable sequenced | 8 + entries | `u16 seq`, `u32 tickMs`, `u8 count`, then `count` entries |
 | 10 | AnimalHit | C→H | 2 reliable | 20 | `u8 shooterId`, `u16 animalId`, `f32 damage`, `f32 hitPos[3]` |
+| 48 | GameEvent | request C→H, commit H→C | 2 reliable | 18 + key | see below |
 
 `PlayerState` layout (44 bytes including the id):
 
@@ -104,6 +105,23 @@ An entry with an empty name is 24 bytes. Flag bits: bit 0 dead, bit 1 parked/ina
 | 4 | f32 | damage |
 | 8 | f32[3] | hitPos |
 
+`GameEvent` is the envelope for discrete world outcomes (an animal died, a map completed, a later objective or pickup). Continuous fields stay on `AnimalStates` / `PlayerState`. The session does not interpret `kind`. An unknown kind still decodes; the game layer ignores a kind it has no handler for. That is how another map adds an outcome without a new message id.
+
+| Offset | Type | Field |
+|---|---|---|
+| 0 | u8 | msg id `48` |
+| 1 | u8 | flags. Bit 0 = commit (host → clients). Clear = request (client → host). |
+| 2 | u8 | actorId. On a request the host overwrites this with the sending peer's player id. |
+| 3 | u16 | seq. The host assigns it on a commit. |
+| 5 | u16 | kind. Game-layer registry. `1` AnimalDied, `2` MapComplete. Other values are legal on the wire. |
+| 7 | u16 | subjectId. Entity id, or 0 when the subject is the map or an objective. |
+| 9 | u32 | i0. Kind-specific integer. |
+| 13 | f32 | f0. Kind-specific float. |
+| 17 | u8 | key length, 0..31 |
+| 18 | bytes | key. A short name (objective, item class). Not a C string. |
+
+An empty key is 18 bytes. Encode keeps the first 31 bytes of a longer key. A key length that does not consume the rest of the packet is malformed. The host does not relay a request. A client cannot send a commit (`SendGameEvent` returns false). A commit from a client is dropped if it is somehow received. The host does not apply its own commit; it already ran the outcome.
+
 `Reject.reason`: 0 none, 1 `VersionMismatch`, 2 `LobbyFull`, 3 `BadHello`.
 
 `Welcome.playerId` is 0 for the host and 1..maxClients for clients. The lowest free id is reused after a leave. `hostTick` is milliseconds since the host called `StartHost` (steady clock). `maxPlayers` counts the host.
@@ -119,7 +137,8 @@ Ids 9 and 10 are assigned above. Do not send the ids in this table. They stay fr
 | 11–15 | unused |
 | 16–31 | unused, reserved for later lobby / clock messages (channel 0) |
 | 32–47 | unused, reserved |
-| 48–63 | unused, reserved for later spawn, death, and target events (channel 2) |
+| 48 | assigned: `GameEvent` (channel 2). Kinds inside it cover spawn, death, and mission outcomes. |
+| 49–63 | unused, reserved for another event envelope if one packet is no longer enough |
 | 64–79 | unused, reserved for later hit messages (channel 2) |
 | 80–95 | unused, reserved for later damage / kill messages (channel 2) |
 | 96–255 | unused |
@@ -218,6 +237,13 @@ net::AnimalHit hit;
 hit.animalId = animalId;
 hit.damage = dropped;
 session.SendAnimalHit(hit);  // false on the host; EventType::AnimalHit arrives with shooterId set
+
+// Client request / host commit. See re/notes/p4c-events.md. The host stamps actorId on a request.
+net::GameEvent ev;
+ev.kind = 2;                  // MapComplete, as one example. The session does not care.
+session.SendGameEvent(ev);   // false on the host when flags bit0 is clear
+ev.flags = net::game_event_flag::kCommit;
+session.SendGameEvent(ev);   // false on a client; host fans the commit out, and does not queue it locally
 
 // Render, after the sim step, with the same WallMs clock:
 net::InterpSample sample;

@@ -27,6 +27,7 @@ enum class EventType : uint8_t {
     Pong,
     AnimalStates,
     AnimalHit,
+    GameEvent,
 };
 
 struct Event {
@@ -42,6 +43,7 @@ struct Event {
     PlayerState state{};
     AnimalStates animalStates{};
     AnimalHit animalHit{};
+    GameEvent gameEvent{};
 };
 
 struct PeerStats {
@@ -96,6 +98,12 @@ public:
     // Client only. Reliable to the host. Returns false on the host.
     // The host writes shooterId from the sending peer before the event is queued.
     bool SendAnimalHit(const AnimalHit& hit);
+
+    // Reliable world event on channel 2.
+    // A commit (flags bit0) is host → every client. Returns false on a client.
+    // A request is client → host. Returns false on the host. The host writes actorId
+    // from the sending peer and does not relay the request.
+    bool SendGameEvent(const GameEvent& ev);
 
     // True at most once per kStateIntervalMs. The first call is true.
     // `nowMs` is a steady millisecond clock. Safe to call before connect.

@@ -84,5 +84,8 @@ History: wave 1 (2026-10-15) used Claude Opus/Sonnet/Haiku subagents; the Haiku 
 - **Loose-file overrides are a mod tool:** files under `game\Data\` win over `data.arc`, so level scripts/configs can be overridden without repacking (e.g. animal placement in `WORLD.SCR`, if the VM compiles `.SCR` or we can ship `.XSC`). Investigate before writing spawn hooks in C++.
 - Two local instances need the `"GI UNIQUE MUTEX"` check bypassed; our ASI should handle this (hook `CreateMutexA` or pass `-join`) rather than relying on `-dedicated` (which disables rendering).
 
+## Decisions (user, via Grok session, 2026-10-16)
+- **World outcomes are events, not extra snapshots.** One reliable `GameEvent` envelope (message id 48). Clients send requests. The host commits and is the only side that applies a gameplay result. A new map or mode adds a kind and a handler, not a new packet. Kinds in use: `1` AnimalDied, `2` MapComplete. See `re/notes/p4c-events.md`.
+
 ## Open decisions
 - Project name for release (neutral, no trademarks).

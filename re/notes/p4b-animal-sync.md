@@ -2,7 +2,7 @@
 
 ## Progress
 
-Done and tested with two instances (2026-10-16 16:05). Hit application is implemented and not yet seen in a log: no deer was in view to shoot. Visual check is with the user.
+Done and tested with two instances (2026-10-16 16:05). The user confirmed positions at 16:13 ("position looked good"). A host kill did not play a death on the client, and a client harvest completed only the client. Those are event-sync bugs, written up in `re/notes/p4c-events.md`. `AnimalHit` was not exercised: the shot was the host's.
 
 ## What it does
 

@@ -24,6 +24,7 @@ constexpr uintptr_t kVtSpawn = 0x58;
 constexpr uintptr_t kVtSetPos = 0xA8;
 constexpr uintptr_t kVtSetAngle = 0xB0;
 constexpr uintptr_t kVtSetAnim = 0x174;
+constexpr uintptr_t kVtPresentDeath = 0x154;  // cScrAnimal: FUN_1001e8b0
 constexpr uintptr_t kMgrAdd = 0x10;
 constexpr uintptr_t kMgrRemove = 0x20;
 
@@ -225,6 +226,15 @@ bool guarded_inflict(void* animal, float dmg) {
     }
 }
 
+bool guarded_present_death(void* animal) {
+    __try {
+        reinterpret_cast<VoidFn>(slot(animal, kVtPresentDeath))(animal);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
 bool guarded_remove(void* mgr, void* ent) {
     __try {
         reinterpret_cast<RemoveFn>(slot(mgr, kMgrRemove))(mgr, ent, 1);
@@ -330,6 +340,13 @@ bool InflictDamage(void* animal, float dmg) {
     const bool ok = guarded_inflict(animal, dmg);
     spdlog::info("entity_api: FuncInflictDamage ent={:#x} dmg={:.2f} ok={}", reinterpret_cast<uintptr_t>(animal), dmg,
                  ok);
+    return ok;
+}
+
+bool PresentDeath(void* animal) {
+    if (!animal) return false;
+    const bool ok = guarded_present_death(animal);
+    spdlog::info("entity_api: PresentDeath ent={:#x} ok={}", reinterpret_cast<uintptr_t>(animal), ok);
     return ok;
 }
 

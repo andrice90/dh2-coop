@@ -414,6 +414,27 @@ struct Session::Impl {
         Push(ev);
     }
 
+    void On(Remote& remote, const GameEvent& evIn) {
+        if (hosting) {
+            if (!remote.active || evIn.commit()) return;
+            GameEvent fixed = evIn;
+            fixed.actorId = remote.playerId;
+            fixed.flags = static_cast<uint8_t>(fixed.flags & ~game_event_flag::kCommit);
+            Event ev;
+            ev.type = EventType::GameEvent;
+            ev.playerId = fixed.actorId;
+            ev.gameEvent = std::move(fixed);
+            Push(ev);
+            return;
+        }
+        if (!evIn.commit()) return;
+        Event ev;
+        ev.type = EventType::GameEvent;
+        ev.playerId = evIn.actorId;
+        ev.gameEvent = evIn;
+        Push(ev);
+    }
+
     void Dispatch(Remote& remote, const Message& msg) {
         std::visit([&](const auto& m) { On(remote, m); }, msg);
     }
@@ -581,6 +602,25 @@ struct Session::Impl {
         return Send(remote, Encode(hit), kChannelEvents, true);
     }
 
+    bool SendGame(const GameEvent& evIn) {
+        if (!host || (!hosting && !connected)) return false;
+        if (evIn.commit()) {
+            if (!hosting) return false;
+            const auto bytes = Encode(evIn);
+            for (auto& rp : remotes) {
+                if (!rp->active) continue;
+                Send(rp.get(), bytes, kChannelEvents, true);
+            }
+            return true;
+        }
+        if (hosting) return false;
+        Remote* remote = From(server);
+        if (!remote) return false;
+        GameEvent ev = evIn;
+        ev.actorId = localId;
+        return Send(remote, Encode(ev), kChannelEvents, true);
+    }
+
     bool SendPing(uint32_t token) {
         if (!host || (!hosting && !connected)) return false;
         Ping ping;
@@ -730,6 +770,8 @@ bool Session::SendPing(uint32_t token) { return impl_->SendPing(token); }
 bool Session::SendAnimalStates(const AnimalStates& states) { return impl_->SendAnimals(states); }
 
 bool Session::SendAnimalHit(const AnimalHit& hit) { return impl_->SendHit(hit); }
+
+bool Session::SendGameEvent(const GameEvent& ev) { return impl_->SendGame(ev); }
 
 bool Session::ConsumeSendTick(uint32_t nowMs) {
     if (!impl_->sendArmed || nowMs - impl_->lastSendMs >= kStateIntervalMs) {

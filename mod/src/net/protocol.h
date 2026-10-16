@@ -26,7 +26,7 @@ constexpr uint32_t kStateIntervalMs = 1000 / kStateHz;
 
 constexpr uint8_t kChannelControl = 0;  // reliable
 constexpr uint8_t kChannelState = 1;    // unreliable sequenced
-constexpr uint8_t kChannelEvents = 2;   // reliable AnimalHit
+constexpr uint8_t kChannelEvents = 2;   // reliable: AnimalHit, GameEvent
 constexpr uint8_t kChannelCount = 3;
 
 // ENet disconnect data. 0 is a timeout (ENet forces 0) or the initiator's local event.
@@ -48,12 +48,14 @@ enum class MsgId : uint8_t {
     Pong = 8,
     AnimalStates = 9,
     AnimalHit = 10,
+    GameEvent = 48,
 };
 
-// Ids 11-15 are unused. Ranges below stay unused. Do not send them. See docs/net-protocol.md.
+// Ids 11-15 are unused. Ranges below stay unused except 48 (GameEvent). Do not send them.
+// See docs/net-protocol.md.
 constexpr uint8_t kReservedControlBegin = 16;  // 16-31
 constexpr uint8_t kAnimalStateBegin = 32;      // 32-47
-constexpr uint8_t kAnimalEventBegin = 48;      // 48-63
+constexpr uint8_t kAnimalEventBegin = 48;      // 48 assigned (GameEvent); 49-63 unused
 constexpr uint8_t kHitRequestBegin = 64;       // 64-79
 constexpr uint8_t kDamageEventBegin = 80;      // 80-95
 constexpr uint8_t kReservedFutureBegin = 96;   // 96-255
@@ -63,6 +65,8 @@ constexpr uint8_t kMaxAnimalStateChars = 31;
 constexpr size_t kAnimalStatesHeaderBytes = 8;  // id + seq + tickMs + count
 constexpr size_t kAnimalStateFixedBytes = 24;   // one entry, empty name
 constexpr size_t kAnimalHitBytes = 20;
+constexpr size_t kGameEventHeaderBytes = 18;  // id through key length, empty key
+constexpr uint8_t kMaxGameEventKeyChars = 31;
 
 constexpr size_t kHelloBytes = 36;
 constexpr size_t kWelcomeBytes = 7;
@@ -176,12 +180,34 @@ struct AnimalHit {
     float hitPos[3] = {};
 };
 
+namespace game_event_flag {
+constexpr uint8_t kCommit = 1u << 0;  // host → clients. Clear means client → host request.
+}
+
+// One reliable envelope for discrete world outcomes (death, map complete, later objectives).
+// `kind` is a game-layer registry. The session does not interpret it. Unknown kinds still decode.
+// `key` is a map-specific name (objective, item class). Encode keeps the first 31 bytes.
+// A request's actorId is overwritten by the host from the sending peer. A commit keeps the actor
+// the host wrote.
+struct GameEvent {
+    uint8_t flags = 0;
+    uint8_t actorId = kInvalidPlayerId;
+    uint16_t seq = 0;
+    uint16_t kind = 0;
+    uint16_t subjectId = 0;
+    uint32_t i0 = 0;
+    float f0 = 0.f;
+    std::string key;
+
+    bool commit() const { return (flags & game_event_flag::kCommit) != 0; }
+};
+
 using Message = std::variant<Hello, Welcome, Reject, PlayerJoined, PlayerLeft, PlayerState, Ping, Pong, AnimalStates,
-                              AnimalHit>;
+                              AnimalHit, GameEvent>;
 
 constexpr uint8_t ChannelFor(MsgId id) {
     if (id == MsgId::PlayerState || id == MsgId::AnimalStates) return kChannelState;
-    if (id == MsgId::AnimalHit) return kChannelEvents;
+    if (id == MsgId::AnimalHit || id == MsgId::GameEvent) return kChannelEvents;
     return kChannelControl;
 }
 
@@ -251,6 +277,7 @@ std::vector<uint8_t> Encode(const Ping& msg);
 std::vector<uint8_t> Encode(const Pong& msg);
 std::vector<uint8_t> Encode(const AnimalStates& msg);
 std::vector<uint8_t> Encode(const AnimalHit& msg);
+std::vector<uint8_t> Encode(const GameEvent& msg);
 std::vector<uint8_t> Encode(const Message& msg);
 
 // Matching id, every field inside the span, no trailing bytes. Otherwise nullopt.

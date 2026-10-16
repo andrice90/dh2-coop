@@ -17,6 +17,7 @@ const char* ToString(MsgId id) {
     case MsgId::Pong: return "Pong";
     case MsgId::AnimalStates: return "AnimalStates";
     case MsgId::AnimalHit: return "AnimalHit";
+    case MsgId::GameEvent: return "GameEvent";
     }
     return "Unknown";
 }
@@ -155,6 +156,28 @@ std::optional<AnimalStates> ParseAnimalStates(const uint8_t* data, size_t len) {
     return msg;
 }
 
+std::optional<GameEvent> ParseGameEvent(const uint8_t* data, size_t len) {
+    if (data == nullptr || len < kGameEventHeaderBytes || data[0] != static_cast<uint8_t>(MsgId::GameEvent)) {
+        return std::nullopt;
+    }
+    ByteReader r(data + 1, len - 1);
+    GameEvent msg;
+    msg.flags = r.U8();
+    msg.actorId = r.U8();
+    msg.seq = r.U16();
+    msg.kind = r.U16();
+    msg.subjectId = r.U16();
+    msg.i0 = r.U32();
+    msg.f0 = r.F32();
+    const uint8_t keyLen = r.U8();
+    if (!r.ok() || keyLen > kMaxGameEventKeyChars || static_cast<size_t>(keyLen) != r.remaining()) return std::nullopt;
+    uint8_t raw[kMaxGameEventKeyChars];
+    r.Bytes(raw, keyLen);
+    if (!r.ok() || r.remaining() != 0) return std::nullopt;
+    msg.key.assign(reinterpret_cast<const char*>(raw), keyLen);
+    return msg;
+}
+
 }  // namespace
 
 std::vector<uint8_t> Encode(const Hello& msg) {
@@ -266,6 +289,22 @@ std::vector<uint8_t> Encode(const AnimalHit& msg) {
     return w.Take();
 }
 
+std::vector<uint8_t> Encode(const GameEvent& msg) {
+    ByteWriter w;
+    w.U8(static_cast<uint8_t>(MsgId::GameEvent));
+    w.U8(msg.flags);
+    w.U8(msg.actorId);
+    w.U16(msg.seq);
+    w.U16(msg.kind);
+    w.U16(msg.subjectId);
+    w.U32(msg.i0);
+    w.F32(msg.f0);
+    const size_t keyLen = msg.key.size() > kMaxGameEventKeyChars ? kMaxGameEventKeyChars : msg.key.size();
+    w.U8(static_cast<uint8_t>(keyLen));
+    if (keyLen > 0) w.Bytes(msg.key.data(), keyLen);
+    return w.Take();
+}
+
 std::vector<uint8_t> Encode(const Message& msg) {
     return std::visit([](const auto& m) { return Encode(m); }, msg);
 }
@@ -359,6 +398,11 @@ std::optional<Message> Decode(const uint8_t* data, size_t len) {
             o.hitPos[1] = r.F32();
             o.hitPos[2] = r.F32();
         });
+        if (!m) return std::nullopt;
+        return Message{std::move(*m)};
+    }
+    case MsgId::GameEvent: {
+        auto m = ParseGameEvent(data, len);
         if (!m) return std::nullopt;
         return Message{std::move(*m)};
     }

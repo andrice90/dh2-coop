@@ -6,6 +6,7 @@
 namespace net {
 struct AnimalStates;
 struct AnimalHit;
+struct GameEvent;
 }
 
 namespace dh2::coop {
@@ -53,5 +54,8 @@ std::string StatusLine();
 // Game thread. Host broadcast / client hit report. False when this process has the wrong role.
 bool BroadcastAnimalStates(const net::AnimalStates& states);
 bool ReportAnimalHit(const net::AnimalHit& hit);
+bool SendGameEvent(const net::GameEvent& ev);
+bool NetIsHost();
+bool NetIsOnline();
 
 }  // namespace dh2::coop

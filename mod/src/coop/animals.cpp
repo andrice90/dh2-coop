@@ -5,6 +5,8 @@
 // [Animals] Spike=1 remains a solo experiment and is skipped while a session is active.
 #include "coop/animals.h"
 
+#include "coop/events.h"
+
 #include <windows.h>
 
 #include <atomic>
@@ -169,6 +171,7 @@ struct Mirror {
     entity::Vec3 last_target{};
     float last_yaw = 0.f;
     bool have_target = false;
+    bool death_presented = false;
 };
 
 void* FindAnimal(uint16_t id) {
@@ -243,6 +246,8 @@ public:
         state_t_ = 0.f;
         mirrors_.clear();
         yaws_.clear();
+        dead_.clear();
+        announced_.clear();
         send_started_ = false;
         logged_tx_ = false;
         logged_rx_ = false;
@@ -318,6 +323,11 @@ public:
             st.state = entity::BodyStateName(a);
             if (hp <= 0.f) st.flags |= net::animal_flag::kDead;
             if (p.y < -1000.f) st.flags |= net::animal_flag::kParked;
+            if ((st.flags & net::animal_flag::kDead) != 0 && (st.flags & net::animal_flag::kParked) == 0 &&
+                announced_.insert(uid).second) {
+                spdlog::info("animals: death commit id={} hp={:.1f} state='{}'", uid, hp, st.state);
+                events::Commit(events::kAnimalDied, uid, 0, hp, "", 0);
+            }
             msg.animals.push_back(std::move(st));
         }
         if (!logged_tx_ && !msg.animals.empty()) {
@@ -367,9 +377,16 @@ public:
         }
         mirrors_.clear();
         yaws_.clear();
+        dead_.clear();
+        announced_.clear();
         send_started_ = false;
         logged_tx_ = false;
         logged_rx_ = false;
+    }
+
+    void NoteDeath(uint16_t id) {
+        if (hosting_ || !session_active_) return;
+        if (dead_.insert(id).second) spdlog::info("animals: death event id={}", id);
     }
 
     void Place() {
@@ -435,6 +452,7 @@ private:
 
     void ApplyMirror() {
         const uint32_t t = now_ms();
+        for (uint16_t id : dead_) mirrors_[id];
         for (auto& [id, m] : mirrors_) {
             void* ent = FindAnimal(id);
             if (!ent) {
@@ -471,6 +489,25 @@ private:
             *reinterpret_cast<float*>(static_cast<char*>(ent) + kEntHealth) = sample.health;
             m.last_host_hp = sample.health;
             m.have_hp = true;
+
+            const bool parked = (sample.flags & net::animal_flag::kParked) != 0 || sample.pos[1] < -1000.f;
+            const bool dead = !parked && ((sample.flags & net::animal_flag::kDead) != 0 || sample.health <= 0.f);
+            if (dead) dead_.insert(id);
+            if (dead_.count(id) != 0) {
+                // One place at the corpse, then the death vfunc. Later frames must not HandleKey or
+                // SetBodyState: that pins the standing pose. "Dead" is not the fall clip.
+                if (!m.death_presented) {
+                    entity::Vec3 pos{sample.pos[0], sample.pos[1], sample.pos[2]};
+                    if (m.have_rel) PlaceEntity(ent, pos, sample.yaw, m.rel);
+                    m.last_target = pos;
+                    m.last_yaw = sample.yaw;
+                    m.have_target = true;
+                    m.death_presented = entity::PresentDeath(ent);
+                    spdlog::info("animals: present death id={} ok={} pos=({:.1f},{:.1f},{:.1f})", id, m.death_presented,
+                                 pos.x, pos.y, pos.z);
+                }
+                continue;
+            }
 
             entity::Vec3 pos{sample.pos[0], sample.pos[1], sample.pos[2]};
             float yaw = sample.yaw;
@@ -621,6 +658,8 @@ private:
     float log_sync_ = 2.f;
     std::map<uint16_t, YawTrack> yaws_;
     std::map<uint16_t, Mirror> mirrors_;
+    std::set<uint16_t> dead_;
+    std::set<uint16_t> announced_;
 };
 
 AnimalsModule* g_self = nullptr;
@@ -640,6 +679,9 @@ void OnAnimalStates(const net::AnimalStates& states, uint32_t localMs) {
 }
 void OnAnimalHit(const net::AnimalHit& hit) {
     if (g_self) g_self->OnAnimalHit(hit);
+}
+void OnAnimalDied(uint16_t id) {
+    if (g_self) g_self->NoteDeath(id);
 }
 void Reset() {
     if (g_self) g_self->Reset();

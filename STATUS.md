@@ -1,6 +1,6 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-16 16:07 (America/Chicago, system clock) by Grok, from `docs/handoff-grok-p4.md`.
+**Last updated:** 2026-10-16 16:31 (America/Chicago, system clock) by Grok, from the user's death and success-screen report.
 
 New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap, `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail.
 
@@ -29,7 +29,7 @@ User-confirmed: movement, rotation, speed, armed poses, fire and reload, weapon-
 ## In flight
 | Job | Owner | Log | Deliverable |
 |---|---|---|---|
-| (none) | | | **P4b tested 16:05.** Position error ≤ 0.01 m after the first place (0.113 m while a deer walked). User visual check not done. Notes: `re/notes/p4b-animal-sync.md`. |
+| (none) | | | **Event sync built, not yet seen in game.** User confirmed positions. Host kill left the client deer standing; client "Press F to get meat" completed only the client. `GameEvent` (id 48) is in. Notes: `re/notes/p4c-events.md`. |
 ## Latest results (14:30–15:22)
 - **Actions networked** (`7ebea6f`):
   - Tracker polls per frame: weapon state `Fire`/`Reload` via `cObjItemEx::GetCurrentState`, crouch from eye height (< 1.40 m), and weapon kind from the active item's model name.
@@ -59,7 +59,13 @@ User-confirmed: movement, rotation, speed, armed poses, fire and reload, weapon-
 4. **Cleanup:**
    - Remove/guard the Draw diagnostic hook and spike code.
    - `[Tracker] DiffHunter` diagnostics stay (default off).
-5. **Phase 4:** P4a done. P4b tested (see `re/notes/p4b-animal-sync.md`). Next is the user's visual check, then P4c: shoot a deer in the **client** window and confirm the host applies `AnimalHit` (flee/death still lead questions). Lead-only: real animal heading (`+0xF4` unreliable; movement yaw is what we send); whether a remote hit makes the deer flee; death/ragdoll replication; model culling after the first teleport (not seen — no deer was in frame). Grazing `PostPlayAnim` is ~10 ms, so most pulses never land in a 50 ms snapshot.
+5. **Phase 4:** P4a done. P4b positions user-confirmed ("position looked good"). Event sync is in (`re/notes/p4c-events.md`) and waiting on a visual check:
+   - Host (left window) kills a deer. The client should see it fall, not stay standing. Log: `animals: death commit` on the host, `animals: present death id=… ok=1` on the client.
+   - Client walks up and presses F on "Press F to get meat". Both windows should get the success screen. Log: `client SetMapIsComplete swallowed`, then `map-complete request`, then `host SetMapIsComplete` / `applied host map-complete`.
+   - Then shoot a deer from the **client** window. The host should log `AnimalHit` and `FuncInflictDamage`. If the host deer does not flee, note it. That is lead work.
+   - If the client deer still stands after `present death ok=1`, next try is unfreezing the brain after that call. Do not decompile the skeleton.
+   - If the client still completes alone and the log has no `SetMapIsComplete swallowed` line, the success screen is a different function. Lead work. Do not start Ghidra.
+   - Lead-only otherwise: real animal heading (`+0xF4` unreliable; movement yaw is what we send); model culling after the first teleport (not seen). Grazing `PostPlayAnim` is ~10 ms, so most pulses never land in a 50 ms snapshot.
 6. Spawn overlap: both players spawn on the same point. Puppets are non-solid, so this is harmless. Option: HUNTMAP4's second spawn point.
 
 ## Done
@@ -79,6 +85,8 @@ User-confirmed: movement, rotation, speed, armed poses, fire and reload, weapon-
 - **16:00** — Read the handoff, `lead-animals.md`, and the P4b spec. P4a was already committed (`14250e0`). Implemented P4b in `animals.cpp` / `animals.h`, wired it in `coop.cpp`, and added `entity::InflictDamage`. `[Animals]` keys are in `mod/dh2coop.ini`. `mod\build.ps1` succeeded and installed `game\Bin\dh2coop.asi`.
 - **16:02** — `move-test.ps1` run 1: client deer moved onto the host positions (drift 0.000). Deer 122 walked; both sides `Walk`, yaw 171.4, error 0.113 m. Deer 121 showed `IdleAttack` for ~4 s while the host stayed `CutScene` (`FreezeBrain` does not hold the state machine).
 - **16:05** — Re-apply the host state whenever the live name differs. Run 2: 28 pairs per id, max error 0.010 m, yaw error 0, no state mismatches. No deer in the captures. No `AnimalHit` (nothing to shoot). Puppets still walked.
+- **16:13** — User: positions looked good. Host killed deer 121; the client still saw it standing, then "Press F to get meat" completed only the client. Logs (quoted in `re/notes/p4c-events.md`): both sides had `Dead` and hp 0 with drift 0.000. Host passed through `Die`; the client snapshot skipped it. No `AnimalHit`. Both processes were still in the match at 16:13:00.
+- **16:31** — `GameEvent` (id 48, channel 2) is the scalable envelope: client request, host commit, 64-deep journal replayed on join. Kinds: `1` AnimalDied (`PresentDeath` once, then stop driving the pose), `2` MapComplete (`SetMapIsComplete` swallowed on the client, run on the host, applied back). `dh2net_test` 3406 checks, 0 failures. ASI rebuilt after the last hook tweak. In-game result UNVERIFIED.
 
 ## Blockers / risks
 - Claude usage limits: keep Claude on expert work and review; delegate mechanical jobs to Grok (`tools-src/grokjob.ps1`).

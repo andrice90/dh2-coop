@@ -117,6 +117,14 @@ bool SameHit(const net::AnimalHit& a, const net::AnimalHit& b) {
     return std::memcmp(a.hitPos, b.hitPos, sizeof a.hitPos) == 0;
 }
 
+bool SameEvent(const net::GameEvent& a, const net::GameEvent& b) {
+    if (a.flags != b.flags || a.actorId != b.actorId || a.seq != b.seq || a.kind != b.kind || a.subjectId != b.subjectId ||
+        a.i0 != b.i0 || a.key != b.key) {
+        return false;
+    }
+    return std::memcmp(&a.f0, &b.f0, sizeof a.f0) == 0;
+}
+
 net::AnimalStates WireForm(net::AnimalStates msg) {
     if (msg.animals.size() > net::kMaxAnimals) msg.animals.resize(net::kMaxAnimals);
     for (auto& animal : msg.animals) {
@@ -163,6 +171,7 @@ const char* EventName(net::EventType t) {
     case net::EventType::Pong: return "Pong";
     case net::EventType::AnimalStates: return "AnimalStates";
     case net::EventType::AnimalHit: return "AnimalHit";
+    case net::EventType::GameEvent: return "GameEvent";
     }
     return "?";
 }
@@ -173,8 +182,10 @@ void TestCodec(Tally& t) {
     t.Check(ChannelFor(MsgId::Hello) == kChannelControl, "hello channel");
     t.Check(ChannelFor(MsgId::AnimalStates) == kChannelState, "animal state channel");
     t.Check(ChannelFor(MsgId::AnimalHit) == kChannelEvents, "animal hit channel");
+    t.Check(ChannelFor(MsgId::GameEvent) == kChannelEvents, "game event channel");
     t.Check(IsReliable(MsgId::Hello) && !IsReliable(MsgId::PlayerState), "reliability");
-    t.Check(!IsReliable(MsgId::AnimalStates) && IsReliable(MsgId::AnimalHit), "animal reliability");
+    t.Check(!IsReliable(MsgId::AnimalStates) && IsReliable(MsgId::AnimalHit) && IsReliable(MsgId::GameEvent),
+            "animal reliability");
 
     Hello hello;
     hello.protoVersion = 1;
@@ -338,6 +349,39 @@ void TestCodec(Tally& t) {
     t.Check(zeroDec && std::holds_alternative<AnimalHit>(*zeroDec) && SameHit(std::get<AnimalHit>(*zeroDec), zeros),
             "zero hit round trip");
 
+    GameEvent gev;
+    gev.flags = game_event_flag::kCommit;
+    gev.actorId = 2;
+    gev.seq = 0xBEEF;
+    gev.kind = 99;
+    gev.subjectId = 121;
+    gev.i0 = 0x01020304u;
+    gev.f0 = -2.5f;
+    gev.key = std::string(40, 'k');
+    auto gevBytes = Encode(gev);
+    auto gevDec = Decode(gevBytes.data(), gevBytes.size());
+    t.Check(gevBytes.size() == kGameEventHeaderBytes + kMaxGameEventKeyChars &&
+                gevBytes[0] == static_cast<uint8_t>(MsgId::GameEvent),
+            "game event size");
+    t.Check(gevDec && std::holds_alternative<GameEvent>(*gevDec), "game event type");
+    if (gevDec && std::holds_alternative<GameEvent>(*gevDec)) {
+        const auto& m = std::get<GameEvent>(*gevDec);
+        GameEvent expect = gev;
+        expect.key.resize(kMaxGameEventKeyChars);
+        t.Check(SameEvent(m, expect), "game event round trip");
+        t.Check(m.key.size() == kMaxGameEventKeyChars, "game event key truncated to 31");
+        t.Check(SameBytes(Encode(m), gevBytes), "game event canonical");
+        t.Check(SameBytes(Encode(Message{m}), gevBytes), "game event variant encode");
+    }
+    GameEvent emptyKey;
+    emptyKey.kind = 2;
+    auto emptyEventBytes = Encode(emptyKey);
+    auto emptyEventDec = Decode(emptyEventBytes.data(), emptyEventBytes.size());
+    t.Check(emptyEventBytes.size() == kGameEventHeaderBytes, "empty game event key size");
+    t.Check(emptyEventDec && std::holds_alternative<GameEvent>(*emptyEventDec) &&
+                SameEvent(std::get<GameEvent>(*emptyEventDec), emptyKey),
+            "empty game event key round trip");
+
     Session tick;
     t.Check(tick.ConsumeSendTick(0), "send tick first");
     t.Check(!tick.ConsumeSendTick(49), "send tick hold");
@@ -389,6 +433,15 @@ void TestTruncation(Tally& t) {
         shot.damage = 1.f;
         shot.hitPos[2] = 3.f;
         good.push_back(Encode(shot));
+        GameEvent ev;
+        ev.flags = game_event_flag::kCommit;
+        ev.actorId = 1;
+        ev.seq = 7;
+        ev.kind = 1;
+        ev.subjectId = 121;
+        ev.f0 = 1.5f;
+        ev.key = "map";
+        good.push_back(Encode(ev));
     }
     for (const auto& buf : good) {
         t.Check(Decode(buf.data(), buf.size()).has_value(), "full buffer decodes");
@@ -424,7 +477,7 @@ void TestTruncation(Tally& t) {
         t.Check(back.has_value() && SameBytes(again, buf), "random exact packet is canonical");
     }
 
-    const uint8_t reserved[] = {11, 15, 16, 32, 47, 48, 63, 64, 79, 80, 95, 96, 255};
+    const uint8_t reserved[] = {11, 15, 16, 32, 47, 49, 63, 64, 79, 80, 95, 96, 255};
     for (uint8_t id : reserved) {
         uint8_t buf[8] = {id, 1, 2, 3, 4, 5, 6, 7};
         t.Check(!Decode(buf, sizeof buf).has_value(), "reserved id rejected");
@@ -593,6 +646,8 @@ struct Box {
     net::AnimalStates animalGot{};
     bool hitSeen = false;
     net::AnimalHit hitGot{};
+    int gameEvents = 0;
+    net::GameEvent gameGot{};
 };
 
 void OnEvent(Box& b, const net::Event& e) {
@@ -645,6 +700,10 @@ void OnEvent(Box& b, const net::Event& e) {
     case EventType::AnimalHit:
         b.hitSeen = true;
         b.hitGot = e.animalHit;
+        break;
+    case EventType::GameEvent:
+        ++b.gameEvents;
+        b.gameGot = e.gameEvent;
         break;
     default: break;
     }
@@ -828,6 +887,51 @@ Digest TestLoopback(Tally& t, bool* sectionOk) {
                              !boxes[1].hitSeen && !boxes[2].hitSeen && !boxes[3].hitSeen;
         t.Check(hitSame, "host received AnimalHit with shooterId");
         animalOk = roles && same && hitSame;
+
+        GameEvent forged;
+        forged.flags = game_event_flag::kCommit;
+        forged.kind = 1;
+        forged.subjectId = 121;
+        const bool commitRole = !clients[0]->SendGameEvent(forged);
+        GameEvent hostReq;
+        hostReq.kind = 2;
+        const bool requestRole = !host->SendGameEvent(hostReq);
+        t.Check(commitRole && requestRole, "game event send roles");
+
+        for (auto& b : boxes) b.gameEvents = 0;
+        GameEvent req;
+        req.actorId = 9;
+        req.kind = 2;
+        req.subjectId = 0;
+        req.i0 = 4;
+        req.key = "HUNTMAP4";
+        const bool reqSent = clients[0]->SendGameEvent(req);
+        t.Check(reqSent, "client sends GameEvent request");
+        const bool reqArrived = reqSent && PumpFor(1000, boxes, [&] { return boxes[0].gameEvents > 0; });
+        GameEvent reqExpect = req;
+        reqExpect.actorId = 1;
+        const bool reqSame = reqArrived && SameEvent(boxes[0].gameGot, reqExpect) && boxes[1].gameEvents == 0 &&
+                             boxes[2].gameEvents == 0 && boxes[3].gameEvents == 0;
+        t.Check(reqSame, "host received GameEvent request with actorId");
+
+        for (auto& b : boxes) b.gameEvents = 0;
+        GameEvent commit;
+        commit.flags = game_event_flag::kCommit;
+        commit.actorId = 1;
+        commit.seq = 3;
+        commit.kind = 99;
+        commit.subjectId = 121;
+        commit.f0 = 0.f;
+        commit.key = "objective.escort";
+        const bool commitSent = host->SendGameEvent(commit);
+        t.Check(commitSent, "host sends GameEvent commit");
+        const bool commitArrived = commitSent && PumpFor(1000, boxes, [&] {
+            return boxes[1].gameEvents > 0 && boxes[2].gameEvents > 0 && boxes[3].gameEvents > 0;
+        });
+        const bool commitSame = commitArrived && boxes[0].gameEvents == 0 && SameEvent(boxes[1].gameGot, commit) &&
+                                 SameEvent(boxes[2].gameGot, commit) && SameEvent(boxes[3].gameGot, commit);
+        t.Check(commitSame, "clients received unknown-kind GameEvent commit");
+        sectionOk[12] = commitRole && requestRole && reqSame && commitSame;
     }
     sectionOk[11] = animalOk;
 
@@ -964,8 +1068,9 @@ int main() {
     const char* names[] = {
         "codec round-trip",     "truncated buffers", "interp + yaw wrap", "handshake ids 0..3",
         "PlayerJoined fan-out", "PlayerState relay", "reject version",    "reject full",
-        "PlayerLeft",           "host shutdown",     "enet_initialize once", "animal loopback"};
-    constexpr int kSections = 12;
+        "PlayerLeft",           "host shutdown",     "enet_initialize once", "animal loopback",
+        "game event loopback"};
+    constexpr int kSections = 13;
     Section sections[kSections];
     for (int i = 0; i < kSections; ++i) sections[i].name = names[i];
 
