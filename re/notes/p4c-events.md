@@ -56,7 +56,27 @@ The host keeps a journal of the last 64 commits and resends it when a player joi
 
 Handlers are `events::SetHandler(kind, onRequest, onCommit)`. `AnimalDied` requests are ignored: the host simulates death. A client bullet still uses `AnimalHit` → `FuncInflictDamage`, and the death commit follows if that drops health to 0.
 
-`SetMapIsComplete` and `GetLastmap` are export hooks (`GetLastmap` only remembers the profile pointer). Offline, `SetMapIsComplete` still calls the original. That solo path is UNVERIFIED this session.
+`SetMapIsComplete` is an export hook. The profile pointer comes from `GetMapToBeStarted` (and from `SetMapIsComplete`'s `this`). Offline, `SetMapIsComplete` still calls the original. That solo path is UNVERIFIED this session.
+
+`GetLastmap` was hooked in the 16:31 build and removed after the 16:36 exit. It is `lea eax, [ecx+0x23D9]; ret` (GameDll RVA `0x11c0`, 7 bytes). The probe installed that hook on 2026-10-16 and never logged a call (`re/notes/runtime-spmap-probe.txt`). `GetMapToBeStarted` (RVA `0xeacd0`) did run in that probe: `this=0xd985888` → `'map1'`.
+
+## 16:36 both windows exited
+
+User, after `.\run-coop-local.ps1` (Seconds=0, host pid 23124, client pid 6228): "both crashed".
+
+No `Main7.exe` left. No `dh2coop-crash.dmp` on either side. No Application Error, no new WER report, no System event at 16:36. The vectored handler never logged a first-chance exception, so this was not an SEH the filter can see (process exit, or a failure that never reached the handler).
+
+Host `game\Bin\dh2coop.log` last lines (map load `16:36:02.313`, still hosting, no peer):
+
+- `16:36:04.514` hunter yaw moved `151.87` → `150.59`
+- `16:36:04.694` animals 120/122/123 `PostPlayAnim` hp 45
+- `16:36:04.705` those three back to `CutScene`. No `AnimalHit`, no `SetMapIsComplete`, no death line.
+
+Host `debug.log` shows `CM_YES` (CHOOSE ITEM), then `Could not set anim 'idletorun'` on `reddeer.skin`, then one more fps line at `time=3.011998` (`fn=229`, 99 fps, 2.7M tris) and the file stops.
+
+Client `game2\Bin\dh2coop.log` starts `16:36:04.584`. Map load `16:36:05.275` while `role=offline`. Last line `16:36:05.386` `coop_status: role=offline`. No `coop: join start`, no welcome. `debug.log` stops at `SERVER loading time : 203ms`.
+
+The 16:08 session (build `b8c4032`, no profile hooks) stayed in the match for minutes. The 16:36 binary is `c10dc47` plus the event hooks. Animal mirroring was not active: the host had no peer, and the client never joined. `events::Pump` was a no-op. The new code that had run was the two hooks sitting in GameDll.
 
 ## UNVERIFIED until the next play
 

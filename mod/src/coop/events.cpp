@@ -30,7 +30,7 @@ struct Handlers {
 };
 
 safetyhook::InlineHook* g_map_hook = nullptr;
-safetyhook::InlineHook* g_lastmap_hook = nullptr;
+safetyhook::InlineHook* g_start_hook = nullptr;
 void* g_profile = nullptr;
 bool g_in_apply = false;
 bool g_host_completed = false;
@@ -118,15 +118,27 @@ void OnAnimalDiedRequest(const net::GameEvent& ev) {
                  ev.actorId);
 }
 
-char* __fastcall hk_GetLastmap(void* self, void* /*edx*/) {
-    g_profile = self;
-    return g_lastmap_hook->unsafe_thiscall<char*>(self);
+// GetLastmap is `lea eax,[ecx+0x23D9]; ret` (7 bytes) and the probe never logged a call.
+// GetMapToBeStarted is a normal function. The spmap probe called it and got a profile pointer.
+char* __fastcall hk_GetMapToBeStarted(void* self, void* /*edx*/) {
+    if (self && !g_profile) {
+        g_profile = self;
+        spdlog::info("events: profile captured this={:#x}", reinterpret_cast<uintptr_t>(self));
+    }
+    if (!g_start_hook) return nullptr;
+    return g_start_hook->unsafe_thiscall<char*>(self);
 }
 
 void __fastcall hk_SetMapIsComplete(void* self, void* /*edx*/) {
     g_profile = self;
+    static int seen = 0;
+    if (seen < 8) {
+        ++seen;
+        spdlog::info("events: SetMapIsComplete enter this={:#x} online={} host={}", reinterpret_cast<uintptr_t>(self),
+                     NetIsOnline() ? 1 : 0, NetIsHost() ? 1 : 0);
+    }
     if (g_in_apply || !NetIsOnline()) {
-        g_map_hook->unsafe_thiscall<void>(self);
+        if (g_map_hook) g_map_hook->unsafe_thiscall<void>(self);
         return;
     }
     const std::string caller = core::describe_address(_ReturnAddress());
@@ -157,11 +169,11 @@ public:
 
     void OnGameDllLoaded(HMODULE game) override {
         void* complete = core::find_export(game, "?SetMapIsComplete@cHunterProfile@@QAEXXZ");
-        void* lastmap = core::find_export(game, "?GetLastmap@cHunterProfile@@QAEPADXZ");
+        void* start = core::find_export(game, "?GetMapToBeStarted@cHunterProfile@@QAEPADXZ");
         g_map_hook = core::install_hook("cHunterProfile::SetMapIsComplete", complete,
                                         reinterpret_cast<void*>(&hk_SetMapIsComplete));
-        g_lastmap_hook = core::install_hook("cHunterProfile::GetLastmap", lastmap,
-                                            reinterpret_cast<void*>(&hk_GetLastmap));
+        g_start_hook = core::install_hook("cHunterProfile::GetMapToBeStarted", start,
+                                          reinterpret_cast<void*>(&hk_GetMapToBeStarted));
     }
 
     void OnMapLoaded(const char* bspName) override {

@@ -204,6 +204,8 @@ private:
         g_pending = {};
         net::Session::Identity id;
         id.name = g_settings.player_name;
+        if (p.kind == Pending::Kind::Host) spdlog::info("coop: host start port={}", p.port);
+        else if (p.kind == Pending::Kind::Join) spdlog::info("coop: join start {}:{}", p.host, p.port);
         if (p.kind != Pending::Kind::None) {
             puppets::RemoveAll();
             animals::Reset();

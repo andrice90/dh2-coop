@@ -6,15 +6,11 @@ Read this, then `STATUS.md`, then `re/notes/p4c-events.md`. Do not edit `MEMORY.
 
 ## Where the work stopped
 
-Two game windows were opened at 16:31 with `.\run-coop-local.ps1` and left running for the user. Host is the left window (`game\`, pid 20052, `-coophost`). Client is the right window (`game2\`, pid 26480, `-coopjoin 127.0.0.1`). CHOOSE ITEM is closed with Enter, Left, Enter.
+The 16:36 pair is **not running**. The user said both crashed. Details and log quotes: `re/notes/p4c-events.md` section "16:36 both windows exited". No dump, no SEH line. Do not claim the death animation or the shared success screen works.
 
-The user has **not** reported on the new build. Do not claim the death animation or the shared success screen works. Startup only, from the new logs (the launch truncated the previous logs):
+`GetLastmap` (7-byte getter, never observed by the probe) is no longer hooked. The profile pointer is captured from `GetMapToBeStarted`, which the spmap probe did call. `SetMapIsComplete` stays hooked and now logs on entry. `coop: join start` is logged before `Session::Join`. That build had not been played yet when this paragraph was written.
 
-- Both processes: `events: registry AnimalDied=1 MapComplete=2`.
-- Both: `hook cHunterProfile::SetMapIsComplete` at `GameDll7+0xec160`, and `GetLastmap` at `GameDll7+0x11c0`.
-- Host: `events: journal cleared for map 'Bsp\HUNTMAP4.bsp'`, then `coop: hosting on UDP 27420 -> true`.
-
-Ask before closing those windows. `mod\build.ps1` cannot install while `Main7.exe` is running.
+CHOOSE ITEM is still Enter, Left, Enter. Host is the left window (`game\`, `-coophost`). Client is the right (`game2\`, `-coopjoin 127.0.0.1`). Ask before closing windows the user is playing. `mod\build.ps1` cannot install while `Main7.exe` is running.
 
 ## User reports (verbatim)
 
@@ -73,7 +69,7 @@ Registry (`mod/src/coop/events.h`):
 
 `events::SetHandler(kind, onRequest, onCommit)` is the extension point. Either callback may be null. `AnimalDied` requests are ignored because the host simulates death. A client bullet is still `AnimalHit` → `FuncInflictDamage`. The death commit follows if health hits 0.
 
-`GetLastmap` is hooked only to remember the `cHunterProfile` pointer. There is no singleton export. If a map-complete arrives before that pointer exists, `events::Pump` retries. Offline, `SetMapIsComplete` calls the original. That solo path was not played this session.
+The profile pointer comes from `GetMapToBeStarted` (proven call in the spmap probe) and from `SetMapIsComplete`'s `this`. There is no singleton export. If a map-complete arrives before that pointer exists, `events::Pump` retries. Offline, `SetMapIsComplete` calls the original. That solo path was not played this session. Do not hook `GetLastmap` again: it is 7 bytes and the 16:36 exit is the reason it was removed.
 
 Module priority: coop 40, events 41, animals 46. `coop.cpp` drains `GameEvent` into `events::OnNet`, calls `events::Replay` on `PlayerJoined`, `events::Reset` on map load / leave / client disconnect, and `events::Pump` at the end of the frame. The host does not clear the journal when a remote leaves.
 
