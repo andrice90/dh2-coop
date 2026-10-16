@@ -35,6 +35,11 @@ Practical knowledge for building, injecting, hooking, testing and orchestrating.
 - Build warning to ignore: safetyhook `os.windows.cpp` C4005 `NOMINMAX` redefinition; safetyhook v0.7.0 bumps the target to `/std:c++latest` — 2026-10-16.
 - Renderer is D3D8: one `IDirect3DDevice8`; `Present` called from `EngineDll7+0x354cfd`, `EndScene` from `EngineDll7+0x354b63`. `Direct3DCreate8` is called 3×, `Direct3DCreate9` 1× (probe/enumeration only; no D3D9 device) — dh2coop.log. Overlay (ImGui) must use a DX8 path (ImGui has no DX8 backend: use d3d8to9 or a custom DX8 renderer).
 
+- **Game-thread rule:** module `OnFrame` runs only when `Present` is called on the device-window thread (`engine/d3d8_hooks.cpp` gate); the loading screen presents from another thread. `OnEngineReady`/`OnGameDllLoaded`/`OnShutdown` run on the lifecycle poll thread — install hooks there, never touch game state. `OnMapLoaded` runs on the main thread inside the `cBspTree::Load` detour — 2026-10-16.
+- Two-instance test: `.\run-coop-local.ps1 -Seconds 100` (instance 1 `-coophost`, instance 2 `-coopjoin 127.0.0.1`, both `-spmap HUNTMAP4`, windowed). Grep each `Bin\dh2coop.log` for `coop: remote` — 2026-10-16.
+- Hooking an exported engine function only catches calls that go through that body: `cObjManager::Get` is never called by game code (inlined/unused), `AddEntity(cObjEntity*)` is (Main7's override calls the engine body). Check the importers of an export (pefile import walk) before choosing a hook — 2026-10-16.
+- Lead-owned modules live in `mod/src/coop/` (`coop.cpp` session + console commands + background flag, `player_tracker.cpp`, `slowmo.cpp`) and `mod/src/engine/console_cmds.*` — 2026-10-16.
+
 ## Orchestration
 - Workers: Grok Build CLI `grok` pinned to `-m grok-4.7`, headless via `tools-src/grokjob.ps1` (prompt `re/jobs/<name>.md` + `_rules.md`). Permission mode `auto` works headless (runs shell, writes files). `bypassPermissions` is blocked by Claude Code's auto-mode classifier — don't use it — 2026-10-16.
 - `--output-format plain` prints only at the end; a running job's log shows just the start line.

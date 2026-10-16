@@ -93,15 +93,17 @@ target_link_libraries(enet_lib PUBLIC ws2_32 winmm)
 target_compile_options(enet_lib PRIVATE /w)  # third-party C code: silence warnings
 
 # ---- the ASI ---------------------------------------------------------------
-add_library(dh2coop SHARED
-  src/dllmain.cpp
-  src/core/config.cpp
-  src/core/exports.cpp
-  src/core/log.cpp
-  src/core/safe_mem.cpp
-  src/probe/probe.cpp)
+# Recursive so other owners (net/, coop/, console_cmds) compile in when their files appear.
+file(GLOB_RECURSE DH2_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+list(LENGTH DH2_SOURCES DH2_SOURCE_COUNT)
+message(STATUS "dh2coop sources (${DH2_SOURCE_COUNT}):")
+foreach(src IN LISTS DH2_SOURCES)
+  message(STATUS "  ${src}")
+endforeach()
+
+add_library(dh2coop SHARED ${DH2_SOURCES})
 target_include_directories(dh2coop PRIVATE src)
 target_compile_features(dh2coop PRIVATE cxx_std_20)
 target_compile_options(dh2coop PRIVATE /W4 /permissive- /wd4100)
-target_link_libraries(dh2coop PRIVATE safetyhook::safetyhook spdlog::spdlog enet_lib imgui_lib)
+target_link_libraries(dh2coop PRIVATE safetyhook::safetyhook spdlog::spdlog enet_lib imgui_lib dbghelp)
 set_target_properties(dh2coop PROPERTIES PREFIX "" SUFFIX ".asi" OUTPUT_NAME "dh2coop")

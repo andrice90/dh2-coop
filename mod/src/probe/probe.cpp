@@ -21,9 +21,12 @@
 
 #include <safetyhook.hpp>
 
+#include "core/config.h"
 #include "core/exports.h"
 #include "core/log.h"
+#include "core/module.h"
 #include "core/safe_mem.h"
+#include "engine/d3d8_hooks.h"
 
 namespace dh2::probe {
 
@@ -36,6 +39,12 @@ using dh2::core::safe_read;
 namespace {
 
 core::Config g_cfg;
+bool g_active = false;
+int g_state_samples = 0;
+ULONGLONG g_next_sample = 0;
+ULONGLONG g_last_change_log = 0;
+std::string g_last_state;
+bool g_d3d9_logged = false;
 
 inline uintptr_t A(const void* p) { return reinterpret_cast<uintptr_t>(p); }
 
@@ -179,6 +188,7 @@ HRESULT __stdcall hk_EndScene(void* self) {
 }
 
 void hook_device(int api, void* dev, const char* how) {
+    if (api != 1) return;  // D3D8 Present/Reset live in dh2::d3d8
     DevApi& a = g_api[api];
     bool expected = false;
     if (!a.dev_hooked.compare_exchange_strong(expected, true)) return;
@@ -187,15 +197,9 @@ void hook_device(int api, void* dev, const char* how) {
     spdlog::info("{} device {:#x} vtable {:#x} ({}) [{}]: Reset={} Present={} EndScene={}", a.name, A(dev), A(vt),
                  describe_address(vt), how, describe_address(vt[a.vt_reset]), describe_address(vt[a.vt_present]),
                  describe_address(vt[a.vt_endscene]));
-    if (api == 0) {
-        a.reset = mk("D3D8 Device::Reset", vt[a.vt_reset], reinterpret_cast<void*>(&hk_Reset<0>));
-        a.present = mk("D3D8 Device::Present", vt[a.vt_present], reinterpret_cast<void*>(&hk_Present<0>));
-        a.endscene = mk("D3D8 Device::EndScene", vt[a.vt_endscene], reinterpret_cast<void*>(&hk_EndScene<0>));
-    } else {
-        a.reset = mk("D3D9 Device::Reset", vt[a.vt_reset], reinterpret_cast<void*>(&hk_Reset<1>));
-        a.present = mk("D3D9 Device::Present", vt[a.vt_present], reinterpret_cast<void*>(&hk_Present<1>));
-        a.endscene = mk("D3D9 Device::EndScene", vt[a.vt_endscene], reinterpret_cast<void*>(&hk_EndScene<1>));
-    }
+    a.reset = mk("D3D9 Device::Reset", vt[a.vt_reset], reinterpret_cast<void*>(&hk_Reset<1>));
+    a.present = mk("D3D9 Device::Present", vt[a.vt_present], reinterpret_cast<void*>(&hk_Present<1>));
+    a.endscene = mk("D3D9 Device::EndScene", vt[a.vt_endscene], reinterpret_cast<void*>(&hk_EndScene<1>));
 }
 
 template <int I>
@@ -215,15 +219,14 @@ HRESULT __stdcall hk_CreateDevice(void* self, UINT adapter, UINT type, HWND focu
 }
 
 void hook_d3d_object(int api, void* obj) {
+    if (api != 1) return;  // D3D8 CreateDevice lives in dh2::d3d8
     DevApi& a = g_api[api];
     bool expected = false;
     if (!a.d3d_hooked.compare_exchange_strong(expected, true)) return;
     void** vt = *reinterpret_cast<void***>(obj);
     spdlog::info("{} IDirect3D object {:#x} vtable {:#x} ({}) CreateDevice={}", a.name, A(obj), A(vt),
                  describe_address(vt), describe_address(vt[a.vt_createdevice]));
-    a.createdevice = mk(api == 0 ? "IDirect3D8::CreateDevice" : "IDirect3D9::CreateDevice", vt[a.vt_createdevice],
-                        api == 0 ? reinterpret_cast<void*>(&hk_CreateDevice<0>)
-                                 : reinterpret_cast<void*>(&hk_CreateDevice<1>));
+    a.createdevice = mk("IDirect3D9::CreateDevice", vt[a.vt_createdevice], reinterpret_cast<void*>(&hk_CreateDevice<1>));
 }
 
 template <int I>
@@ -239,16 +242,13 @@ void* __stdcall hk_Direct3DCreate(UINT sdk) {
 }
 
 void try_hook_d3d_create(int api) {
+    if (api != 1) return;  // Direct3DCreate8 lives in dh2::d3d8
     DevApi& a = g_api[api];
     if (a.create) return;
-    const char* dll = api == 0 ? "d3d8.dll" : "d3d9.dll";
-    const char* sym = api == 0 ? "Direct3DCreate8" : "Direct3DCreate9";
-    HMODULE m = GetModuleHandleA(dll);
+    HMODULE m = GetModuleHandleA("d3d9.dll");
     if (!m) return;
-    void* target = find_export(m, sym);
-    a.create = mk(sym, target,
-                  api == 0 ? reinterpret_cast<void*>(&hk_Direct3DCreate<0>)
-                           : reinterpret_cast<void*>(&hk_Direct3DCreate<1>));
+    void* target = find_export(m, "Direct3DCreate9");
+    a.create = mk("Direct3DCreate9", target, reinterpret_cast<void*>(&hk_Direct3DCreate<1>));
     if (!a.create) a.create = reinterpret_cast<InlineHook*>(-1);  // do not retry forever (never dereferenced)
 }
 
@@ -455,11 +455,6 @@ int THIS_CALL hk_RenderDX_CreateDevice(void* self, void*, void* d3d8, HWND hwnd,
                  A(self), A(d3d8), A(hwnd), A(param), CALLER);
     int r = H.rdx_createdevice->unsafe_thiscall<int>(self, d3d8, hwnd, param, dev);
     spdlog::info("cRenderDX::CreateDevice -> {} device={:#x}", r, dev ? A(*dev) : 0);
-    // Safety net if the IDirect3D8 object was created before our Direct3DCreate8 hook existed.
-    if (r && dev && *dev) {
-        if (d3d8 && !g_api[0].d3d_hooked) hook_d3d_object(0, d3d8);
-        hook_device(0, *dev, "cRenderDX::CreateDevice (late)");
-    }
     return r;
 }
 
@@ -485,15 +480,16 @@ T rd(const T* p, T def = T{}) {
 }
 
 std::string state_line() {
+    const d3d8::Stats d3 = d3d8::GetStats();
     return fmt::format(
         "driverType={} m_d3d={:#x} m_d3dd={:#x} m_hWnd={:#x} windowed={} curClassId={} | create8={} create9={} "
-        "cdev8={} cdev9={} present8={} endscene8={} present9={} endscene9={} | srv(rxtx={} dispatch={}) "
+        "cdev8={} cdev9={} present8={} reset8={} present9={} endscene9={} | srv(rxtx={} dispatch={}) "
         "cli(rxtx={} send={} recv={})",
         rd(S.driver_type, -9999), A(rd(S.d3d)), A(rd(S.d3dd)), A(rd(S.hwnd)), rd(S.windowed, -9999),
-        rd(S.cur_class_id, -9999), g_api[0].n_create.load(), g_api[1].n_create.load(), g_api[0].n_cdev.load(),
-        g_api[1].n_cdev.load(), g_api[0].n_present.load(), g_api[0].n_endscene.load(), g_api[1].n_present.load(),
-        g_api[1].n_endscene.load(), g_net.srv_rxtx.load(), g_net.srv_dispatch.load(), g_net.cli_rxtx.load(),
-        g_net.cli_send.load(), g_net.cli_recv.load());
+        rd(S.cur_class_id, -9999), d3.create_calls, g_api[1].n_create.load(), d3.device_calls, g_api[1].n_cdev.load(),
+        d3.present_calls, d3.reset_calls, g_api[1].n_present.load(), g_api[1].n_endscene.load(),
+        g_net.srv_rxtx.load(), g_net.srv_dispatch.load(), g_net.cli_rxtx.load(), g_net.cli_send.load(),
+        g_net.cli_recv.load());
 }
 
 void resolve_statics(HMODULE eng) {
@@ -700,122 +696,89 @@ void log_header() {
     }
 }
 
+void probe_on_present(void* device, const RECT*, const RECT*, HWND wnd, const void*) {
+    static std::atomic<uint64_t> n{0};
+    const uint64_t i = ++n;
+    if (i <= 3) {
+        spdlog::info("probe D3D8 Present #{} dev={:#x} hwnd={:#x} caller={}", i, A(device), A(wnd),
+                     describe_address(_ReturnAddress()));
+    }
+}
+
+void sample_state() {
+    if (!g_active) return;
+    const ULONGLONG now = GetTickCount64();
+    if (g_state_samples < g_cfg.probe_state_seconds) {
+        if (g_next_sample == 0) g_next_sample = now;
+        if (now < g_next_sample) return;
+        spdlog::info("state t={}s {}", g_state_samples + 1, state_line());
+        ++g_state_samples;
+        g_next_sample += 1000;
+        return;
+    }
+    if (now - g_last_change_log <= 2000) return;
+    std::string s = state_line();
+    if (s == g_last_state) return;
+    spdlog::info("state(change) {}", s);
+    g_last_state = std::move(s);
+    g_last_change_log = now;
+}
+
 }  // namespace
 
-// ---------------------------------------------------------------------------------------------
-// entry
-// ---------------------------------------------------------------------------------------------
-void run(const core::Config& cfg) {
-    g_cfg = cfg;
-    spdlog::info("=== runtime probe start ===");
-    log_header();
-    log_loaded_modules("probe start");
+class ProbeModule : public dh2::Module {
+public:
+    const char* Name() const override { return "probe"; }
+    int Priority() const override { return 10; }
 
-    if (HMODULE nt = GetModuleHandleA("ntdll.dll")) {
-        auto reg = reinterpret_cast<LdrRegisterFn>(GetProcAddress(nt, "LdrRegisterDllNotification"));
-        PVOID cookie = nullptr;
-        if (reg) {
-            LONG st = reg(0, on_dll_event, nullptr, &cookie);
-            spdlog::info("LdrRegisterDllNotification -> {:#x}", static_cast<uint32_t>(st));
+    void OnInit() override {
+        g_cfg = core::config();
+        if (!g_cfg.probe_enabled) {
+            spdlog::info("probe module off ([Probe] Enabled=0)");
+            return;
+        }
+        g_active = true;
+        spdlog::info("=== runtime probe start ===");
+        log_header();
+        log_loaded_modules("probe start");
+        if (HMODULE nt = GetModuleHandleA("ntdll.dll")) {
+            auto reg = reinterpret_cast<LdrRegisterFn>(GetProcAddress(nt, "LdrRegisterDllNotification"));
+            PVOID cookie = nullptr;
+            if (reg) {
+                const LONG st = reg(0, on_dll_event, nullptr, &cookie);
+                spdlog::info("probe LdrRegisterDllNotification -> {:#x}", static_cast<uint32_t>(st));
+            }
+        }
+        if (g_cfg.probe_hook_d3d) d3d8::AddPresentCallback(&probe_on_present);
+    }
+
+    void OnEngineReady(HMODULE engine) override {
+        if (!g_active || !engine) return;
+        log_export_addresses(engine);
+        resolve_statics(engine);
+        install_engine_hooks(engine);
+        g_next_sample = GetTickCount64();
+        if (HMODULE common = GetModuleHandleA("CommonDll7.dll")) {
+            spdlog::info("CommonDll7.dll base = {:#x} (+{}ms)", A(common), uptime_ms());
         }
     }
 
-    enum Task { kD3D8, kD3D9, kEngine, kCommon, kGame, kCount };
-    bool done[kCount] = {};
-    HMODULE engine = nullptr;
-    bool engine_ready = false;
+    void OnGameDllLoaded(HMODULE game) override {
+        if (!g_active || !game) return;
+        install_game_hooks(game);
+    }
 
-    const ULONGLONG start = GetTickCount64();
-    ULONGLONG next_sample = start;
-    int samples = 0;
-    std::string last_state;
-    ULONGLONG last_change_log = 0;
-    bool warned_timeout = false;
+    void OnFrame(float) override { sample_state(); }
+};
 
-    for (;;) {
-        // ---- D3D entry points ----
-        if (cfg.probe_hook_d3d) {
-            if (!done[kD3D8]) {
-                try_hook_d3d_create(0);
-                done[kD3D8] = g_api[0].create != nullptr;
-                if (done[kD3D8]) spdlog::info("d3d8.dll loaded; Direct3DCreate8 hook ready (+{}ms)", uptime_ms());
-            }
-            if (!done[kD3D9]) {
-                try_hook_d3d_create(1);
-                done[kD3D9] = g_api[1].create != nullptr;
-                if (done[kD3D9]) spdlog::info("d3d9.dll loaded; Direct3DCreate9 hook ready (+{}ms)", uptime_ms());
-            }
-        } else {
-            done[kD3D8] = done[kD3D9] = true;
-        }
+DH2_MODULE(ProbeModule)
 
-        // ---- EngineDll7 ----
-        if (!done[kEngine]) {
-            if (HMODULE m = GetModuleHandleA("EngineDll7.dll")) {
-                engine = m;
-                done[kEngine] = true;
-                spdlog::info("EngineDll7.dll base = {:#x} (+{}ms) {}", A(m), uptime_ms(), core::module_base_name(m));
-                log_export_addresses(m);
-                resolve_statics(m);
-                install_engine_hooks(m);
-                engine_ready = true;
-                next_sample = GetTickCount64();
-            }
-        }
-        if (!done[kCommon]) {
-            if (HMODULE m = GetModuleHandleA("CommonDll7.dll")) {
-                done[kCommon] = true;
-                spdlog::info("CommonDll7.dll base = {:#x} (+{}ms)", A(m), uptime_ms());
-            }
-        }
-        if (!done[kGame]) {
-            if (HMODULE m = GetModuleHandleA("GameDll7.dll")) {
-                done[kGame] = true;
-                char path[MAX_PATH] = {};
-                GetModuleFileNameA(m, path, MAX_PATH);
-                spdlog::info("GameDll7.dll base = {:#x} (+{}ms) path={}", A(m), uptime_ms(), path);
-                install_game_hooks(m);
-            }
-        }
-
-        // ---- late device attach: engine already created its D3D8 device before we hooked ----
-        if (engine_ready && cfg.probe_hook_d3d && !g_api[0].dev_hooked) {
-            void* dev = rd(S.d3dd);
-            if (dev) {
-                void* d3d = rd(S.d3d);
-                spdlog::info("late attach: cRenderDX::m_d3dd={:#x} m_d3d={:#x}", A(dev), A(d3d));
-                if (d3d) hook_d3d_object(0, d3d);
-                hook_device(0, dev, "m_d3dd static (late)");
-            }
-        }
-
-        // ---- periodic state ----
-        const ULONGLONG now = GetTickCount64();
-        if (engine_ready) {
-            if (samples < cfg.probe_state_seconds) {
-                if (now >= next_sample) {
-                    spdlog::info("state t={}s {}", samples + 1, state_line());
-                    ++samples;
-                    next_sample += 1000;
-                }
-            } else if (now - last_change_log > 2000) {
-                std::string s = state_line();
-                if (s != last_state) {
-                    spdlog::info("state(change) {}", s);
-                    last_state = std::move(s);
-                    last_change_log = now;
-                }
-            }
-        }
-
-        if (!warned_timeout && now - start > static_cast<ULONGLONG>(cfg.module_wait_timeout_ms)) {
-            warned_timeout = true;
-            for (int i = 0; i < kCount; ++i)
-                if (!done[i]) spdlog::warn("probe: task {} still pending after {}ms", i, cfg.module_wait_timeout_ms);
-            // keep sampling state changes but stop expecting modules
-            for (int i = 0; i < kCount; ++i) done[i] = true;
-        }
-        Sleep(static_cast<DWORD>(cfg.poll_ms));
+void tick() {
+    if (!g_active || !g_cfg.probe_hook_d3d || g_d3d9_logged) return;
+    try_hook_d3d_create(1);
+    if (g_api[1].create) {
+        g_d3d9_logged = true;
+        spdlog::info("d3d9.dll loaded; Direct3DCreate9 hook ready (+{}ms)", uptime_ms());
     }
 }
 

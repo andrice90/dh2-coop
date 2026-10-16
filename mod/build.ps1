@@ -1,4 +1,4 @@
-# Builds dh2coop.asi (Win32/x86, Release, static CRT) and installs it into game\Bin.
+﻿# Builds dh2coop.asi (Win32/x86, Release, static CRT) and installs it into game\Bin.
 # Usage:  .\mod\build.ps1 [-Config Release|RelWithDebInfo|Debug] [-Clean] [-NoInstall] [-ForceIni]
 param(
     [ValidateSet('Release', 'RelWithDebInfo', 'Debug')][string]$Config = 'Release',
@@ -45,7 +45,7 @@ cmake -S "$modDir" -B "$buildDir" -G Ninja -DCMAKE_BUILD_TYPE=$Config -DCMAKE_C_
 cmake --build "$buildDir" || exit /b 1
 "@ | Set-Content -Encoding ASCII $bat
 
-& cmd.exe /c "`"$bat`""
+& cmd.exe /c "`"$bat`" 2>&1"
 if ($LASTEXITCODE -ne 0) { throw "build failed (exit $LASTEXITCODE)" }
 
 $asi = Join-Path $buildDir 'dh2coop.asi'

@@ -32,12 +32,14 @@ Config load_config(const std::string& path) {
         w("General", "LogLevel", c.log_level);
         w("General", "PollMs", std::to_string(c.poll_ms));
         w("General", "ModuleWaitTimeoutMs", std::to_string(c.module_wait_timeout_ms));
-        w("Probe", "Enabled", "1");
+        w("Probe", "Enabled", "0");
         w("Probe", "HookD3D", "1");
         w("Probe", "HookNet", "1");
         w("Probe", "HookMap", "1");
         w("Probe", "HookConsole", "1");
         w("Probe", "StateSeconds", std::to_string(c.probe_state_seconds));
+        w("Coop", "AllowMultiInstance", "1");
+        w("Console", "ExecAfterMap", "");
     }
 
     c.log_level = get_str("General", "LogLevel", c.log_level, f);
@@ -50,7 +52,17 @@ Config load_config(const std::string& path) {
     c.probe_hook_map = get_bool("Probe", "HookMap", c.probe_hook_map, f);
     c.probe_hook_console = get_bool("Probe", "HookConsole", c.probe_hook_console, f);
     c.probe_state_seconds = get_int("Probe", "StateSeconds", c.probe_state_seconds, f);
+
+    c.allow_multi_instance = get_bool("Coop", "AllowMultiInstance", c.allow_multi_instance, f);
+    c.exec_after_map = get_str("Console", "ExecAfterMap", c.exec_after_map, f);
     return c;
 }
+
+namespace {
+Config g_config;
+}
+
+const Config& config() { return g_config; }
+void set_config(const Config& cfg) { g_config = cfg; }
 
 }  // namespace dh2::core
