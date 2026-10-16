@@ -10,4 +10,5 @@ You are a worker agent on a co-op mod for the 2005 PC game Cabela's Dangerous Hu
 6. Ghidra: use `.\re\scripts\decomp.ps1 -Slot <your slot> ...` only with the slot letter your job assigns. Never run two Ghidra processes on the same slot at once. Extra Ghidra Java scripts already exist in `re\scripts\` (XrefStrings, CallersDecomp, DecompileAt, DataRefs, DumpPtrs, Probe); read them before writing new ones. `re\scripts\ghrun.ps1` may be a generic runner; check its header.
 7. Separate verified from inferred. Mark anything not directly shown by code, data or logs as `UNVERIFIED`.
 8. Raw decompiler dumps go in `re\notes\` as `*.c` or `*.txt` (gitignored). Summaries go in the `.md` deliverables.
-9. When done, print a final summary of at most 250 words: what you found, the deliverables written, and open questions.
+9. Write your deliverable incrementally: create it early with section headings and fill sections as you go, so partial results survive if you are cut off. Keep a `## Progress` line at the top (what's done / what's left).
+10. When done, print a final summary of at most 250 words: what you found, the deliverables written, and open questions.

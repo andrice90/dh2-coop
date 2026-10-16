@@ -1,0 +1,28 @@
+# Mod implementation learnings
+
+Practical knowledge for building, injecting, hooking, testing and orchestrating. Engine facts live in `MEMORY.md`; this file is about *how to work*. Add an entry whenever something cost time to figure out. Format: learning — evidence/date.
+
+## Toolchain
+- VS 2022 Build Tools (MSVC 14.44.35207, Windows SDK 10.0.26100) at `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools`. `vcvars32.bat` fails silently unless `${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer` (vswhere) is on PATH first — 2026-10-15.
+- 32-bit build confirmed (`sizeof(void*)==4`) — 2026-10-15.
+- winget's VS BuildTools install "fails" with exit 1 when it is already installed; check `dd_installer_*.log` for "already installed" before assuming breakage — 2026-10-15.
+- Mod deps (CMake FetchContent, `mod/CMakeLists.txt`): safetyhook v0.7.0, spdlog v1.17.0, Dear ImGui v1.93.0, ENet v1.3.18. Static CRT (`/MT`), output `dh2coop.asi`. Build: `mod\build.ps1` (copies ASI + ini to `game\Bin`).
+- Python: use `py` (3.14); the `python` alias is the Microsoft Store stub. `pefile` installed for user.
+- Ghidra 12.1.4 + Temurin JDK 21 (`JAVA_HOME` set at user level). Headless projects: master `re/ghidra/DH2`, per-worker copies `re/ghidra-slots/<Letter>` (a Ghidra project allows one process at a time). `re/scripts/decomp.ps1` ≈ 7 s per call.
+
+## Injection and launch
+- Ultimate ASI Loader v9.7.4 works as `game\Bin\dinput8.dll` (EngineDll7 imports DINPUT8, so the proxy loads early). Our `dh2coop.asi` and the AlphaYellow FOV fix coexist — 2026-10-15.
+- Launch must be `Main7.exe +mod data` with working dir `Bin`; otherwise the home path is wrong and nothing loads. Use `run-game.ps1` (auto-mounts the disc image via `VCDMount.exe`) — 2026-10-15.
+- All engine DLLs relocate (EngineDll7 seen at 0x00CA0000; GameDll7 at 0x0E570000). Resolve by export name or pattern, log as `Module+RVA` — 2026-10-15.
+- `GameDll7.dll` is loaded late (≈30 s after process start in a `-developper -cheats` run, after intro/menu setup) and from `game\data\`. The probe catches it with `LdrRegisterDllNotification`; hooks into GameDll7 must be installed from that callback, not at ASI init — dh2coop.log 2026-10-15.
+
+## Hooking
+- safetyhook inline hooks on mangled exports (resolved with `GetProcAddress`) work: `cCmdLine::Search`, `cConsole::Exec`, `cBspTree::Load`, `cHunterProfile::{GetMapToBeStarted,GetLastmap,SetLastMap,SetCurrentMission,SetMapIsComplete}` — dh2coop.log 2026-10-15.
+- Renderer is D3D8: one `IDirect3DDevice8`; `Present` called from `EngineDll7+0x354cfd`, `EndScene` from `EngineDll7+0x354b63`. `Direct3DCreate8` is called 3×, `Direct3DCreate9` 1× (probe/enumeration only; no D3D9 device) — dh2coop.log. Overlay (ImGui) must use a DX8 path (ImGui has no DX8 backend: use d3d8to9 or a custom DX8 renderer).
+
+## Orchestration
+- Workers: Grok Build CLI `grok` pinned to `-m grok-4.7`, headless via `tools-src/grokjob.ps1` (prompt `re/jobs/<name>.md` + `_rules.md`). Permission mode `auto` works headless (runs shell, writes files). `bypassPermissions` is blocked by Claude Code's auto-mode classifier — don't use it — 2026-10-16.
+- `--output-format plain` prints only at the end; a running job's log shows just the start line.
+- `cursor-agent` also works (`grok-4.7-*` models listed) but was ~4× slower than `grok` on the same prompt (150 s vs 37 s) — 2026-10-16.
+- Claude subagents can hit session usage limits mid-task and die without writing summaries. Mitigation: workers write deliverables incrementally; lead keeps `STATUS.md` current.
+- Only one worker per wave launches the game (shared sandbox, single disc mount, DirectInput exclusive mode).

@@ -58,11 +58,15 @@ Host-run mission scripts, client teleport on load, mission flags replicated, mel
 
 | Tier | Model | Owns |
 |---|---|---|
-| Lead | Opus 5.5 | Net-layer RE (Track A), object model (B), route decision, sync architecture, hard hooks, review of Sonnet output |
-| Builder | Sonnet 5.5 | Mod skeleton, ENet/overlay code, `data.arc` extractor (C), renderer probe (E), Ghidra scripts |
-| Grunt | Haiku 5.5 | Export catalog classification, string dumps, Lua file inventory, MEMORY.md bookkeeping, test checklists |
+| Lead / orchestrator | Claude Opus 5.5 (main session) | Job specs, review of every deliverable, route decision, sync architecture, merging verified facts into `MEMORY.md`, commits |
+| Workers | Grok 4.7 via Grok Build CLI (`grok`, headless) | All defined work: RE tracks, builds, runtime experiments, catalogs, tooling. Effort `xhigh` for critical RE, `high` by default, `medium` for mechanical jobs |
+| Escalation | Claude Opus subagent | Only when a Grok deliverable fails review twice or a task needs deep cross-checking |
 
-Rules: every agent reads `CLAUDE.md` + `MEMORY.md` first; writes findings to `re/notes/` and verified facts to `MEMORY.md` with evidence (address, export name, or log line); never touches the original install; one owner per file per wave.
+Mechanics (since 2026-10-16): a job is a prompt file `re/jobs/<name>.md` (with `re/jobs/_rules.md` prepended) run by `tools-src/grokjob.ps1 -Name <name> [-Effort high]`. It uses Grok permission mode `auto` (never `bypassPermissions`) and writes its log to `re/jobs/<name>.out.log`. Each Ghidra job gets its own slot letter. Exactly one job per wave owns game launches.
+
+Rules: workers read `CLAUDE.md`, `MEMORY.md` and `PLAN.md` first; write only their listed deliverables, and put verified facts in a `## Proposed MEMORY facts` section that the lead merges after review. They never touch the original install and never commit.
+
+History: wave 1 (2026-10-15) used Claude Opus/Sonnet/Haiku subagents; the Haiku track finished, and the others were cut off by usage limits after producing raw dumps, the arc extractor and the mod probe. Wave 1b (2026-10-16) re-ran tracks A–E on Grok from those artifacts.
 
 ## Decisions (user, 2026-10-15)
 - Slow motion: **disabled for all players** in co-op (no host-only mode).

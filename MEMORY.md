@@ -1,6 +1,6 @@
-# Verified facts
+# Verified facts — engine and decompilation learnings
 
-Format: fact — evidence. Add only verified items; hypotheses go in `re/notes/`.
+Format: fact — evidence. Add only verified items; hypotheses go in `re/notes/`. Mod/build/tooling learnings go in `docs/mod-learnings.md`; current progress in `STATUS.md`.
 
 ## Build identity
 - Version: `DNGH2 (build 434 - Nov  1 2005)`, game/interface version 1.0 — `Bin\debug.log` lines 1, 19-20.

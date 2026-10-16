@@ -1,6 +1,18 @@
 # DH2 Co-op mod — agent guide
 
-Read `MEMORY.md` (verified facts) and `PLAN.md` (roadmap) before any work. Background: `docs/research-packet.md`.
+**Start every session with `STATUS.md`** (current step, in-flight jobs, next steps, resume protocol).
+
+## Doc map (keep current — sessions can be cut off at any time)
+| File | Holds | Who updates |
+|---|---|---|
+| `STATUS.md` | Where we are now: phase, in-flight jobs, next steps, recent results | Lead, after **every** step |
+| `PLAN.md` | Roadmap, phases, decisions, orchestration model | Lead, when scope/decisions change |
+| `MEMORY.md` | Verified engine/decompilation facts with evidence | Lead only (merges workers' "Proposed MEMORY facts") |
+| `docs/mod-learnings.md` | Build, injection, hooking, testing and orchestration learnings | Lead (from worker reports) |
+| `re/notes/*.md` | Per-topic RE detail and hypotheses | Workers (their deliverables) |
+| `re/jobs/*.md`, `*.out.log` | Worker job specs and logs | Lead writes specs; runner writes logs |
+
+Lead rule: after any meaningful step, update `STATUS.md` (and the other docs it touches), then `git commit`. Background: `docs/research-packet.md`.
 
 ## Layout
 - `game/` — sandbox copy of the retail install. All runtime tests and mod installs go here.
