@@ -30,6 +30,14 @@ forward their hits to the host.
 - Result: drift ≤ 0.02 m (string rounding), and the deer is visible in front (antlers in frame `animal-0.png`, 15:34). User visual confirmation pending at the time of writing.
 - Better later: call phys vt `+0xa8` directly with a tVect3 (no string formatting).
 
+### Placement timing
+- **Place in pre-render, not OnFrame.** The frame order is sim/physics → render → Present (our OnFrame). Positions set in OnFrame are moved by physics before the next draw, which caused the user-seen above/below flashing.
+- `player_tracker` now calls `SetPreRenderCallback(fn)` from the first `cRender::SetCamera` of each frame (game thread, map loaded). After the move, the user saw "better", with the deer circling and running.
+- Remaining spike artifacts, which are test-only:
+  - Fixed y (feet + 0.7 m) sinks into the terrain.
+  - The circle follows the hunter.
+  - The deer is invisible over part of the circle (user, by clock position: visible 10–1 o'clock, gone 2–6, one frame at 6). Probably underground or BSP-culled on that side. Re-check with real host positions (P4b); if it persists there, compare the world AABB/BSP link (`+0x124`) of a visible vs an invisible frame.
+
 ## Design (host-authoritative)
 
 ### Host
@@ -51,6 +59,14 @@ forward their hits to the host.
 - Client shots hit the client's local copy (hit bones, `AddHitBone` in scripts).
 - Hook the damage entry on clients (`FuncInflictDamage`, CommonDll7 `0x9a540`, subtracts `+0x19C`). Cancel it locally and send `AnimalHit {id, damage, hit bone/pos, shooter}` reliably to the host.
 - The host applies it with the same function → health/death replicate via `AnimalStates` plus the death state name.
+
+### Hits: simpler variant (preferred, no hook)
+- `cAIHuntAnimalInterface::FuncInflictDamage(void* animal, float dmg)` (CommonDll7 `0x9a540`, export `?FuncInflictDamage@cAIHuntAnimalInterface@@KAXPAXM@Z`, static `__cdecl`) only does `*(float*)(animal+0x19C) -= dmg`.
+- **Client:** each frame, compare every animal's local health `+0x19C` with the last value written from the host.
+  - A drop of `d` means a local bullet hit: send `AnimalHit {id, d}` reliably, then write the host value back.
+  - The brain is frozen, so no local death logic runs. Verify that a frozen animal still takes bullet damage.
+- **Host:** on `AnimalHit`, call `FuncInflictDamage(animal, d)`. The host's own scripts handle hurt/flee/death. Health and state replicate in `AnimalStates`.
+- Open: hit-reaction triggers (flee) may come from the hit event, not health. Check on the host after a remote hit whether the deer flees. If not, also call the hit event (`cScrEntity::Hurt` path / animal vfunc `+0x14c`).
 
 ### Open questions (next experiments)
 1. Does a frozen brain plus our per-frame position fully stop the deer's own locomotion? Check over 30 s, with drift logged per frame.

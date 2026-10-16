@@ -15,7 +15,11 @@ New session? Follow **Resume protocol** at the bottom. This file is the single s
 User-confirmed: movement, rotation, speed, armed poses, fire and reload, weapon-in-hand alignment and the muzzle flash. Not yet seen by the user: shotgun/rifle (left hand) and the crouch pose.
 
 ## In flight
-Nothing. No Grok jobs running. Two game windows may be open for the user's weapon check.
+| Job | Owner | Log | Deliverable |
+|---|---|---|---|
+| p4a-net-animals (high, started ~15:40) | Grok 4.7, no game | `re/jobs/p4a-net-animals.out.log` | `AnimalStates`/`AnimalHit` messages in `mod/src/net/*`, tests, `docs/net-protocol.md`, `re/notes/p4a-net-animals.md` |
+
+Phase 4 lead work in progress: the animal control experiment (`mod/src/coop/animals.cpp`, `re/notes/lead-animals.md`). A single game with `[Animals] Spike=1` is open for the user's visual check.
 
 ## Latest results (14:30–15:22)
 - **Actions networked** (`7ebea6f`):

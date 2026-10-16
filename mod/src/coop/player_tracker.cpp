@@ -75,8 +75,13 @@ bool g_frame_cam_taken = false;
 RenderCam g_view_cam;             // world camera of the last completed frame
 bool g_view_cam_valid = false;
 int g_setcam_log = 0;             // diagnostic: log the first N SetCamera calls
+void (*g_prerender)() = nullptr;  // SetPreRenderCallback
+std::atomic<DWORD> g_main_tid{0}; // game thread (set from OnFrame)
+bool g_map_ready = false;         // local hunter known (set from Scan)
 
 void __fastcall hk_SetCamera(void* self, void* /*edx*/, const char* cam) {
+    if (cam && !g_frame_cam_taken && g_prerender && g_map_ready && GetCurrentThreadId() == g_main_tid.load())
+        g_prerender();
     if (cam && !g_frame_cam_taken) {
         RenderCam c;
         if (core::safe_read(cam + 0x84, c.x) && core::safe_read(cam + 0xA4, c.z) && core::safe_read(cam + 0xB4, c.pos) &&
@@ -231,6 +236,8 @@ public:
     }
 
     void OnFrame(float dt) override {
+        g_main_tid.store(GetCurrentThreadId());
+        g_map_ready = g_local.valid;
         // Present closes the frame: publish this frame's world camera, arm for the next frame.
         if (g_frame_cam_taken) {
             g_view_cam = g_frame_cam;
@@ -475,5 +482,6 @@ bool SampleLocalNow(LocalPlayerSample& out) {
 }
 int AnimalCount() { return g_animals; }
 const std::vector<void*>& Animals() { return g_animal_list; }
+void SetPreRenderCallback(void (*fn)()) { g_prerender = fn; }
 
 }  // namespace dh2::coop

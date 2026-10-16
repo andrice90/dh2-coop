@@ -41,6 +41,9 @@ bool SampleLocalNow(LocalPlayerSample& out);
 int AnimalCount();
 // Animal entities (cScrAnimal, GameDll7 vtable +0xff470) from the last 1 s scan, in manager index order.
 const std::vector<void*>& Animals();
+// Called once per frame on the game thread from the first cRender::SetCamera of the frame: after the sim/physics
+// step, before anything is drawn. Place remote-driven entities here so the drawn pose is ours, not physics'.
+void SetPreRenderCallback(void (*fn)());
 // Live cObjManager (captured from AddEntity), nullptr until the first spawn.
 void* EntityManager();
 // The local hunter's model_name key (e.g. "Objects/Characters/Teenm/Body/teenmm.skin,game.ap,HUNTMAP4.ap"); "" if unknown.

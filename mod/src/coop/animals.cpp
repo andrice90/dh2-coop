@@ -29,6 +29,10 @@ constexpr uintptr_t kEntPos = 0xE8;
 constexpr uintptr_t kEntWorldBox = 0xC4;
 constexpr uintptr_t kEntHealth = 0x19C;
 
+class AnimalsModule;
+extern AnimalsModule* g_self;
+void prerender();
+
 bool g_log_states = true;
 bool g_spike = false;
 bool g_spike_unlink = true;   // [Animals] SpikeUnlink
@@ -49,6 +53,8 @@ public:
         GetPrivateProfileStringA("Animals", "SpikeYOffset", "0.7", y, sizeof y, ini_path().c_str());
         g_spike_y = static_cast<float>(std::atof(y));
         spdlog::info("animals: logStates={} spike={}", g_log_states, g_spike);
+        g_self = this;
+        SetPreRenderCallback(&prerender);
     }
 
     void OnMapLoaded(const char*) override {
@@ -118,6 +124,26 @@ private:
                          rel_[4], rel_[5]);
         }
         t_ += dt;
+        const float drift = drift_;
+        const entity::Vec3 pos = pos_;
+        // Every 4 s switch to the next state name seen on the free animals.
+        state_t_ += dt;
+        if (state_t_ >= 4.f && !seen_.empty()) {
+            state_t_ = 0.f;
+            std::vector<std::string> names(seen_.begin(), seen_.end());
+            const std::string& want = names[state_idx_++ % names.size()];
+            const int r = entity::SetBodyState(spike_, want.c_str(), false);
+            spdlog::info("animals: spike set state '{}' -> {} now '{}' drift={:.3f} pos=({:.1f},{:.1f},{:.1f})", want, r,
+                         entity::BodyStateName(spike_), drift, pos.x, pos.y, pos.z);
+        }
+    }
+
+public:
+    // Pre-render (after sim/physics, before drawing): put the controlled deer where we want it.
+    void Place() {
+        if (!spike_) return;
+        const auto& local = LocalPlayer();
+        if (!local.valid) return;
         // Check last frame's placement survived the sim step (physics would snap it back).
         Vec3 now;
         core::safe_read(static_cast<char*>(spike_) + kEntPos, now);
@@ -145,18 +171,11 @@ private:
         box[3] = pos.x + rel_[3]; box[4] = pos.y + rel_[4]; box[5] = pos.z + rel_[5];
         entity::BspUpdate(spike_);
         last_ = {pos.x, pos.y, pos.z};
-        // Every 4 s switch to the next state name seen on the free animals.
-        state_t_ += dt;
-        if (state_t_ >= 4.f && !seen_.empty()) {
-            state_t_ = 0.f;
-            std::vector<std::string> names(seen_.begin(), seen_.end());
-            const std::string& want = names[state_idx_++ % names.size()];
-            const int r = entity::SetBodyState(spike_, want.c_str(), false);
-            spdlog::info("animals: spike set state '{}' -> {} now '{}' drift={:.3f} pos=({:.1f},{:.1f},{:.1f})", want, r,
-                         entity::BodyStateName(spike_), drift, pos.x, pos.y, pos.z);
-        }
+        drift_ = drift;
+        pos_ = pos;
     }
 
+private:
     std::map<void*, std::string> states_;
     std::set<std::string> seen_;
     void* spike_ = nullptr;
@@ -164,7 +183,14 @@ private:
     size_t state_idx_ = 0;
     float rel_[6] = {};
     Vec3 last_;
+    float drift_ = 0.f;
+    entity::Vec3 pos_;
 };
+
+AnimalsModule* g_self = nullptr;
+void prerender() {
+    if (g_self) g_self->Place();
+}
 
 DH2_MODULE(AnimalsModule)
 
