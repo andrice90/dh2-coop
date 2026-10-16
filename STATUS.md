@@ -1,6 +1,6 @@
 ﻿# STATUS — resume here
 
-**Last updated:** 2026-10-16 09:40 (America/Chicago, from the system clock) by the Claude lead session.
+**Last updated:** 2026-10-16 09:55 (America/Chicago, from the system clock) by the Claude lead session.
 
 New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap, `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail. Times below come from job logs / `Get-Date` (earlier entries before 09:40 were estimated and ran ahead of the clock; corrected here).
 
@@ -10,7 +10,6 @@ New session? Follow **Resume protocol** at the bottom. This file is the single s
 ## In flight
 | Job | Started | Owner | Log / notes | Deliverable |
 |---|---|---|---|---|
-| p2c-net (high) | 09:20 | Grok 4.7, no game, no Ghidra | `re/jobs/p2c-net.out.log` | `mod/src/net/**` (Session, protocol v1, interpolation), `mod/net-test/` (`dh2net_test.exe`), `docs/net-protocol.md`, `re/notes/p2c-net.md` |
 | p2a-framework (high) | 09:34 | Grok 4.7, **owns game launches** | `re/jobs/p2a-framework.out.log` | scaffolding only: module system, probe→module, D3D8 Present `OnFrame`, basic `console::Exec`, multi-instance mutex hook, `run-coop-local.ps1`, crash dumps; `docs/mod-architecture.md`, `re/notes/p2a-runtime.md` |
 | lead-expert (main thread) | 09:30 | Claude Opus (lead) | analysis done: `re/notes/lead-console-cmds.md`, `lead-slowmo.md`, `lead-player-tracker.md` | implement `mod/src/engine/console_cmds.*`, `mod/src/coop/{coop,slowmo,player_tracker}.*` on top of the framework once p2a lands; then runtime-verify |
 
@@ -23,12 +22,12 @@ File ownership: p2c → `mod/src/net/**`, `mod/net-test/**`; lead → `mod/src/e
 
 ## Next steps (in order)
 1. When p2a lands: review it (clean build, runtime proofs), then lead implements console commands, slow-mo hook, player tracker on its module API and verifies in a `-spmap HUNTMAP4` run (angle component order/units, vtable histogram).
-2. When p2c lands: review (clean build of `mod/net-test`, run `dh2net_test.exe`, read protocol doc).
 3. **P2b overlay** (Grok scaffold + lead review): Dear ImGui on D3D8 via the framework's device/Present hook; F8 toggle; status + debug panels.
 4. **P2d integration** (lead): wire `coop::RequestHost/RequestJoin` → `net::Session`, 20 Hz `PlayerState` from the tracker, two-instance proof with `run-coop-local.ps1` = **Phase 2 exit**.
 5. Phase 3 ghost mode (lead-designed): puppet spawn driven by interpolated remote state.
 
 ## Done
+- **p2c-net (09:53)** — `mod/src/net/` (`net::Session` host/join/Service, protocol v1, `interp`), `mod/net-test/` (`dh2net_test.exe`), `docs/net-protocol.md`, `re/notes/p2c-net.md`. Lead review: clean rebuild + 932/932 checks pass twice; code read (non-blocking service loop, host rewrites client ids before relay, unreliable state on channel 1, deferred close). Fixed `build.ps1` stderr handling. Open: which hunter fields feed yaw/pitch/flags/weapon/health (lead tracker work), ENet peer-timeout behaviour untested.
 - **Phase 1** — six tracks reviewed and merged into `MEMORY.md`: A net layer → Route E; B object model; C assets; D loop/console; E runtime; F catalog/strings (see `re/notes/`).
 - Phase 0 (2026-10-15): tools, sandbox `game\`, ASI route proven.
 
