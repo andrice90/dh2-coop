@@ -40,5 +40,15 @@ Format: fact — evidence. Add only verified items; hypotheses go in `re/notes/`
 - ASI route works: Ultimate ASI Loader v9.7.4 as `Bin\dinput8.dll` loads `.asi` files from `Bin\` — FOV fix v1.1 logged "loaded" and resolved `EngineDll7.dll+2fe07` (FOV) and `+2fe1d` (aspect).
 - Disc image must be mounted (Virtual CloneDrive, `VCDMount.exe <ccd>`) before launch.
 
+## Net layer (Track A, `re/notes/net-layer.md`; reviewed 2026-10-16)
+- Single player is NOT client/server over a socket or loopback. The "server" is `cSpServer` inside Main7.exe (ctor RVA `0x1b390`, `StartGame` `0x1ed80`, `StartListen` `0x1ba40`, `ClJoin` `0x1e410`, `ClientJoinGame` `0x1e0c0`): one in-process object that loads the map, spawns the hunter via GameDll (`MOD_SvCreatePlayerEntity`/`MOD_SvSpawnPlayerEntity`) and passes bytes between its own `cByteStream`s. `[SERVER] loading time ... client: N` measures `ClJoin`, not a network client.
+- `cSpServer` state at `+0x28`: 0 NotStarted, 1 Listening, 2 GameStarting, 3 GameStarted (table Main7 RVA `0x3bae0`). Client-info state `+0x1fd4`: 0 Joining … 3 GameStarted, ctor writes 4 (table `0x3bb04`). `Update` (`0x1bcd0`) ticks the world only in state 3.
+- `cNetServer`/`cNetClient`/`cObjManager::SetDriverType` (`0xaad50`) are exported by EngineDll7 but imported by no other binary and called nowhere; `m_nDriverType` (RVA `0x5826e0`) stays 0 — lead re-checked imports with pefile; probe shows `driverType=0`.
+- No binary imports `WSAStartup` (lead re-checked). Any use of engine sockets needs our ASI to call it first.
+- `cRdpDriver` (vtable `0x43e844`, unnamed class) is a working reliable-UDP transport: opcodes `0x01` connect … `0x0b` server info, reliable/unreliable payloads `0x04`/`0x09` with seq + u16 length. Payload is an opaque byte pipe; no entity replication exists anywhere (`cObjEntity::ClientSpawn` `0xabc90` and `ClientCommand` `0xb9480` are empty).
+- `sv_multiplayer` (default 0) is never branched on; `StartListen` writes `"0"` into it each map load. `sv_port` default 27318 (`0x6ab6`), read only by `GetListenPort` (`0x21610`, no callers). `cl_join` has no console handler. `-join`/`-dedicated` let a second process pass the `"GI UNIQUE MUTEX"` single-instance check (`FUN_00401dd0`, Main7 `0x1dd0`); `-dedicated` also sets `r_api 0; snd_usesound 0` (no rendering).
+- Runtime (Track E, 2026-10-16): no UDP endpoint is bound in baseline, `-dedicated`, `-join 127.0.0.1`, `sv_multiplayer 1` via `Cfg\console.cfg`, or `-map` runs — `re/notes/runtime-*-udp.txt`. `-map` execs a nonexistent console symbol (`[CONSOLE ] symbol 'map' not found!`).
+- GameDll `MOD_SvParseMessage` (GameDll7 `0x3140`) handles only in-process message ids `0x87` and `0xff`.
+
 ## Disc image
 - CloneCD set `Dngh2.ccd/.img/.sub/.cue`: track 1 MODE1/2352 data, track 2 audio — `.cue`. Mounts with Virtual CloneDrive.

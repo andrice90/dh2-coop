@@ -74,5 +74,9 @@ History: wave 1 (2026-10-15) used Claude Opus/Sonnet/Haiku subagents; the Haiku 
 - Cheat Engine: **not used** (Windows Defender blocks the installer as PUA). Memory work uses ReClass.NET, x32dbg, and logging/memory-dump panels inside our own ASI.
 - Game window may pop up during automated runtime tests.
 
+## Decisions (lead, 2026-10-16)
+- **Route E chosen** (Phase 1 gate): custom sync layer on ENet inside our ASI; host-authoritative. The engine's `cRdpDriver`/`cNetServer` are dead code with no replication, and single player has no client/server split to reuse (`re/notes/net-layer.md`, runtime UDP checks). Borrow the *shape* of `cSpServer` (host ticks world, client is a view). Reuse from the engine only: `-join`/`-dedicated`-style mutex bypass knowledge for running two instances on one PC (needed for local testing).
+- Two local instances need the `"GI UNIQUE MUTEX"` check bypassed; our ASI should handle this (hook `CreateMutexA` or pass `-join`) rather than relying on `-dedicated` (which disables rendering).
+
 ## Open decisions
 - Project name for release (neutral, no trademarks).
