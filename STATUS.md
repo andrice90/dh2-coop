@@ -8,9 +8,13 @@ New session? Follow **Resume protocol** at the bottom. This file is the single s
 **Phase 2 done. Phase 3 (ghost mode) in progress — puppet rendering SOLVED (~11:45).**
 Two instances connect, exchange PlayerState at 20 Hz, show each other in the F8 overlay. Puppets are now visible: the player model is first-person arms only, so puppets use an NPC body (`[Puppets] Model=objects/npc/mountainguide/mountainguide.skin,game.ap`). Next: two-instance ghost test (each window shows the other player's puppet moving).
 
-## In flight
-Nothing running. `re/jobs/p3-puppet-visibility.md` is **obsolete** (solved) — do not run it.
-**Ready for Grok (well-defined, mechanical):** `re/jobs/p3-anim-names.md` → `.\tools-src\grokjob.ps1 -Name p3-anim-names -Effort high` (lists NPC animation names so puppets get correct idle/walk/run; lead applies the mapping in `puppets.cpp` afterwards).
+## In flight (started ~12:00, Claude session paused at usage limit — review both when back)
+| Job | Owner | Log | Deliverable |
+|---|---|---|---|
+| p3-anim-names (high) | Grok 4.7, no game | `re/jobs/p3-anim-names.out.log` | `re/scripts/ap_list.py`, `re/notes/anim-names.md` (idle/walk/run names; lead then updates `pick_anim` in `puppets.cpp`) |
+| p3-side-by-side (high) | Grok 4.7, **owns game launches** | `re/jobs/p3-side-by-side.out.log` | `run-coop-local.ps1` side-by-side + `-Capture`, `re/notes/p3-side-by-side.md` (background-stall measurements, screenshots in `re/notes/coop-local/`) |
+
+`re/jobs/p3-puppet-visibility.md` is **obsolete** (solved) — do not run it. The background-stall *fix* (next step 0) is lead work, not Grok.
 
 ## Latest result (~11:50)
 Two-instance run (`run-coop-local.ps1 -Seconds 120`): **both instances spawned a puppet for the other player** (`puppets: spawned puppet (remote 1)` on host, `(remote 0)` on client) and switched animations idle → walk/forward → run/forward from the remote player's networked speed. No crashes. Visual confirmation from the user pending.
