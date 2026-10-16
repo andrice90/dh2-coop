@@ -1,6 +1,6 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-16 15:47 (America/Chicago, system clock) by the Claude lead session.
+**Last updated:** 2026-10-16 15:55 (America/Chicago, system clock) by the Claude lead session.
 
 New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap, `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail.
 
@@ -29,7 +29,7 @@ User-confirmed: movement, rotation, speed, armed poses, fire and reload, weapon-
 ## In flight
 | Job | Owner | Log | Deliverable |
 |---|---|---|---|
-| p4a-net-animals (high, started 15:36) | Grok 4.7, no game | `re/jobs/p4a-net-animals.out.log` | `AnimalStates`/`AnimalHit` messages in `mod/src/net/*` (uncommitted, in progress), tests, `docs/net-protocol.md`, `re/notes/p4a-net-animals.md` |
+| (none) | | | **p4a-net-animals finished 15:49, lead-reviewed and committed `14250e0`** (3294 tests pass). Next: P4b per `docs/handoff-grok-p4.md`. |
 ## Latest results (14:30–15:22)
 - **Actions networked** (`7ebea6f`):
   - Tracker polls per frame: weapon state `Fire`/`Reload` via `cObjItemEx::GetCurrentState`, crouch from eye height (< 1.40 m), and weapon kind from the active item's model name.

@@ -36,7 +36,9 @@ This is a co-op mod for Cabela's Dangerous Hunts 2 (2005, Chameleon engine, D3D8
   - Each frame, in the **pre-render callback**: `HandleKey(animal, "position", "<x*100> <y*100> <z*100>")` and `HandleKey(animal, "angle", "0 <yaw> 0")`, then a world AABB refresh + `BspUpdate`.
   - Animation: `SetBodyState(animal, hostStateName, false)` when the host's state name changes. Deer states seen: `Walk`, `Run`, `IdleAttack`, `CutScene`, `PostPlayAnim`.
   - Damage: `cAIHuntAnimalInterface::FuncInflictDamage(void* animal, float dmg)` (CommonDll7, static cdecl) only subtracts health `+0x19C`.
-- **In flight:** `p4a-net-animals` (Grok job started 15:36, log `re/jobs/p4a-net-animals.out.log`). It adds the `AnimalStates`/`AnimalHit` messages in `mod/src/net/*` plus tests. If it finished, review it and run the tests. If it died (no `=== end` line in the log, no `grok` process), rerun with `.\tools-src\grokjob.ps1 -Name p4a-net-animals -Effort high`, or do it yourself from the spec.
+- **P4a done and lead-reviewed** (commit `14250e0`). `AnimalStates` (id 9) and `AnimalHit` (id 10) are in `mod/src/net/*`, with `Session::SendAnimalStates`/`SendAnimalHit` and events. 3294 net tests pass. Details: `re/notes/p4a-net-animals.md`, `docs/net-protocol.md`.
+  - Note: a 32-animal snapshot exceeds the ENet MTU. HUNTMAP4 has 5 animals (~200 B), so this is fine for now.
+  - The installed `game\Bin\dh2coop.asi` may be older than the source: run `mod\build.ps1` once with the game closed.
 
 ## Known issue to watch in P4b
 In the lead's solo experiment the controlled deer went invisible for part of the time **after large teleports**, even though the engine still called `Draw` on it every frame (`re/notes/lead-animals.md`, "Draw-hook result"). The first sync moves each client deer from its own random spawn point to the host's position, which is such a teleport.
@@ -44,10 +46,7 @@ In the lead's solo experiment the controlled deer went invisible for part of the
 - Don't dig into the engine skeleton code. That is lead work: write it into STATUS "Next steps".
 
 ## Your tasks, in order
-1. **P4a: finish and verify.**
-   - Run `mod\net-test\build.ps1` and the test exe: all old tests plus the new ones pass.
-   - Run `mod\build.ps1`: it compiles.
-   - Commit. Update STATUS.
+1. ~~P4a~~: done.
 2. **P4b: animal sync.** Implement exactly `re/jobs/p4b-animal-sync.md`: host broadcast at 20 Hz, client buffer + apply in pre-render, state-name mirroring, health write-back.
    - Test with two instances.
    - Then ask the user for a visual check: open the pair with `.\run-coop-local.ps1` (it leaves the windows running). The user closes the CHOOSE ITEM menu with Enter, Left, Enter. Ask them whether the same deer appear in the same places in both windows and move the same way.
