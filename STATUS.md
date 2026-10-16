@@ -13,7 +13,7 @@ New session? Follow **Resume protocol** at the bottom. This file is the single s
 | track-a-net (xhigh) | 2026-10-16 08:39 | Grok 4.7, slot A | `re/jobs/track-a-net.out.log` | `re/notes/net-layer.md` |
 | track-b-objmodel (restart #1) | 09:04 | Grok 4.7, slot B | `re/jobs/track-b-objmodel.out.log` | `re/notes/object-model.md`, `mod/src/game/types_draft.h` |
 | track-c-assets | 08:39 | Grok 4.7, slot C | `re/jobs/track-c-assets.out.log` | `re/notes/assets.md` |
-| track-d-loop | 08:39 | Grok 4.7, slot D | `re/jobs/track-d-loop.out.log` | `re/notes/timing.md`, `re/notes/console.md` |
+| track-d-loop (restart #1) | 09:10 | Grok 4.7, slot D | `re/jobs/track-d-loop.out.log` | `re/notes/timing.md`, `re/notes/console.md` |
 | track-e-runtime | 08:39 | Grok 4.7, slot E, **owns game launches** | `re/jobs/track-e-runtime.out.log` | `re/notes/renderer.md`, `re/notes/runtime-*.txt` |
 
 A job is finished when its log ends with `=== <name> end ... exit=N`. Plain-mode output only appears at the end, so a log with just the start line means "running or killed".
@@ -26,7 +26,7 @@ A job is finished when its log ends with `=== <name> end ... exit=N`. Plain-mode
 5. Pick MVP free-hunt test map (from assets.md).
 
 ## Blockers / risks
-- **A, C, D, E run under the old runner** (stderr bug): each dies the first time Grok auto-compacts. If one ends with exit 1 and no deliverable, rerun it with the fixed runner (`.\tools-src\grokjob.ps1 -Name <job> -Effort <effort>`; A uses `xhigh`).
+- **A, C, E run under the old runner** (B, D already restarted on the fixed one) (stderr bug): each dies the first time Grok auto-compacts. If one ends with exit 1 and no deliverable, rerun it with the fixed runner (`.\tools-src\grokjob.ps1 -Name <job> -Effort <effort>`; A uses `xhigh`).
 - No other blockers. Watch: Claude usage limits (keep Claude work to review + orchestration); two game instances on one PC may conflict (disc mount, DirectInput exclusive).
 
 ## Recent results (newest first)
