@@ -11,8 +11,11 @@ Two instances connect, exchange PlayerState at 20 Hz, show each other in the F8 
 ## In flight
 Nothing running. `re/jobs/p3-puppet-visibility.md` is **obsolete** (solved) — do not run it.
 
+## Latest result (~11:50)
+Two-instance run (`run-coop-local.ps1 -Seconds 120`): **both instances spawned a puppet for the other player** (`puppets: spawned puppet (remote 1)` on host, `(remote 0)` on client) and switched animations idle → walk/forward → run/forward from the remote player's networked speed. No crashes. Visual confirmation from the user pending.
+
 ## Next steps (in order)
-1. **Two-instance ghost test:** `.\run-coop-local.ps1 -Seconds 120` with `[Puppets] Spike=0` (default in `mod/dh2coop.ini`); each `dh2coop.log` should show `puppets: spawned puppet (remote N)`; user confirms each window shows the other player's NPC body moving. Then tune: puppet y offset (hunter pos y is eye/feet-relative?), anim names for NPC GAME.AP (`walk/forward`, `run/forward`; "idle" name unverified), facing (`SetAngle` yaw; check it matches movement).
+1. **Two-instance ghost test (logs ✔, visual pending):** `.\run-coop-local.ps1 -Seconds 120` with `[Puppets] Spike=0` (default in `mod/dh2coop.ini`); each `dh2coop.log` should show `puppets: spawned puppet (remote N)`; user confirms each window shows the other player's NPC body moving. Then tune: puppet y offset (hunter pos y is eye/feet-relative?), anim names for NPC GAME.AP (`walk/forward`, `run/forward`; "idle" name unverified), facing (`SetAngle` yaw; check it matches movement).
 2. Remove/guard the Draw diagnostic hook (only installed with `Spike=1`).
 3. Puppet animation quality: idle/walk/run via `SetAnim` (vt `+0x174`) from interpolated speed (already wired; verify visually).
 4. Phase 4 prep: animals — freeze brains on clients (`FreezeBrain`), host broadcasts transforms + body-command bits (`cAIHuntBrain_Animal::GetBodyCommands/SetBodyCommand`).
