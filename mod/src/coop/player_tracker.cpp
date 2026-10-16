@@ -59,6 +59,7 @@ std::atomic<uintptr_t> g_game_base{0};
 
 LocalPlayerSample g_local;
 int g_animals = 0;
+std::string g_hunter_model;
 
 void** resolve_manager_slot(HMODULE engine) {
     const uintptr_t base = reinterpret_cast<uintptr_t>(engine);
@@ -125,6 +126,7 @@ public:
     void OnMapLoaded(const char* bspName) override {
         map_ = bspName ? bspName : "";
         g_local = {};
+        g_hunter_model.clear();
         histogram_logged_ = false;
         animal_log_seconds_ = 0;
         since_scan_ = 1.f;  // scan soon
@@ -203,8 +205,9 @@ private:
             if (!g_local.valid) {
                 const char* model = nullptr;
                 core::safe_read(reinterpret_cast<char*>(hunter) + kEntModelName, model);
+                g_hunter_model = model ? core::safe_cstr(model, 200) : "";
                 spdlog::info("tracker: local hunter entity {:#x} id={} parent={} model_name='{}'",
-                             reinterpret_cast<uintptr_t>(hunter), s.id, parent, core::safe_cstr(model, 200));
+                             reinterpret_cast<uintptr_t>(hunter), s.id, parent, g_hunter_model);
             }
             g_local = s;
             spdlog::info("tracker: hunter pos=({:.2f},{:.2f},{:.2f}) ang=({:.3f},{:.3f},{:.3f})", s.pos.x, s.pos.y,
@@ -243,6 +246,8 @@ DH2_MODULE(PlayerTrackerModule)
 }  // namespace
 
 const LocalPlayerSample& LocalPlayer() { return g_local; }
+void* EntityManager() { return current_manager(); }
+const char* HunterModelName() { return g_hunter_model.c_str(); }
 
 bool SampleLocalNow(LocalPlayerSample& out) {
     if (!g_local.valid || !g_local.entity) return false;

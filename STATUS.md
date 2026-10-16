@@ -1,47 +1,43 @@
 ﻿# STATUS — resume here
 
-**Last updated:** 2026-10-16 10:22 (America/Chicago, system clock) by the Claude lead session.
+**Last updated:** 2026-10-16 11:35 (America/Chicago, system clock) by the Claude lead session (handoff at user's session limit).
 
 New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap, `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail.
 
 ## Current phase
-**Phase 2 — Mod skeleton: core exit criterion met (log-based).** Two instances on one PC connect over ENet and each logs the other's position at 20 Hz (`coop: remote ...` lines). Remaining for Phase 2: in-game overlay (P2b) and resolving the hunter position source.
+**Phase 2 done. Phase 3 (ghost mode) in progress — blocked on puppet rendering.**
+Two instances connect, exchange PlayerState at 20 Hz, show each other in the F8 overlay. Puppets (one third-person human per remote player) spawn and have collision but are **not drawn**.
 
 ## In flight
-| Job | Started | Owner | Log | Deliverable |
-|---|---|---|---|---|
-| p2b-overlay (high) | 10:32 | Grok 4.7, **owns build dir + game launches** | `re/jobs/p2b-overlay.out.log` | `mod/src/ui/**` (ImGui DX8 backend + F8 overlay from `coop::Snapshot()`), `mod/third_party/d3d8/**` (mingw-w64 headers), `re/notes/p2b-overlay.md` + screenshot |
-| lead puppets (main thread) | 10:35 | Claude Opus (lead) | `re/notes/lead-puppets.md` | static RE done (entity Lua lump, `HandleKey`, TEENM third-person model, `SetAnim`); next: runtime class dump (`dh2coop-classes.txt`) + one-puppet spike after p2b frees the build dir |
-
-While a Grok job owns `mod/build`, the lead compiles in `mod/build-lead` (gitignored) and does not launch the game.
+Nothing running. **Next job ready to hand to Grok:** `re/jobs/p3-puppet-visibility.md` (run with `.\tools-src\grokjob.ps1 -Name p3-puppet-visibility -Effort high`). Note: the delegation policy puts expert engine work in the Claude lead/Opus; this hand-off is the user's explicit choice at a session limit — review the result in the next Claude session.
 
 ## Next steps (in order)
-1. Review p2b when it lands (build, screenshot, code read of the DX8 backend state handling).
-2. **Phase 3 puppet spike (lead):** run once to get `game\Bin\dh2coop-classes.txt` + hunter `model_name`; pick the entity class; spawn one puppet after map load (`CreateEntity` → `HandleKey("model_name", teenm skin + huntmap4.ap)` → manager add → `Spawn`), drive with `SetPos`/`SetAngle`/`SetAnim`; then per remote player with `net::Interp`.
-3. Character facing for animals (Phase 4): `+0xF4` is only sometimes written — find the real heading.
-(Hunter position source: DONE — user walk test 10:24 confirmed `+0xE8`/`+0xF4.y`.)
+1. **Puppet visibility** — follow `re/notes/lead-puppets.md` → "Next steps" (starts at step 2: hook `cObjEntity::Draw` and log whether the puppet is ever drawn; then BSP `useServer` side; then model/kind/class experiments).
+2. Two-instance ghost test once visible: `.\run-coop-local.ps1 -Seconds 120` (puppets spawn automatically per remote player; `[Puppets] Spike=0`).
+3. Puppet animation quality: idle/walk/run via `SetAnim` (vt `+0x174`) from interpolated speed (already wired; verify visually).
+4. Phase 4 prep: animals — freeze brains on clients (`FreezeBrain`), host broadcasts transforms + body-command bits (`cAIHuntBrain_Animal::GetBodyCommands/SetBodyCommand`).
 
 ## Done
-- **P2 integration (lead, 10:00–10:20)** — `mod/src/coop/coop.cpp` (settings, `coop_status/host/join/leave` console commands, `m_bAllowBackground`, ENet session pump, 20 Hz PlayerState send, remote log), `coop/player_tracker.cpp` (manager via `AddEntity` hook, vtable classification, hunter/animal samples), `coop/slowmo.cpp` (signature-checked `cHUDSlowMotion::Enable` block + `frametime 1`), `engine/console_cmds.*` (cdecl `AddStaticFuncf`). Framework fix: `OnFrame` only on the device-window thread. `run-coop-local.ps1` now passes `-coophost` / `-coopjoin 127.0.0.1`. Runtime-verified in two-instance runs (see MEMORY "Lead runtime findings").
-- **p2a-framework (Grok, 09:34–10:06)** — module system, probe→module, D3D8 Present/Reset hooks, `console::Exec`, `CreateMutexA` multi-instance hook, `run-coop-local.ps1`, crash dumps, `docs/mod-architecture.md`. Job ended before writing runtime proofs; lead ran them (both instances reach HUNTMAP4, mutex renamed). Lead fixed `mod/build.ps1` stderr handling.
-- **p2c-net (Grok, 09:20–09:53)** — `mod/src/net/` + `mod/net-test/` (932/932 checks, lead-verified).
-- **Phase 1** — six tracks merged into `MEMORY.md` (Route E). **Phase 0** — tools, sandbox, ASI route.
+- **Phase 3 (partial, lead, 10:40–11:31):** puppet spawn recipe found and implemented (`mod/src/engine/entity_api.*`, `mod/src/coop/puppets.cpp`): `CreateEntity("obj_humanEx")` → `HandleKey("model_name")` → manager `AddEntity` → `Precache` → `Spawn` → per-frame `SetPos`/`SetAngle` + world AABB + `cBspTree::UpdateEntity`. Engine class list dumped (`game\Bin\dh2coop-classes.txt`, via `cObjManager::DumpClassesKeys`). Hunter model = `Objects/Characters/Teenm/Body/teenmm.skin,game.ap,HUNTMAP4.ap`. Details: `re/notes/lead-puppets.md`.
+- **P2b overlay (Grok, reviewed 11:06):** F8 ImGui overlay on D3D8 (session, positions, remotes, RTT). Screenshots `re/notes/p2b-overlay*.png`.
+- **Hunter transform (user walk test 10:24):** `+0xE8` world pos, `+0xF4.y` yaw degrees (atan2(dx,dz)).
+- **Phase 2 core (10:20):** host/client PlayerState exchange; console commands `coop_status/host/join/leave`; tracker; slow-mo block; background running; OnFrame gated to the main thread.
+- **Phase 1** (Route E) and **Phase 0** — see MEMORY.md.
 
 ## Blockers / risks
-- None blocking. Hunter position source unknown (step 1). Watch Claude usage limits.
+- Puppet not rendered (see above). Free-hunt start has a "CHOOSE ITEM" menu that blocks automated screenshots (synthetic input doesn't reach DirectInput) — visual checks need the user or a menu-closing console command.
+- Claude usage limits — keep Claude to expert work + review.
 
 ## Recent results (newest first)
-- 10:20: **Phase 2 exit criterion met** — host and client exchange PlayerState; each logs the other's remote state (rx counting at ~20 Hz).
-- 10:15: tracker finds hunter (`cScr_ModHunter`) + 5 animals on HUNTMAP4; animal positions are world-space, y-up.
-- 10:10: loading-screen thread found calling Present → OnFrame gated to main thread.
-- 10:08: game pauses when unfocused → `m_bAllowBackground=1`.
-- 10:06: console command registration + `coop_status` handler verified at runtime (cdecl ABI correct).
-- 09:29: delegation policy (user): expert work → lead/Opus; Grok → Sonnet-level work only.
+- 11:32: user: puppet not visible in any direction; collision felt.
+- 11:30: puppet BSP-linked (`+0x124` valid), AABB follows it, `+0x08&8` set; kind byte `+0xA7` experiment (4) no visible change.
+- 11:10: puppet spawns without crash (index 127); user collides with it.
+- 11:06: overlay reviewed and merged.
 
 ## Resume protocol (new session)
 1. Open the session in `D:\scary hunt\dh2coop` (loads `CLAUDE.md`; REA MCP is registered for this folder only).
-2. Read this file, then `PLAN.md` decisions, then skim `MEMORY.md`.
+2. Read this file, then `PLAN.md` decisions, then skim `MEMORY.md`, then `re/notes/lead-puppets.md` (current problem).
 3. Check jobs: `Get-Process grok`, and for each in-flight log look for the `=== end` line. A job with no end line and no `grok` process was killed — rerun it: `.\tools-src\grokjob.ps1 -Name <job> -Effort <effort>`.
 4. `git status` / `git log -5` to see uncommitted work since the last checkpoint.
-5. Build: `.\mod\build.ps1`; two-instance test: `.\run-coop-local.ps1 -Seconds 100`; logs in `game\Bin\dh2coop.log` and `game2\Bin\dh2coop.log`.
+5. Build: `.\mod\build.ps1`; solo test: `.\run-game.ps1 -ExtraArgs '-nointro -developper -cheats -spmap HUNTMAP4'` (no `-Seconds` when the user plays); two-instance test: `.\run-coop-local.ps1 -Seconds 100`; logs in `game\Bin\dh2coop.log`.
 6. Continue with **Next steps** above. Update this file after every step and commit (timestamps from `Get-Date`). Edit docs with the Write/Edit tools, not PowerShell `Get-Content`/`Set-Content`.

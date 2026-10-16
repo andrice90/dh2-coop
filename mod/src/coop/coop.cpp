@@ -1,4 +1,4 @@
-#include "coop/coop.h"
+﻿#include "coop/coop.h"
 
 #include <windows.h>
 
@@ -12,6 +12,7 @@
 #include <spdlog/spdlog.h>
 
 #include "coop/player_tracker.h"
+#include "coop/puppets.h"
 #include "core/exports.h"
 #include "core/log.h"
 #include "core/module.h"
@@ -196,6 +197,7 @@ private:
         g_pending = {};
         net::Session::Identity id;
         id.name = g_settings.player_name;
+        if (p.kind != Pending::Kind::None) puppets::RemoveAll();
         switch (p.kind) {
             case Pending::Kind::None:
                 return;
@@ -223,6 +225,7 @@ private:
                 RemotePlayer& r = g_remotes[ev.playerId];
                 r.last = ev.state;
                 ++r.received;
+                puppets::OnRemoteState(ev.playerId, ev.state, now_ms());
                 return;
             }
             case net::EventType::PlayerJoined:
@@ -231,6 +234,7 @@ private:
                 return;
             case net::EventType::PlayerLeft:
                 g_remotes.erase(ev.playerId);
+                puppets::OnRemoteLeft(ev.playerId);
                 spdlog::info("coop: player {} left", ev.playerId);
                 return;
             case net::EventType::Welcome:
@@ -243,7 +247,10 @@ private:
             case net::EventType::TimedOut:
                 spdlog::info("coop: {} player {}", ev.type == net::EventType::TimedOut ? "timeout" : "disconnect",
                              ev.playerId);
-                if (!g_session.IsHost()) g_remotes.clear();
+                if (!g_session.IsHost()) {
+                    g_remotes.clear();
+                    puppets::RemoveAll();
+                }
                 return;
             default:
                 return;

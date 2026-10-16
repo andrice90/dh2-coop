@@ -23,5 +23,9 @@ const LocalPlayerSample& LocalPlayer();
 bool SampleLocalNow(LocalPlayerSample& out);
 // Number of animals seen in the last scan.
 int AnimalCount();
+// Live cObjManager (captured from AddEntity), nullptr until the first spawn.
+void* EntityManager();
+// The local hunter's model_name key (e.g. "Objects/Characters/Teenm/Body/teenmm.skin,game.ap,HUNTMAP4.ap"); "" if unknown.
+const char* HunterModelName();
 
 }  // namespace dh2::coop
