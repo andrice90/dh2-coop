@@ -5,15 +5,15 @@
 New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap, `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail.
 
 ## Current phase
-**Phase 2 done. Phase 3 (ghost mode) in progress — blocked on puppet rendering.**
-Two instances connect, exchange PlayerState at 20 Hz, show each other in the F8 overlay. Puppets (one third-person human per remote player) spawn and have collision but are **not drawn**.
+**Phase 2 done. Phase 3 (ghost mode) in progress — puppet rendering SOLVED (~11:45).**
+Two instances connect, exchange PlayerState at 20 Hz, show each other in the F8 overlay. Puppets are now visible: the player model is first-person arms only, so puppets use an NPC body (`[Puppets] Model=objects/npc/mountainguide/mountainguide.skin,game.ap`). Next: two-instance ghost test (each window shows the other player's puppet moving).
 
 ## In flight
-Nothing running. **Next job ready to hand to Grok:** `re/jobs/p3-puppet-visibility.md` (run with `.\tools-src\grokjob.ps1 -Name p3-puppet-visibility -Effort high`). Note: the delegation policy puts expert engine work in the Claude lead/Opus; this hand-off is the user's explicit choice at a session limit — review the result in the next Claude session.
+Nothing running. `re/jobs/p3-puppet-visibility.md` is **obsolete** (solved) — do not run it.
 
 ## Next steps (in order)
-1. **Puppet visibility** — follow `re/notes/lead-puppets.md` → "Next steps" (starts at step 2: hook `cObjEntity::Draw` and log whether the puppet is ever drawn; then BSP `useServer` side; then model/kind/class experiments).
-2. Two-instance ghost test once visible: `.\run-coop-local.ps1 -Seconds 120` (puppets spawn automatically per remote player; `[Puppets] Spike=0`).
+1. **Two-instance ghost test:** `.\run-coop-local.ps1 -Seconds 120` with `[Puppets] Spike=0` (default in `mod/dh2coop.ini`); each `dh2coop.log` should show `puppets: spawned puppet (remote N)`; user confirms each window shows the other player's NPC body moving. Then tune: puppet y offset (hunter pos y is eye/feet-relative?), anim names for NPC GAME.AP (`walk/forward`, `run/forward`; "idle" name unverified), facing (`SetAngle` yaw; check it matches movement).
+2. Remove/guard the Draw diagnostic hook (only installed with `Spike=1`).
 3. Puppet animation quality: idle/walk/run via `SetAnim` (vt `+0x174`) from interpolated speed (already wired; verify visually).
 4. Phase 4 prep: animals — freeze brains on clients (`FreezeBrain`), host broadcasts transforms + body-command bits (`cAIHuntBrain_Animal::GetBodyCommands/SetBodyCommand`).
 

@@ -2,6 +2,7 @@
 
 #include <windows.h>
 
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -11,6 +12,7 @@
 #include <spdlog/spdlog.h>
 
 #include "coop/player_tracker.h"
+#include "core/hook.h"
 #include "core/log.h"
 #include "core/exports.h"
 #include "core/safe_mem.h"
@@ -63,6 +65,19 @@ void place(Puppet& p, const entity::Vec3& pos, float yawDeg) {
 }
 
 std::map<uint8_t, Puppet> g_puppets;
+
+// Draw diagnostics: does the engine ever call cObjEntity::Draw (EngineDll7 0xbbd30) for our puppet?
+safetyhook::InlineHook* g_draw_hook = nullptr;
+std::atomic<void*> g_watch_puppet{nullptr};
+std::atomic<void*> g_watch_ref{nullptr};
+std::atomic<uint32_t> g_draw_total{0}, g_draw_puppet{0}, g_draw_ref{0};
+
+void __fastcall hk_EntityDraw(void* self, void* /*edx*/) {
+    g_draw_total.fetch_add(1, std::memory_order_relaxed);
+    if (self == g_watch_puppet.load(std::memory_order_relaxed)) g_draw_puppet.fetch_add(1, std::memory_order_relaxed);
+    if (self == g_watch_ref.load(std::memory_order_relaxed)) g_draw_ref.fetch_add(1, std::memory_order_relaxed);
+    g_draw_hook->unsafe_thiscall<void>(self);
+}
 void* g_spawn_manager = nullptr;  // manager the puppets were added to (invalid after a map change)
 
 std::string g_class = kDefaultClass;
@@ -79,9 +94,13 @@ uint32_t now_ms() {
     return static_cast<uint32_t>(duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
 }
 
+// The player's own model (teenmm.skin) is only first-person arms ("fpshands1", teenmm1st.skin) — there is
+// no third-person player body. Puppets use a full NPC body instead ([Puppets] Model=, "hunter" = player model).
+std::string g_model = "objects/npc/mountainguide/mountainguide.skin,game.ap";
+
 void* spawn_human(const char* why) {
     void* mgr = EntityManager();
-    const char* model = HunterModelName();
+    const char* model = g_model == "hunter" ? HunterModelName() : g_model.c_str();
     if (!mgr || !model || !*model) return nullptr;
     void* ent = entity::Create(g_class.c_str());
     if (!ent) return nullptr;
@@ -116,7 +135,11 @@ void load_settings() {
     g_anim_enabled = GetPrivateProfileIntA("Puppets", "Animate", 1, ini.c_str()) != 0;
     GetPrivateProfileStringA("Puppets", "Class", kDefaultClass, buf, sizeof buf, ini.c_str());
     g_class = buf;
-    spdlog::info("puppets: enabled={} spike={} animate={} class='{}'", g_enabled, g_spike, g_anim_enabled, g_class);
+    char model[260] = {};
+    GetPrivateProfileStringA("Puppets", "Model", g_model.c_str(), model, sizeof model, ini.c_str());
+    g_model = model;
+    spdlog::info("puppets: enabled={} spike={} animate={} class='{}' model='{}'", g_enabled, g_spike, g_anim_enabled,
+                 g_class, g_model);
 }
 
 class PuppetsModule : public dh2::Module {
@@ -125,7 +148,13 @@ public:
     int Priority() const override { return 45; }
 
     void OnInit() override { load_settings(); }
-    void OnEngineReady(HMODULE engine) override { entity::Bind(engine); }
+    void OnEngineReady(HMODULE engine) override {
+        entity::Bind(engine);
+        if (g_spike) {
+            void* draw = core::find_export(engine, "?Draw@cObjEntity@@UAEXXZ");
+            g_draw_hook = core::install_hook("cObjEntity::Draw (diag)", draw, reinterpret_cast<void*>(&hk_EntityDraw));
+        }
+    }
 
     void OnMapLoaded(const char*) override {
         // The map change destroyed every entity, including ours: forget pointers, keep the snapshot buffers.
@@ -183,6 +212,15 @@ private:
         }
         g_spike_t += dt;
         diag_accum_ += dt;
+        g_watch_puppet.store(g_spike_entity);
+        draw_accum_ += dt;
+        if (draw_accum_ >= 2.f) {
+            draw_accum_ = 0.f;
+            spdlog::info("puppets: draws/2s total={} puppet={} deer120={} (puppet {:#x} +0x1c8={:#x} deer +0x1c8={:#x})",
+                         g_draw_total.exchange(0), g_draw_puppet.exchange(0), g_draw_ref.exchange(0),
+                         reinterpret_cast<uintptr_t>(g_spike_entity), Rd(g_spike_entity, 0x1c8),
+                         Rd(g_watch_ref.load(), 0x1c8));
+        }
         if (diag_logged_ < 3 && diag_accum_ >= 1.5f) {
             diag_accum_ = 0.f;
             ++diag_logged_;
@@ -194,6 +232,7 @@ private:
                 core::safe_read(reinterpret_cast<char*>(mgr) + 0x04, arr);
                 void* animal = nullptr;
                 if (arr) core::safe_read(arr + 120, animal);
+                g_watch_ref.store(animal);
                 DumpEntity("animal120", animal);
             }
         }
@@ -214,6 +253,12 @@ private:
             log_accum_ = 0.f;
             spdlog::info("puppets: spike pos=({:.2f},{:.2f},{:.2f}) yaw={:.1f}", pos.x, pos.y, pos.z, yawDeg);
         }
+    }
+
+    static uint32_t Rd(void* e, uintptr_t off) {
+        uint32_t v = 0;
+        if (e) core::safe_read(reinterpret_cast<char*>(e) + off, v);
+        return v;
     }
 
     // Field dump for comparing a puppet with live game characters (render/visibility diagnosis).
@@ -241,6 +286,7 @@ private:
                                                              (core::self_dir() / "dh2coop.ini").string().c_str()));
     float log_accum_ = 0.f;
     float diag_accum_ = 0.f;
+    float draw_accum_ = 0.f;
     int diag_logged_ = 0;
 };
 

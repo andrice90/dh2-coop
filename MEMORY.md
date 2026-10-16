@@ -96,7 +96,8 @@ RVAs: EngineDll7 unless noted (CommonDll7 = "C", GameDll7 = "G").
 - Entity vtable slots: `+0x14` HandleKey, `+0x28` Draw, `+0x54` Precache, `+0x58` Spawn, `+0x68` SetModel, `+0xA8` SetPos, `+0xB0` SetAngle, `+0xEC` SetTargetName, `+0x15C` SetScriptClassName, `+0x174` SetAnim (scripted), `+0x194` AddAnimPak (character_ex). Manager: `+0x10` AddEntity, `+0x20` RemoveEntity(ent, int).
 - Entity fields: `+0x08` byte flags (bit 0x08 = draw lights/shadows gate; player spawn clears 0x10), `+0xA7` entity kind byte (4 player, 0x42 animal, 2 ladder, 3/5/6 vehicle, 7 train, 8 world, 9 scope; bare obj_humanEx 0), `+0xC0` bit 0 = hidden, `+0xC4..+0xD8` world AABB, `+0x124` BSP link (-1 = unlinked; set by `cBspTree::UpdateEntity`), `+0xE0` model name ptr.
 - Class registry dumped by `cObjManager::DumpClassesKeys(file)` (thiscall on the live manager) → `game\Bin\dh2coop-classes.txt` (212 lines, ~110 classes: base_entity → obj_scripted_entity → obj_character_ex → obj_humanEx → obj_player → obj_hunter → obj_npc → obj_guide …).
-- Hunter model: `Objects/Characters/Teenm/Body/teenmm.skin,game.ap,HUNTMAP4.ap` (third-person body; `teenmm1st.skin` is first-person arms).
+- Hunter model: `Objects/Characters/Teenm/Body/teenmm.skin,game.ap,HUNTMAP4.ap`. **The skin only contains first-person arms** (`teenmm1st.skin`, "fpshands1") — the game has no third-person player body. Puppets must use an NPC body: `objects/npc/<name>/<name>.skin,game.ap` (verified visible with mountainguide, user-confirmed 2026-10-16); NPC models load on demand on free-hunt maps.
+- A runtime-spawned `obj_humanEx` is drawn every frame once it is AddEntity'd + Spawned + BSP-relinked (`cBspTree::UpdateEntity` with a world AABB at `+0xC4`) — verified with a `cObjEntity::Draw` hook (200 draws/2 s).
 - `cBspTree::UseServer(int)` (static cdecl export) sets EngineDll7 global RVA `0x6963dc`; value was 1 when read from the Present hook.
 
 ## Runtime probe (Track E, `re/notes/renderer.md`; reviewed 2026-10-16)
