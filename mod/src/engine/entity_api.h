@@ -34,6 +34,14 @@ int UseServerValue();
 // manager and destroys it (+0x118 = 0). Without it the physics step writes the body position back over SetPos
 // and the body collides/pushes. cObjHumanEx::Update skips a null body.
 bool UnlinkPhysics(void* ent);
+// Attachment (EngineDll7 exports): tag index of a named bone/tag on the entity's model (-1 none, -2 fault);
+// Attach child to parentId at tag (flag 1 as scripts do; returns 1 on success); Detach from the parent.
+int TagIndex(void* ent, const char* name);
+int Attach(void* child, int parentId, int tag, int flag);
+bool Detach(void* ent);
+// Binds child's model part 0 to the owner's bone `tag` (cScrEntity::LinkPart equivalent): the child then follows
+// the owner's animated bone. Returns 1 linked, 0 not found, -1 fault.
+int LinkPart(void* owner, void* child, const char* tag);
 // Manager vtable calls.
 int AddEntity(void* mgr, void* ent);                             // +0x10, returns index or -1 on fault
 bool RemoveEntity(void* mgr, void* ent);                         // +0x20 (ent, 1)

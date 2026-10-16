@@ -110,6 +110,64 @@ bool guarded_unlink(void* ent) {
     }
 }
 
+// Attachment (EngineDll7 cObjEntity, lead decompile): Attach(parentId, tagIndex, flag, tVect3 offset) stores
+// parent id +0xA4, tag +0xA6, flags +0xA8 and registers the child in the parent's slots +0x168; SetPos/UpdatePos
+// then follow GetTagPos(parent, tag). GetTagIndex(name) = model vt +0xe8.
+using TagIndexFn = int(__thiscall*)(void* self, const char* name);
+using AttachFn = int(__thiscall*)(void* self, int parentId, int tag, int flag, Vec3 offset);
+using DetachFn = void(__thiscall*)(void* self);
+TagIndexFn g_tag_index = nullptr;
+AttachFn g_attach = nullptr;
+DetachFn g_detach = nullptr;
+
+int guarded_tag_index(void* ent, const char* name) {
+    __try {
+        return g_tag_index(ent, name);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -2;
+    }
+}
+
+int guarded_attach(void* ent, int parent, int tag, int flag) {
+    __try {
+        return g_attach(ent, parent, tag, flag, Vec3{});
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+
+bool guarded_detach(void* ent) {
+    __try {
+        g_detach(ent);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+// cScrEntity::LinkPart (CommonDll7 0x3f590) without the script wrapper: owner model GetTag(name) (vt +0xe4)
+// -> bone; bone +0x138 = controller; controller vt +0x38 (child model part 0 = child model vt +0xf0(0)).
+using GetTagFn = void*(__thiscall*)(void* model, const char* name);
+using GetPartFn = void*(__thiscall*)(void* model, int index);
+using LinkFn = void(__thiscall*)(void* ctrl, void* part);
+int guarded_link_part(void* owner, void* child, const char* tag) {
+    __try {
+        void* owner_model = *reinterpret_cast<void**>(static_cast<char*>(owner) + 0xE4);
+        void* child_model = *reinterpret_cast<void**>(static_cast<char*>(child) + 0xE4);
+        if (!owner_model || !child_model) return 0;
+        void* bone = reinterpret_cast<GetTagFn>(slot(owner_model, 0xe4))(owner_model, tag);
+        if (!bone) return 0;
+        void* ctrl = *reinterpret_cast<void**>(static_cast<char*>(bone) + 0x138);
+        if (!ctrl) return 0;
+        void* part = reinterpret_cast<GetPartFn>(slot(child_model, 0xf0))(child_model, 0);
+        if (!part) return 0;
+        reinterpret_cast<LinkFn>(slot(ctrl, 0x38))(ctrl, part);
+        return 1;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+
 bool guarded_remove(void* mgr, void* ent) {
     __try {
         reinterpret_cast<RemoveFn>(slot(mgr, kMgrRemove))(mgr, ent, 1);
@@ -125,6 +183,9 @@ bool Bind(HMODULE engine) {
     g_create = core::find_export_as<CreateEntityFn>(engine, "?CreateEntity@cObjManager@@SAPAVcObjEntity@@PBDH@Z");
     g_bsp_update = core::find_export_as<BspUpdateFn>(engine, "?UpdateEntity@cBspTree@@QAEXPAVcObjEntity@@@Z");
     g_bsp_slot = core::find_export_as<void**>(engine, "?g_bsp@@3PAVcBspTree@@A");
+    g_tag_index = core::find_export_as<TagIndexFn>(engine, "?GetTagIndex@cObjEntity@@QAEHPBD@Z");
+    g_attach = core::find_export_as<AttachFn>(engine, "?Attach@cObjEntity@@QAEHHHHUtVect3@@@Z");
+    g_detach = core::find_export_as<DetachFn>(engine, "?Detach@cObjEntity@@QAEXXZ");
     if (auto* fn = core::find_export_as<const unsigned char*>(engine, "?UseServer@cBspTree@@SAXH@Z")) {
         const uintptr_t expect = reinterpret_cast<uintptr_t>(engine) + 0x6963dc;
         uint32_t imm = 0;
@@ -176,6 +237,15 @@ bool UnlinkPhysics(void* ent) {
         if (!g_unlink) return false;
     }
     return guarded_unlink(ent);
+}
+
+int TagIndex(void* ent, const char* name) { return (ent && name && g_tag_index) ? guarded_tag_index(ent, name) : -2; }
+int Attach(void* child, int parentId, int tag, int flag) {
+    return (child && g_attach) ? guarded_attach(child, parentId, tag, flag) : -1;
+}
+bool Detach(void* ent) { return ent && g_detach && guarded_detach(ent); }
+int LinkPart(void* owner, void* child, const char* tag) {
+    return (owner && child && tag) ? guarded_link_part(owner, child, tag) : -1;
 }
 
 int AddEntity(void* mgr, void* ent) { return (mgr && ent) ? guarded_add(mgr, ent) : -1; }

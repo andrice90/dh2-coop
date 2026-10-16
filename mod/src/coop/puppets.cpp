@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <map>
 #include <string>
 
@@ -37,6 +38,9 @@ struct Puppet {
     std::string anim;
     float rel_box[6] = {};  // world AABB at spawn time (entity at origin) = model-relative AABB
     int last_shots = -1;    // shot counter from PlayerState.flags bits 8-11
+    void* weapon = nullptr; // third-person weapon entity attached to the puppet's hand
+    int weapon_kind = 0;    // net::WeaponKind currently attached
+    bool weapon_failed = false;
     uint32_t fire_until = 0;  // ms: fire clip plays until then
 };
 
@@ -91,6 +95,7 @@ bool g_physics = false;         // [Puppets] Physics=0: drop the puppet's physic
 float g_y_offset = 0.f;         // [Puppets] YOffset (metres) added to the networked hunter y
 std::string g_crouch_clip = "coveridle";  // [Puppets] CrouchClip: NPC packs have no crouch-walk clip
 uint32_t g_fire_ms = 600;       // [Puppets] FireMs: how long the fire clip plays per shot
+bool g_weapons = true;          // [Puppets] Weapons=1: attach a third-person weapon model to the puppet's hand
 void* g_spike_entity = nullptr;
 float g_spike_t = 0.f;
 float g_spike_wait = 0.f;
@@ -171,11 +176,93 @@ std::string choose_clip(Puppet& p, const net::InterpSample& s, uint32_t now) {
     if (right > 0.f) return armed ? std::string(prefix) + "walkstraferightalert" : "walk/right";
     return armed ? std::string(prefix) + "walkstrafeleftalert" : "walk/left";
 }
+// Third-person weapon models (OBJECTS\ITEMS\GAME\WEAPONS\<NAME>\<NAME>.SKIN; the *1ST dirs are first-person).
+// Hands as in the NPC weapon scripts (HGUNNPC/SGUNNPC/RIFLENPC.SCR default branch): handgun right, long guns left;
+// each script also LinkParts the weapon to that hand so it follows the clip.
+struct WeaponModel {
+    const char* skin;
+    const char* hand;
+};
+WeaponModel weapon_model(int kind) {
+    switch (kind) {
+        case net::kWeaponHandgun: return {"objects/items/game/weapons/handgun3/handgun3.skin", "BipRHand"};
+        case net::kWeaponShotgun: return {"objects/items/game/weapons/shotgun1/shotgun1.skin", "BipLHand"};
+        case net::kWeaponRifle: return {"objects/items/game/weapons/rifle1/rifle1.skin", "BipLHand"};
+        case net::kWeaponOther: return {"objects/items/game/weapons/shotgun1/shotgun1.skin", "BipLHand"};
+        default: return {nullptr, nullptr};
+    }
+}
+
+void weapon_anim(Puppet& p);
+
+void drop_weapon(Puppet& p) {
+    if (p.weapon && g_spawn_manager) {
+        entity::Detach(p.weapon);
+        entity::RemoveEntity(g_spawn_manager, p.weapon);
+    }
+    p.weapon = nullptr;
+    p.weapon_kind = 0;
+}
+
+void sync_weapon(Puppet& p, int kind) {
+    if (!g_weapons || !p.entity) return;
+    if (kind == p.weapon_kind && (p.weapon || p.weapon_failed)) return;
+    drop_weapon(p);
+    p.weapon_failed = false;
+    p.weapon_kind = kind;
+    const WeaponModel m = weapon_model(kind);
+    if (!m.skin) return;
+    void* mgr = EntityManager();
+    void* w = mgr ? entity::Create("obj_scripted_entity") : nullptr;
+    if (!w) {
+        p.weapon_failed = true;
+        return;
+    }
+    entity::HandleKey(w, "model_name", m.skin);
+    const int index = entity::AddEntity(mgr, w);
+    entity::Precache(w);
+    entity::Spawn(w);
+    entity::UnlinkPhysics(w);
+    int16_t puppet_id = -1;
+    core::safe_read(static_cast<char*>(p.entity) + 0x04, puppet_id);
+    const int tag = entity::TagIndex(p.entity, m.hand);
+    const int attached = tag >= 0 ? entity::Attach(w, puppet_id, tag, 1) : 0;
+    const int linked = attached == 1 ? entity::LinkPart(p.entity, w, m.hand) : 0;
+    spdlog::info("puppets: weapon kind {} '{}' entity {:#x} index={} tag {}={} attach={} link={}", kind, m.skin,
+                 reinterpret_cast<uintptr_t>(w), index, m.hand, tag, attached, linked);
+    if (index < 0 || attached != 1) {
+        if (index >= 0) entity::RemoveEntity(mgr, w);
+        p.weapon_failed = true;
+        return;
+    }
+    p.weapon = w;
+    weapon_anim(p);
+}
+
+// Keep the weapon drawable: give it the puppet's world box and relink it into the BSP (like the puppet itself).
+void place_weapon(Puppet& p) {
+    if (!p.weapon) return;
+    std::memcpy(static_cast<char*>(p.weapon) + kEntWorldBox, static_cast<char*>(p.entity) + kEntWorldBox, 24);
+    entity::BspUpdate(p.weapon);
+}
+
+// The weapon model (<name>.skin -> <name>.model) carries its own clips named like the armed body clips without the
+// pack prefix (fire, reload, idlealertneutral, walkforwardalert, ...). They pose the gun in the hand and key the
+// muzzle flash ("flame" bone, vis keys); with no clip the gun sits in bind pose (sideways, flame always on). The NPC
+// weapon scripts (cBody*npc) play the matching clip on the weapon, so we mirror the body clip.
+void weapon_anim(Puppet& p) {
+    if (!p.weapon || p.anim.empty()) return;
+    const size_t slash = p.anim.find('/');
+    const std::string clip = slash == std::string::npos ? p.anim : p.anim.substr(slash + 1);
+    entity::SetAnim(p.weapon, clip.c_str());
+}
+
 void pick_anim(Puppet& p, const std::string& want) {
     if (!g_anim_enabled || !p.entity) return;
     if (p.anim == want) return;
     p.anim = want;
     const bool ok = entity::SetAnim(p.entity, want.c_str());
+    weapon_anim(p);
     spdlog::info("puppets: entity {:#x} anim '{}' -> {}", reinterpret_cast<uintptr_t>(p.entity), want, ok);
 }
 
@@ -193,6 +280,7 @@ void load_settings() {
     GetPrivateProfileStringA("Puppets", "CrouchClip", g_crouch_clip.c_str(), crouch, sizeof crouch, ini.c_str());
     g_crouch_clip = crouch;
     g_fire_ms = GetPrivateProfileIntA("Puppets", "FireMs", 600, ini.c_str());
+    g_weapons = GetPrivateProfileIntA("Puppets", "Weapons", 1, ini.c_str()) != 0;
     GetPrivateProfileStringA("Puppets", "Class", kDefaultClass, buf, sizeof buf, ini.c_str());
     g_class = buf;
     char model[260] = {};
@@ -222,6 +310,9 @@ public:
             p.entity = nullptr;
             p.spawn_failed = false;
             p.anim.clear();
+            p.weapon = nullptr;
+            p.weapon_kind = 0;
+            p.weapon_failed = false;
         }
         g_spawn_manager = nullptr;
         g_spike_entity = nullptr;
@@ -254,6 +345,8 @@ public:
             }
             if (!p.entity) continue;
             place(p, {s.pos[0], s.pos[1] + g_y_offset, s.pos[2]}, s.yaw);
+            sync_weapon(p, s.weaponId);
+            place_weapon(p);
             pick_anim(p, choose_clip(p, s, now));
         }
     }
@@ -369,6 +462,7 @@ void OnRemoteState(uint8_t playerId, const net::PlayerState& state, uint32_t loc
 void OnRemoteLeft(uint8_t playerId) {
     auto it = g_puppets.find(playerId);
     if (it == g_puppets.end()) return;
+    drop_weapon(it->second);
     if (it->second.entity && g_spawn_manager) {
         const bool ok = entity::RemoveEntity(g_spawn_manager, it->second.entity);
         spdlog::info("puppets: removed puppet for player {} -> {}", playerId, ok);
@@ -378,6 +472,7 @@ void OnRemoteLeft(uint8_t playerId) {
 
 void RemoveAll() {
     for (auto& [id, p] : g_puppets) {
+        drop_weapon(p);
         if (p.entity && g_spawn_manager) entity::RemoveEntity(g_spawn_manager, p.entity);
     }
     g_puppets.clear();
