@@ -14,3 +14,5 @@ re/notes/strings/
 re/jobs/*.tmp
 __pycache__/
 re/jobs/*.stdout.tmp
+mod/net-test/build/
+game2/

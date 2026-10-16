@@ -33,7 +33,7 @@ $p = Start-Process -FilePath 'grok' -ArgumentList $grokArgs -NoNewWindow -PassTh
 $null = $p.Handle   # cache the handle so ExitCode is available after exit
 $p.WaitForExit()
 
-Get-Content $stdout -Raw -ErrorAction SilentlyContinue | Out-File -Append -Encoding utf8 $log
+Get-Content $stdout -Raw -Encoding UTF8 -ErrorAction SilentlyContinue | Out-File -Append -Encoding utf8 $log
 "=== $Name end $(Get-Date -Format s) exit=$($p.ExitCode)" | Out-File -Append -Encoding utf8 $log
 Remove-Item $combined, $stdout -ErrorAction SilentlyContinue
 Get-Content $log -Tail 40

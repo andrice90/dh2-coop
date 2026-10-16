@@ -17,6 +17,8 @@ Practical knowledge for building, injecting, hooking, testing and orchestrating.
 - `GameDll7.dll` is loaded late (≈30 s after process start in a `-developper -cheats` run, after intro/menu setup) and from `game\data\`. The probe catches it with `LdrRegisterDllNotification`; hooks into GameDll7 must be installed from that callback, not at ASI init — dh2coop.log 2026-10-15.
 
 ## Testing loop
+- Add `-nointro` to skip intro movies (switch confirmed in Main7 by Track D; effect on load time not yet measured) — 2026-10-16.
+- Console from our code: `cConsole::Exec`/`RealExec` via the exported `console` pointer; in-game console needs A+V+F12 (or Q+I+F12), then `` ` ``, then password `3.141692` as the first line — 2026-10-16.
 - **Fast dev loop:** `.\run-game.ps1 -Seconds 60 -ExtraArgs '-developper -cheats -spmap HUNTMAP4'` loads straight into a hunt map (~30 s, mostly intro/menu init before GameDll7 loads). `-map` does NOT work — 2026-10-16.
 - **Windowed mode:** put any loose `game\Data\Cfg\console.cfg` in place → 640×480 windowed (needed to run two instances side by side). The game rewrites the file on exit, so keep a template copy elsewhere and restore it before each run. Without the file: fullscreen 640×480 @ 240 Hz — 2026-10-16.
 - Injected keys (`keybd_event` with scan codes) don't reach the game (DirectInput). In-game console key unconfirmed; test by hand (`` ` `` then F1–F12 with `-developper`). Prefer driving the game through our ASI (`cConsole::Exec`) over synthetic input.

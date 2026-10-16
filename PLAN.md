@@ -18,7 +18,9 @@ This opens a second route to co-op: **revive the engine's own client/server path
 
 ## Phases
 
-### Phase 0 — Tooling and ground truth *(in progress)*
+**Phase status (2026-10-16):** Phase 0 done · Phase 1 done (Route E) · **Phase 2 in progress** — see `STATUS.md`.
+
+### Phase 0 — Tooling and ground truth *(done 2026-10-15)*
 - Install: JDK 21, Ghidra 12.1.4, REA MCP (Ghidra backend), x32dbg, VS 2022 Build Tools (Win32), Ninja, ImHex, PE-bear, 7-Zip, ReClass.NET. Cheat Engine dropped (see Decisions).
 - Sandbox game copy at `game/` (never mod the original install).
 - Hashes, imports, export catalogs recorded (`re/exports/`, `MEMORY.md`).
@@ -36,8 +38,8 @@ This opens a second route to co-op: **revive the engine's own client/server path
 | E. Renderer | D3D8 vs D3D9 at runtime; present hook point for ImGui | `re/notes/renderer.md` |
 - **Exit / decision gate:** pick **Route N** (native netcode) or **Route E** (custom ENet sync). Hybrid allowed: native entity replication + ENet transport.
 
-### Phase 2 — Mod skeleton
-ASI DLL (Win32, CMake, safetyhook, spdlog, Dear ImGui), pattern-scan helpers keyed to the export table, ImGui overlay with host/join panel, ENet transport (or native net wrapper), config ini. **Exit:** overlay shows local player position; two instances on one PC exchange heartbeat packets.
+### Phase 2 — Mod skeleton *(in progress)*
+ASI DLL (Win32, CMake, safetyhook, spdlog, Dear ImGui), pattern-scan helpers keyed to the export table, ImGui overlay with host/join panel, ENet transport, config ini. Jobs: **p2a** core (modules, Present frame hook, console API + `coop_host`/`coop_join`, multi-instance mutex hook, slow-mo off, player tracker, `run-coop-local.ps1`), **p2c** ENet `net::Session` + protocol v1 + interpolation + standalone tests, then **p2b** D3D8 ImGui overlay and **p2d** integration. **Exit:** two instances on one PC exchange `PlayerState`, each logs/shows the other's position.
 
 ### Phase 3 — Ghost mode
 Remote players drawn as puppets (debug box first, then human model via game spawn routine). **Exit:** two PCs see each other move smoothly in one free-hunt area.

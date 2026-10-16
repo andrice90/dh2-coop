@@ -71,6 +71,15 @@ RVAs: EngineDll7 unless noted (CommonDll7 = "C", GameDll7 = "G").
 - `cObjEntity::ClientSpawn`/`Spawn` are empty; humans spawn via `cObjHumanEx::Spawn`. `cObjManager::Get` (`0xaae30`): entity ptr array `+0x04`, count `+0x08`, cap `0x400`; `AddEntity` `0xbd4b0`. Active camera export `m_pActiveCamera` (C RVA `0x1adfe0`).
 - `cAIHuntAnimalInterface::SetTimeMultiplier` (C `0x13bf0`) has no callers — not the slow-mo path.
 
+## Loop and console (Track D, `re/notes/timing.md`, `re/notes/console.md`; reviewed 2026-10-16)
+- Frame: `cApplication::Run` pumps Win32 messages and calls cGameApp vtable slot `+0x30` (Main7 `FUN_0040f170`). **Variable dt**: raw ms clamped × `frameTime` (default 1.0, range 0.001–100, Main7 RVA `0x3b5d0`). `sv_fps` (default 100, min 2) gates one input/sim/render/sound step per ≈1/sv_fps s; leftover time is dropped.
+- Present = `cRenderDX::Flip` (EngineDll7 `0x354c40`); EndScene = `cRenderDX::EndFrame` (`0x354b10`).
+- Console global: export `?console@@3PAVcConsole@@A` (pointer). Created in `InitConsole` (`0x329ec0`), which then loads `Cfg\console.cfg`. Register commands with `cConsole::AddStaticFuncf(unsigned flags, char* name, void(*)(void), ...)` (`0x166bd0`; arg type tags 4 int, 6 float, 7 string, terminator `0xffffffff`) after `InitConsole`. Exec paths: `cConsole::Exec(line, n)`, `cConsole::RealExec(char*)` (lead re-checked exports).
+- In-game console: key grave (DIK `0x29`), locked until A+V+F12 or Q+I+F12, first line must be password `3.141692` (string EngineDll7 RVA `0x41ff78`, lead re-checked). `-developper` reveals commands flagged `0x20`, `-cheats` flagged `0x40` (`godMode`, `noClip`, `debugCamera` — CommonDll statics `m_bGodMode`, `m_bNoClip`).
+- Map loading: console `spmap <MAP>` / `menumap <MAP>` → `cBspTree::Load("Bsp\%s.bsp", 0x6ff, 1)`. Commands `map` and `cl_join` are not registered anywhere.
+- Slow motion is client-local: `cHUDSlowMotion::Enable` (GameDll7 `0xca690`) sets `frameTime` from cvar `mod_slowmotionFrameTime` (default 0.35; string confirmed in GameDll7). Disable for co-op by forcing that cvar to 1 or patching `Enable`/`SetFrameTime` (`0xca400`).
+- Switches: `+mod`, `+path`, `-dedicated`, `-join`, `-developper`, `-cheats`, `-spmap`, `-map`, `-batchmode`, `-nointro`, `-testmodels`, `-buildai`, `-res`, `-shaderdup`, `-logfiles`, `-console`, `-console98`, `-exp` (class export dump), `-debug`.
+
 ## Runtime probe (Track E, `re/notes/renderer.md`; reviewed 2026-10-16)
 - Renderer: D3D8 only. `Direct3DCreate8` ×3 (callers EngineDll7 `+0x352a3e`, `+0x35211c`, `+0x358f9e`), one HAL device (behavior `0x84` = mixed VP + multithreaded). `Present` called from EngineDll7 `+0x354cfd`, `EndScene` from `+0x354b63` (vtable slots 15 / 35). `Direct3DCreate9` (`+0x35a43b`) creates no device — `runtime-baseline-probe.txt`.
 - Default device: 640×480 `A8R8G8B8`, fullscreen, 240 Hz, `D3DPRESENT_INTERVAL_IMMEDIATE`. A loose `game\Data\Cfg\console.cfg` makes it **windowed** 640×480 (`r_windowed` default 1); the game rewrites that file on shutdown as an `addvar` dump. `game\Data\console.cfg` (wrong path) is ignored.
