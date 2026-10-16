@@ -16,6 +16,8 @@ Two instances connect, exchange PlayerState at 20 Hz, show each other in the F8 
 
 **p3-side-by-side finished 12:06 (not yet lead-reviewed):** windows placed side by side (game 640×480 at 0,0; game2 800×600 at 650,0 — size difference unexplained); `-Capture` works. 120 s run: **no stall on either side** (avg_dt ≈ 0.010 s throughout, rx ≈ 195/10 s) — but `-Capture` re-focuses windows every 10 s, so a long-unfocused instance was never tested; the stall remains open. Both hunters stayed at the spawn point (0,-1.69,0) → each puppet stands inside the other player's camera → nothing visible; for visual tests one player must walk away from the spawn. Details `re/notes/p3-side-by-side.md`.
 
+**p3-anim-names finished 12:07 (not yet lead-reviewed):** `re/notes/anim-names.md`, `re/scripts/ap_list.py`. Current `pick_anim` mapping (idle <0.6 m/s, walk/forward <5.5, run/forward) matches. Extras: `walk/backward`, `walk/left`, `walk/right`, death `fall` → `liedead`; weapon clips in `SHOTGUN1.AP`/`HANDGUN3.AP`. Same 332 names in 17 NPC `GAME.AP`s (any of those bodies can be swapped via `Model=`; **not** Poacher — its GAME.AP only has `blink`). Next: use backward/strafe clips from velocity vs yaw.
+
 `re/jobs/p3-puppet-visibility.md` is **obsolete** (solved) — do not run it. The background-stall *fix* (next step 0) is lead work, not Grok.
 
 ## Latest result (~11:50)
