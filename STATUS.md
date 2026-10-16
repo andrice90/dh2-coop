@@ -5,7 +5,7 @@
 New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap, `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail.
 
 ## Current phase
-**Phase 3 (ghost mode): core working (13:48).** Two local instances connect. Each one shows the other player as an NPC body (mountain guide) that follows the remote position and facing, stands on the ground, and switches walk clips by movement direction. This is verified by an automated test with screenshots. Still open in Phase 3: confirm the walk cycle animates (not a frozen pose), foot-slide/anim speed, and a hands-on test by the user.
+**Phase 3 (ghost mode): core working (13:48), user-confirmed 13:53.** Two local instances connect. Each one shows the other player as an NPC body (mountain guide) that follows the remote position and facing, stands on the ground, and switches walk clips by movement direction. This is verified by an automated test with screenshots. Still open in Phase 3: confirm the walk cycle animates (not a frozen pose), foot-slide/anim speed, and a hands-on test by the user.
 
 ## In flight
 Nothing. No Grok jobs running.
@@ -24,11 +24,10 @@ Nothing. No Grok jobs running.
   - Fix: `entity::UnlinkPhysics` (`cObjScriptedEntity::UnlinkWithPhysics(1)`) right after spawn (`[Puppets] Physics=0`, default).
   - After the fix: the puppet translates, faces correctly, and has its feet on the ground (hunter `+0xE8` = feet, `YOffset=0`). Clips switch W→`walk/forward`, S→`walk/backward`, A→`walk/left`, D→`walk/right`, stop→`idlenormalneutral`.
   - Screenshots: `re/notes/coop-local/move-134802-*`.
-- In progress at 13:50: frame burst (`re/notes/coop-local/burst-*.png`) to check that the legs actually animate.
+- **User confirmed at 13:53:** "it looks good to me, i saw the puppet move and strafe" (watching the automated two-instance run). My own frame bursts were inconclusive: the puppet was too far away, then the camera pitched to the sky in Spike mode. The leg cycle has not been checked frame by frame. The user's view is the acceptance.
 
 ## Next steps (in order)
-1. **Walk cycle check:** compare `burst-0..5.png`.
-   - If the pose never changes, tick the animation ourselves: `cObjEntity::Update(dt)` calls model vt `+0x8c(dt)`. Either call the model tick, or check whether the manager skips Update for our entity.
+1. **Walk cycle (low priority):** the user saw movement and strafing. If a later hands-on test shows a frozen pose, tick the animation ourselves: `cObjEntity::Update(dt)` calls model vt `+0x8c(dt)`.
 2. **Anim speed:** the hunter walks ≈ 5 m/s, and the NPC walk clip is slower, so feet may slide. Option: `cBodyStateMachine::SetAnimSpeedFactor`, or `run/forward` above ~3 m/s. Judge from the user test.
 3. **User hands-on test:** `.\run-coop-local.ps1`. It places both windows side by side and leaves them running.
    - Close the menu in each window (Enter, Left, Enter), then walk around in one window and watch the other.
