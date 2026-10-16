@@ -51,6 +51,8 @@ int SetBodyState(void* ent, const char* name, bool reset);
 // cAIHuntBrain_Animal::FreezeBrain on the entity's brain (+0x200): brain Update returns early (no senses, path,
 // body commands); animation and physics keep running.
 bool FreezeBrain(void* ent, bool freeze);
+// cAIHuntAnimalInterface::FuncInflictDamage (CommonDll7, static __cdecl): subtracts `dmg` from health +0x19C.
+bool InflictDamage(void* animal, float dmg);
 // Manager vtable calls.
 int AddEntity(void* mgr, void* ent);                             // +0x10, returns index or -1 on fault
 bool RemoveEntity(void* mgr, void* ent);                         // +0x20 (ent, 1)

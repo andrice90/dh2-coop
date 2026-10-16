@@ -204,10 +204,21 @@ int guarded_set_state(void* ent, const char* name, bool reset) {
 
 using FreezeFn = void(__thiscall*)(void* brain, int freeze);
 FreezeFn g_freeze_brain = nullptr;  // CommonDll7 cAIHuntBrain_Animal::FreezeBrain (brain +0x79)
+using InflictFn = void(__cdecl*)(void* animal, float dmg);
+InflictFn g_inflict = nullptr;  // CommonDll7 cAIHuntAnimalInterface::FuncInflictDamage
 
 bool guarded_freeze(void* brain, int freeze) {
     __try {
         g_freeze_brain(brain, freeze);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+bool guarded_inflict(void* animal, float dmg) {
+    __try {
+        g_inflict(animal, dmg);
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false;
@@ -303,6 +314,23 @@ bool FreezeBrain(void* ent, bool freeze) {
     }
     void* brain = *reinterpret_cast<void**>(static_cast<char*>(ent) + 0x200);  // cObjCharacterEx brain
     return brain && guarded_freeze(brain, freeze ? 1 : 0);
+}
+
+bool InflictDamage(void* animal, float dmg) {
+    if (!animal) return false;
+    if (!g_inflict) {
+        if (HMODULE common = GetModuleHandleA("CommonDll7.dll"))
+            g_inflict = core::find_export_as<InflictFn>(common,
+                                                        "?FuncInflictDamage@cAIHuntAnimalInterface@@KAXPAXM@Z");
+        if (!g_inflict) {
+            spdlog::warn("entity_api: FuncInflictDamage unresolved");
+            return false;
+        }
+    }
+    const bool ok = guarded_inflict(animal, dmg);
+    spdlog::info("entity_api: FuncInflictDamage ent={:#x} dmg={:.2f} ok={}", reinterpret_cast<uintptr_t>(animal), dmg,
+                 ok);
+    return ok;
 }
 
 int TagIndex(void* ent, const char* name) { return (ent && name && g_tag_index) ? guarded_tag_index(ent, name) : -2; }

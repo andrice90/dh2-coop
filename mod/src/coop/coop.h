@@ -3,6 +3,11 @@
 #include <cstdint>
 #include <string>
 
+namespace net {
+struct AnimalStates;
+struct AnimalHit;
+}
+
 namespace dh2::coop {
 
 struct CoopSettings {
@@ -44,5 +49,9 @@ void RequestHost(uint16_t port);
 void RequestJoin(const std::string& host, uint16_t port);
 void RequestLeave();
 std::string StatusLine();
+
+// Game thread. Host broadcast / client hit report. False when this process has the wrong role.
+bool BroadcastAnimalStates(const net::AnimalStates& states);
+bool ReportAnimalHit(const net::AnimalHit& hit);
 
 }  // namespace dh2::coop

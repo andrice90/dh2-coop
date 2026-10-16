@@ -1,6 +1,6 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-16 15:55 (America/Chicago, system clock) by the Claude lead session.
+**Last updated:** 2026-10-16 16:07 (America/Chicago, system clock) by Grok, from `docs/handoff-grok-p4.md`.
 
 New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap, `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail.
 
@@ -29,7 +29,7 @@ User-confirmed: movement, rotation, speed, armed poses, fire and reload, weapon-
 ## In flight
 | Job | Owner | Log | Deliverable |
 |---|---|---|---|
-| (none) | | | **p4a-net-animals finished 15:49, lead-reviewed and committed `14250e0`** (3294 tests pass). Next: P4b per `docs/handoff-grok-p4.md`. |
+| (none) | | | **P4b tested 16:05.** Position error ≤ 0.01 m after the first place (0.113 m while a deer walked). User visual check not done. Notes: `re/notes/p4b-animal-sync.md`. |
 ## Latest results (14:30–15:22)
 - **Actions networked** (`7ebea6f`):
   - Tracker polls per frame: weapon state `Fire`/`Reload` via `cObjItemEx::GetCurrentState`, crouch from eye height (< 1.40 m), and weapon kind from the active item's model name.
@@ -59,7 +59,7 @@ User-confirmed: movement, rotation, speed, armed poses, fire and reload, weapon-
 4. **Cleanup:**
    - Remove/guard the Draw diagnostic hook and spike code.
    - `[Tracker] DiffHunter` diagnostics stay (default off).
-5. **Phase 4: follow `docs/handoff-grok-p4.md`.** P4a (net messages) → P4b (`re/jobs/p4b-animal-sync.md`: host broadcast + client apply) → P4c (hits/death). Lead-only open questions: real animal heading on the host (`+0xF4` unreliable, velocity used meanwhile); whether remote hits trigger flee; death replication.
+5. **Phase 4:** P4a done. P4b tested (see `re/notes/p4b-animal-sync.md`). Next is the user's visual check, then P4c: shoot a deer in the **client** window and confirm the host applies `AnimalHit` (flee/death still lead questions). Lead-only: real animal heading (`+0xF4` unreliable; movement yaw is what we send); whether a remote hit makes the deer flee; death/ragdoll replication; model culling after the first teleport (not seen — no deer was in frame). Grazing `PostPlayAnim` is ~10 ms, so most pulses never land in a 50 ms snapshot.
 6. Spawn overlap: both players spawn on the same point. Puppets are non-solid, so this is harmless. Option: HUNTMAP4's second spawn point.
 
 ## Done
@@ -73,6 +73,12 @@ User-confirmed: movement, rotation, speed, armed poses, fire and reload, weapon-
   - Weapon model attach.
   - Automated test tooling: `tools-src/game-input.ps1` (keys, mouse moves, mouse buttons), `move-test.ps1`, `focus-test.ps1`, `capture-window.ps1 -NoFocus`.
 - **P2b overlay** (F8), **hunter transform**, **Phase 2 core** (host/client PlayerState at 20 Hz, console commands, tracker, slow-mo block, background running), **Phase 1** (Route E), **Phase 0**: see MEMORY.md / PLAN.md.
+
+## Grok session log (lead away)
+
+- **16:00** — Read the handoff, `lead-animals.md`, and the P4b spec. P4a was already committed (`14250e0`). Implemented P4b in `animals.cpp` / `animals.h`, wired it in `coop.cpp`, and added `entity::InflictDamage`. `[Animals]` keys are in `mod/dh2coop.ini`. `mod\build.ps1` succeeded and installed `game\Bin\dh2coop.asi`.
+- **16:02** — `move-test.ps1` run 1: client deer moved onto the host positions (drift 0.000). Deer 122 walked; both sides `Walk`, yaw 171.4, error 0.113 m. Deer 121 showed `IdleAttack` for ~4 s while the host stayed `CutScene` (`FreezeBrain` does not hold the state machine).
+- **16:05** — Re-apply the host state whenever the live name differs. Run 2: 28 pairs per id, max error 0.010 m, yaw error 0, no state mismatches. No deer in the captures. No `AnimalHit` (nothing to shoot). Puppets still walked.
 
 ## Blockers / risks
 - Claude usage limits: keep Claude on expert work and review; delegate mechanical jobs to Grok (`tools-src/grokjob.ps1`).

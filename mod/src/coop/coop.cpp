@@ -11,6 +11,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include "coop/animals.h"
 #include "coop/player_tracker.h"
 #include "coop/puppets.h"
 #include "core/exports.h"
@@ -168,8 +169,12 @@ public:
 
         ApplyPending();
         g_session.Service();
+        const bool hosting = g_session.IsHost();
+        const bool animals_active = hosting ? !g_session.Peers().empty() : g_session.IsConnected();
+        animals::SetSessionActive(animals_active, hosting);
         for (const net::Event& ev : g_session.DrainEvents()) HandleEvent(ev);
         SendLocalState(dt);
+        if (animals_active && hosting) animals::HostTick(now_ms());
 
         log_accum_ += dt;
         if (log_accum_ >= 1.f) {
@@ -197,7 +202,10 @@ private:
         g_pending = {};
         net::Session::Identity id;
         id.name = g_settings.player_name;
-        if (p.kind != Pending::Kind::None) puppets::RemoveAll();
+        if (p.kind != Pending::Kind::None) {
+            puppets::RemoveAll();
+            animals::Reset();
+        }
         switch (p.kind) {
             case Pending::Kind::None:
                 return;
@@ -240,6 +248,12 @@ private:
             case net::EventType::Welcome:
                 spdlog::info("coop: welcomed as player {} (max {})", ev.playerId, ev.maxPlayers);
                 return;
+            case net::EventType::AnimalStates:
+                animals::OnAnimalStates(ev.animalStates, now_ms());
+                return;
+            case net::EventType::AnimalHit:
+                animals::OnAnimalHit(ev.animalHit);
+                return;
             case net::EventType::Reject:
                 spdlog::warn("coop: rejected ({})", net::ToString(ev.reason));
                 return;
@@ -250,6 +264,7 @@ private:
                 if (!g_session.IsHost()) {
                     g_remotes.clear();
                     puppets::RemoveAll();
+                    animals::Reset();
                 }
                 return;
             default:
@@ -368,6 +383,10 @@ SessionView Snapshot() {
     }
     return v;
 }
+
+bool BroadcastAnimalStates(const net::AnimalStates& states) { return g_session.SendAnimalStates(states); }
+
+bool ReportAnimalHit(const net::AnimalHit& hit) { return g_session.SendAnimalHit(hit); }
 
 std::string StatusLine() {
     const char* role = g_session.IsHost() ? "host" : (g_session.IsConnected() ? "client" : "offline");
