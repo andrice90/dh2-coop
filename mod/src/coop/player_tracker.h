@@ -15,6 +15,13 @@ struct LocalPlayerSample {
     int16_t id = -1;
     Vec3 pos;     // cObjEntity +0xE8 (world)
     Vec3 angle;   // cObjEntity +0xF4 (world Euler; component order/units being established)
+    // World render camera of the last frame (cRender::SetCamera hook): live view direction even while standing
+    // (the hunter's +0xF4 heading only follows the view while moving; cObjScriptedEntity::m_pActiveCamera is null
+    // during free hunt).
+    bool viewValid = false;
+    float viewYaw = 0.f;    // degrees, atan2(z.x, z.z) — same convention as the hunter heading
+    float viewPitch = 0.f;  // degrees, asin(z.y): + = looking up (verified: mouse up -> +16)
+    Vec3 viewPos;           // camera (eye) position
 };
 
 // Latest sample of the local hunter (game thread only). valid=false until found.

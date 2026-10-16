@@ -269,12 +269,12 @@ private:
         st.pos[0] = s.pos.x;
         st.pos[1] = s.pos.y;
         st.pos[2] = s.pos.z;
-        // Hunter +0xF4.y = heading in degrees, unwrapped (seen 420°), yaw = atan2(dx, dz): 0° = +z, 90° = +x.
-        // Pitch is not stored on the hunter entity (+0xF4.x stays 0 while looking around) — camera, TBD.
-        float yaw = std::fmod(s.angle.y, 360.f);
+        // Yaw convention: degrees, atan2(dx, dz) — 0° = +z, 90° = +x. Prefer the render camera (live view, also
+        // while standing still); the hunter's +0xF4.y heading only follows the view while moving (unwrapped).
+        float yaw = std::fmod(s.viewValid ? s.viewYaw : s.angle.y, 360.f);
         if (yaw < 0.f) yaw += 360.f;
         st.yaw = yaw;
-        st.pitch = 0.f;
+        st.pitch = s.viewValid ? s.viewPitch : 0.f;  // degrees, + = looking up
         if (have_prev_) {
             const float sec = static_cast<float>(st.tickMs - prev_tick_) / 1000.f;
             if (sec > 0.f) {

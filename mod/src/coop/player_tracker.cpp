@@ -4,7 +4,11 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -55,6 +59,53 @@ constexpr uintptr_t kSetLoadSaveStoreOff = 0x1A;
 constexpr uintptr_t kLoadSaveMgrRva = 0x5826ec;
 
 std::atomic<void**> g_manager_slot{nullptr};
+// Render camera (EngineDll7 cRenderCamera): X axis +0x84, Z axis (view forward) +0xA4, position +0xB4,
+// projection type +0xC4, fov +0xD0 (lead decompile of the cRenderCamera getters). cRender::SetCamera
+// (EngineDll7 0x242b0, virtual) receives every camera the renderer uses; the first one each frame is the world
+// view (verified by the [Tracker] DiffHunter camera log). The hunter's +0xF4 only follows the view while moving.
+struct RenderCam {
+    Vec3 x, z, pos;
+    int proj = -1;
+    float fov = 0.f;
+};
+safetyhook::InlineHook* g_setcam_hook = nullptr;
+RenderCam g_frame_cam;            // first camera set in the current frame (main thread)
+bool g_frame_cam_taken = false;
+RenderCam g_view_cam;             // world camera of the last completed frame
+bool g_view_cam_valid = false;
+int g_setcam_log = 0;             // diagnostic: log the first N SetCamera calls
+
+void __fastcall hk_SetCamera(void* self, void* /*edx*/, const char* cam) {
+    if (cam && !g_frame_cam_taken) {
+        RenderCam c;
+        if (core::safe_read(cam + 0x84, c.x) && core::safe_read(cam + 0xA4, c.z) && core::safe_read(cam + 0xB4, c.pos) &&
+            core::safe_read(cam + 0xC4, c.proj) && core::safe_read(cam + 0xD0, c.fov)) {
+            g_frame_cam = c;
+            g_frame_cam_taken = true;
+        }
+    }
+    if (g_setcam_log > 0 && cam) {
+        --g_setcam_log;
+        RenderCam c;
+        core::safe_read(cam + 0xA4, c.z);
+        core::safe_read(cam + 0xB4, c.pos);
+        core::safe_read(cam + 0xC4, c.proj);
+        core::safe_read(cam + 0xD0, c.fov);
+        spdlog::info("tracker: SetCamera #{} first={} proj={} fov={:.3f} pos=({:.2f},{:.2f},{:.2f}) z=({:.3f},{:.3f},{:.3f})",
+                     g_setcam_log, !g_frame_cam_taken, c.proj, c.fov, c.pos.x, c.pos.y, c.pos.z, c.z.x, c.z.y, c.z.z);
+    }
+    g_setcam_hook->unsafe_thiscall<void>(self, cam);
+}
+
+void read_camera(LocalPlayerSample& s) {
+    if (g_view_cam_valid) {
+        const Vec3& z = g_view_cam.z;
+        s.viewValid = true;
+        s.viewYaw = std::atan2(z.x, z.z) * 57.2957795f;  // same convention as the hunter heading: 0 = +z, 90 = +x
+        s.viewPitch = std::asin(std::clamp(z.y, -1.f, 1.f)) * 57.2957795f;
+        s.viewPos = g_view_cam.pos;
+    }
+}
 std::atomic<uintptr_t> g_game_base{0};
 
 LocalPlayerSample g_local;
@@ -119,12 +170,15 @@ public:
         g_dump_classes = core::find_export_as<DumpClassesKeysFn>(engine, "?DumpClassesKeys@cObjManager@@QAEXPBD@Z");
         void* add = core::find_export(engine, "?AddEntity@cObjManager@@UAEHPAVcObjEntity@@@Z");
         g_add_hook = core::install_hook("cObjManager::AddEntity(cObjEntity*)", add, reinterpret_cast<void*>(&hk_AddEntity));
+        void* setcam = core::find_export(engine, "?SetCamera@cRender@@UAEXABVcRenderCamera@@@Z");
+        g_setcam_hook = core::install_hook("cRender::SetCamera", setcam, reinterpret_cast<void*>(&hk_SetCamera));
     }
 
     void OnGameDllLoaded(HMODULE game) override { g_game_base.store(reinterpret_cast<uintptr_t>(game)); }
 
     void OnMapLoaded(const char* bspName) override {
         map_ = bspName ? bspName : "";
+        if (diff_hunter_) g_setcam_log = 40;
         g_local = {};
         g_hunter_model.clear();
         histogram_logged_ = false;
@@ -134,6 +188,12 @@ public:
     }
 
     void OnFrame(float dt) override {
+        // Present closes the frame: publish this frame's world camera, arm for the next frame.
+        if (g_frame_cam_taken) {
+            g_view_cam = g_frame_cam;
+            g_view_cam_valid = true;
+        }
+        g_frame_cam_taken = false;
         since_scan_ += dt;
         if (since_scan_ < 1.f) return;
         since_scan_ = 0.f;
@@ -173,6 +233,7 @@ private:
             if (!core::safe_read(ent, vt) || !vt) continue;
             ++hist[vt];
             if (vt == vtHunter && !hunter) hunter = ent;
+            if (diff_hunter_) DiffEntityAngle(i, ent, vt);
             if (vt == vtAnimal) animals.push_back(ent);
         }
         g_animals = static_cast<int>(animals.size());
@@ -200,6 +261,7 @@ private:
             core::safe_read(reinterpret_cast<char*>(hunter) + kEntId, s.id);
             read_vec(hunter, kEntPos, s.pos);
             read_vec(hunter, kEntAngle, s.angle);
+            read_camera(s);
             int16_t parent = 0;
             core::safe_read(reinterpret_cast<char*>(hunter) + kEntParent, parent);
             if (!g_local.valid) {
@@ -210,8 +272,11 @@ private:
                              reinterpret_cast<uintptr_t>(hunter), s.id, parent, g_hunter_model);
             }
             g_local = s;
-            spdlog::info("tracker: hunter pos=({:.2f},{:.2f},{:.2f}) ang=({:.3f},{:.3f},{:.3f})", s.pos.x, s.pos.y,
-                         s.pos.z, s.angle.x, s.angle.y, s.angle.z);
+            if (diff_hunter_) DiffHunter(hunter);
+            spdlog::info("tracker: hunter pos=({:.2f},{:.2f},{:.2f}) ang=({:.3f},{:.3f},{:.3f}) view {} yaw={:.2f} "
+                         "pitch={:.2f} pos=({:.2f},{:.2f},{:.2f})",
+                         s.pos.x, s.pos.y, s.pos.z, s.angle.x, s.angle.y, s.angle.z, s.viewValid, s.viewYaw,
+                         s.viewPitch, s.viewPos.x, s.viewPos.y, s.viewPos.z);
         } else if (g_local.valid) {
             g_local = {};
             spdlog::info("tracker: local hunter lost");
@@ -234,6 +299,49 @@ private:
         }
     }
 
+    // Diagnostic ([Tracker] DiffHunter=1): log every float in the hunter object (cScr_ModHunter, 0x838 bytes)
+    // that changed since the last scan — used to find the view yaw/pitch fields.
+    void DiffHunter(void* hunter) {
+        constexpr size_t kSize = 0x838;
+        std::vector<std::uint8_t> cur(kSize);
+        if (!core::safe_copy(hunter, cur.data(), kSize)) return;
+        if (diff_prev_.size() == kSize) {
+            int lines = 0;
+            for (size_t off = 0; off + 4 <= kSize && lines < 48; off += 4) {
+                float a, b;
+                std::memcpy(&a, &diff_prev_[off], 4);
+                std::memcpy(&b, &cur[off], 4);
+                if (!std::isfinite(a) || !std::isfinite(b) || std::fabs(a) > 1e5f || std::fabs(b) > 1e5f) continue;
+                if (std::fabs(b - a) < 1e-4f || (std::fabs(a) < 1e-20f && std::fabs(b) < 1e-20f)) continue;
+                spdlog::info("tracker: diff +{:#05x} {:.4f} -> {:.4f}", off, a, b);
+                ++lines;
+            }
+        }
+        diff_prev_ = std::move(cur);
+    }
+
+    // Diagnostic: entities whose +0xF4 angle changed since the last scan (finds the view-angle holder).
+    void DiffEntityAngle(int index, void* ent, uintptr_t vt) {
+        Vec3 a;
+        if (!read_vec(ent, kEntAngle, a)) return;
+        auto it = angle_prev_.find(ent);
+        if (it != angle_prev_.end()) {
+            const Vec3& b = it->second;
+            if (std::fabs(a.x - b.x) > 1e-3f || std::fabs(a.y - b.y) > 1e-3f || std::fabs(a.z - b.z) > 1e-3f) {
+                int16_t parent = -1;
+                core::safe_read(reinterpret_cast<char*>(ent) + kEntParent, parent);
+                spdlog::info("tracker: angdiff idx={} ent={:#x} vt={} parent={} ({:.3f},{:.3f},{:.3f}) -> ({:.3f},{:.3f},{:.3f})",
+                             index, reinterpret_cast<uintptr_t>(ent), core::describe_address(reinterpret_cast<void*>(vt)),
+                             parent, b.x, b.y, b.z, a.x, a.y, a.z);
+            }
+        }
+        angle_prev_[ent] = a;
+    }
+
+    std::map<void*, Vec3> angle_prev_;
+    bool diff_hunter_ = GetPrivateProfileIntA("Tracker", "DiffHunter", 0,
+                                              (core::self_dir() / "dh2coop.ini").string().c_str()) != 0;
+    std::vector<std::uint8_t> diff_prev_;
     std::string map_;
     bool missing_logged_ = false;
     bool histogram_logged_ = false;
@@ -253,6 +361,7 @@ bool SampleLocalNow(LocalPlayerSample& out) {
     if (!g_local.valid || !g_local.entity) return false;
     LocalPlayerSample s = g_local;
     if (!read_vec(s.entity, kEntPos, s.pos) || !read_vec(s.entity, kEntAngle, s.angle)) return false;
+    read_camera(s);
     out = s;
     return true;
 }

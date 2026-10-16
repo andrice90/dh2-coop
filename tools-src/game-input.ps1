@@ -2,17 +2,18 @@
 # DirectInput reads; window messages (PostMessage/SendKeys) do not reach it.
 # Usage: .\tools-src\game-input.ps1 -ProcessId 1234 -Keys 'RETURN','W:2000','WAIT:500','DOWN'
 #   NAME        tap (60 ms hold)      NAME:ms   hold for ms      WAIT:ms   pause
+#   MOUSE:dx,dy relative mouse move (turn / look)
 # Names: RETURN ESCAPE SPACE UP DOWN LEFT RIGHT W A S D E R F Q SHIFT CTRL TAB 1-4 GRAVE
 param(
     [Parameter(Mandatory)][int]$ProcessId,
     [Parameter(Mandatory)][string[]]$Keys
 )
 $ErrorActionPreference = 'Stop'
-if (-not ('Dh2Input' -as [type])) {
+if (-not ('Dh2InputV2' -as [type])) {
     Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public static class Dh2Input {
+public static class Dh2InputV2 {
     // Full union so Marshal.SizeOf(INPUT) is right on both x86 (28) and x64 (40) PowerShell.
     [StructLayout(LayoutKind.Sequential)]
     struct MOUSEINPUT { public int dx; public int dy; public uint data; public uint dwFlags; public uint time; public IntPtr extra; }
@@ -32,6 +33,14 @@ public static class Dh2Input {
         i[0].u.ki.dwFlags = 0x0008u | (extended ? 0x0001u : 0u) | (up ? 0x0002u : 0u);  // SCANCODE | EXTENDED | KEYUP
         return SendInput(1, i, Marshal.SizeOf(typeof(INPUT)));
     }
+    public static uint MouseMove(int dx, int dy) {
+        var i = new INPUT[1];
+        i[0].type = 0;  // INPUT_MOUSE
+        i[0].u.mi.dx = dx;
+        i[0].u.mi.dy = dy;
+        i[0].u.mi.dwFlags = 0x0001u;  // MOUSEEVENTF_MOVE (relative)
+        return SendInput(1, i, Marshal.SizeOf(typeof(INPUT)));
+    }
 }
 "@
 }
@@ -45,19 +54,26 @@ $codes = @{
     '1' = @(0x02, $false); '2' = @(0x03, $false); '3' = @(0x04, $false); '4' = @(0x05, $false)
 }
 $h = (Get-Process -Id $ProcessId).MainWindowHandle
-if ([Dh2Input]::GetForegroundWindow() -ne $h) {
-    [void][Dh2Input]::SetForegroundWindow($h)
+if ([Dh2InputV2]::GetForegroundWindow() -ne $h) {
+    [void][Dh2InputV2]::SetForegroundWindow($h)
     Start-Sleep -Milliseconds 300
 }
 foreach ($k in $Keys) {
     $name, $ms = $k.Split(':')
     if ($name -eq 'WAIT') { Start-Sleep -Milliseconds ([int]$ms); continue }
+    if ($name -eq 'MOUSE') {
+        # MOUSE:dx,dy - relative move, sent in 10 steps 15 ms apart (DirectInput reads relative deltas)
+        $dx, $dy = $ms.Split(',') | ForEach-Object { [int]$_ }
+        for ($s = 0; $s -lt 10; $s++) { [void][Dh2InputV2]::MouseMove([int]($dx / 10), [int]($dy / 10)); Start-Sleep -Milliseconds 15 }
+        Start-Sleep -Milliseconds 80
+        continue
+    }
     $c = $codes[$name.ToUpper()]
     if (-not $c) { throw "unknown key '$name'" }
     $hold = if ($ms) { [int]$ms } else { 60 }
-    [void][Dh2Input]::Key([uint16]$c[0], $c[1], $false)
+    [void][Dh2InputV2]::Key([uint16]$c[0], $c[1], $false)
     Start-Sleep -Milliseconds $hold
-    [void][Dh2Input]::Key([uint16]$c[0], $c[1], $true)
+    [void][Dh2InputV2]::Key([uint16]$c[0], $c[1], $true)
     Start-Sleep -Milliseconds 80
 }
-"sent $($Keys -join ' ') to pid $ProcessId (foreground ok=$([Dh2Input]::GetForegroundWindow() -eq $h))"
+"sent $($Keys -join ' ') to pid $ProcessId (foreground ok=$([Dh2InputV2]::GetForegroundWindow() -eq $h))"

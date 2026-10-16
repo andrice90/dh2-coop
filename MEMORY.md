@@ -102,6 +102,14 @@ RVAs: EngineDll7 unless noted (CommonDll7 = "C", GameDll7 = "G").
 - A runtime-spawned `obj_humanEx` is drawn every frame once it is AddEntity'd + Spawned + BSP-relinked (`cBspTree::UpdateEntity` with a world AABB at `+0xC4`) — verified with a `cObjEntity::Draw` hook (200 draws/2 s).
 - `cBspTree::UseServer(int)` (static cdecl export) sets EngineDll7 global RVA `0x6963dc`; value was 1 when read from the Present hook.
 - **Puppets must drop their physics body** (lead, runtime-verified 2026-10-16 13:48, `tools-src/move-test.ps1`): `cObjEntity::SetPos` (`0xbc130`) only writes `+0x0C`/`+0xE8`/`+0x100` and the model (model vt `+0x3c`); it never moves the phys body `+0x118`, and the physics step writes the body position back onto the entity → a spawned character stays drawn at its spawn point and its capsule pushes the hunter (two capsules at one spawn = puppet "stacked" on the hunter's head). Fix: `cObjScriptedEntity::UnlinkWithPhysics(1)` (CommonDll7 export `?UnlinkWithPhysics@cObjScriptedEntity@@UAEXH@Z`, `0x3d820`; humanEx does not override it) = phys manager vt `+0xb8` remove + entity vt `+0xc` DestroyPhysModel → `+0x118 = 0`. `cObjHumanEx::Update` (C `0x1d9a0`) skips a null body. After that SetPos/SetAngle move the drawn puppet (screenshots `re/notes/coop-local/move-134802-*`); no crash, no collision.
+- **View direction = render camera, not the hunter** (lead, runtime-verified 2026-10-16 14:16):
+  - The hunter's `+0xF4.y` is the movement heading. It snaps to the view yaw only while moving: standing mouse turns leave it unchanged, and nothing in the hunter's 0x838 bytes tracks the view.
+  - `cObjScriptedEntity::m_pActiveCamera` (CommonDll7 `0x1adfe0`) is null during free hunt.
+  - The weapon/arms child entity (GameDll7 vtable `+0x102a70`, parent = hunter) has a `+0xF4` that follows the view, but with a ~95° mount offset, idle sway and pitch coupling. Not usable.
+  - **Source used:** hook `cRender::SetCamera(const cRenderCamera&)` (EngineDll7 `0x242b0`, virtual). The first camera set each frame is the world view; the second is a mirrored reflection pass (eye y negated).
+  - `cRenderCamera` layout: X axis `+0x84`, Z axis/forward `+0xA4`, position `+0xB4`, projection type `+0xC4` (0 = perspective), FOV `+0xD0` (90). `cRender` keeps a copy at `+0x3c8`, so `GetCameraZAxis` = `+0x46c`.
+  - yaw = atan2(z.x, z.z), which matches the heading convention exactly while walking (154.68 = 154.68). pitch = asin(z.y), positive = up (mouse up → +16°). The eye sits 1.71 m above hunter `+0xE8`.
+  - Mouse: 400 DirectInput units ≈ 34.7° yaw.
 - **Hunter `+0xE8` is the feet position** (despite `cObjEntity::GetEyePos` returning it): a puppet placed at a remote hunter's `+0xE8` stands on the ground (pixel check at 5.2 m, terrain +0.7 m). Hunter world AABB is a generic pos ±2 m box (no height info).
 
 ## Runtime probe (Track E, `re/notes/renderer.md`; reviewed 2026-10-16)

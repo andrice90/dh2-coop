@@ -26,6 +26,13 @@ Practical knowledge for building, injecting, hooking, testing and orchestrating.
 - **Windowed mode:** put any loose `game\Data\Cfg\console.cfg` in place → 640×480 windowed (needed to run two instances side by side). The game rewrites the file on exit, so keep a template copy elsewhere and restore it before each run. Without the file: fullscreen 640×480 @ 240 Hz — 2026-10-16.
 - **Scripted input works:** `SendInput` with `KEYEVENTF_SCANCODE` (DIK scan codes, arrows with the extended flag) to the **foreground** game window reaches DirectInput — `tools-src/game-input.ps1 -ProcessId <pid> -Keys 'RETURN','W:2000',...` (2026-10-16 13:43; the confirm dialog opened). The INPUT struct must include the full union (x64 PowerShell size 40). The older note "injected keys don't reach the game" was about window messages / unfocused targets. DirectInput is foreground-only: capture other windows with `capture-window.ps1 -NoFocus` or the walking instance stops reading keys.
 - Free-hunt CHOOSE ITEM menu closes with **Enter, Left, Enter** (pick item → move confirm to YES → accept; user 2026-10-16).
+- `game-input.ps1` also does relative mouse moves: `MOUSE:dx,dy` sent through `SendInput` reaches DirectInput (400 units ≈ 34.7° yaw; negative dy looks up) — 2026-10-16.
+- **Finding a runtime value:**
+  1. Start with `[Tracker] DiffHunter=1`. It logs every changed float in the hunter object, plus every entity whose `+0xF4` changed, once per second. Drive it with scripted input.
+  2. If the value isn't there, look for the engine API that consumes it (here the render camera) before scanning the heap.
+  3. A whole-heap float scan is a last resort and a trap: `fabs(x - t) > tol` lets NaN through (`0xFFFFFFFF` filler is NaN), so compare with `!(fabs(x - t) <= tol)`. Exclude your own buffers, or they fill the candidate list with copies.
+  4. Matches found that way were per-bone copies with no stable owner.
+  — 2026-10-16.
 - Automated tests: `tools-src/focus-test.ps1` (background stall phases), `tools-src/move-test.ps1` (menu close + scripted host walk + captures of both windows + puppet log lines).
 - Second process on one PC: `"GI UNIQUE MUTEX"` blocks it unless `-join`/`-dedicated` is on the command line (decompile; not yet tested). `-join x` harmlessly execs a missing `cl_join` command, so `-join 0` is a workable "allow second instance" flag until our ASI handles the mutex.
 - UDP check while the game runs: `Get-NetUDPEndpoint -OwningProcess <pid>` plus `netstat -ano -p udp`.
