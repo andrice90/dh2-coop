@@ -1,6 +1,6 @@
 ﻿# STATUS — resume here
 
-**Last updated:** 2026-10-16 09:55 (America/Chicago) by the Claude lead session.
+**Last updated:** 2026-10-16 10:10 (America/Chicago) by the Claude lead session.
 
 New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap, `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail.
 
@@ -10,12 +10,12 @@ New session? Follow **Resume protocol** at the bottom. This file is the single s
 ## In flight
 | Job | Started | Owner | Log | Deliverable |
 |---|---|---|---|---|
-| track-b-objmodel (restart #1) | 09:04 | Grok 4.7, slot B | `re/jobs/track-b-objmodel.out.log` | `re/notes/object-model.md`, `mod/src/game/types_draft.h` |
 | track-d-loop (restart #1) | 09:10 | Grok 4.7, slot D | `re/jobs/track-d-loop.out.log` | `re/notes/timing.md`, `re/notes/console.md` |
 
 Both run on the fixed runner. A job is finished when its log ends with `=== <name> end ... exit=N`; plain-mode output only appears at the end.
 
 ## Done this phase
+- **Track B (object model)** — `re/notes/object-model.md`, `mod/src/game/types_draft.h` (compiles x86 /W4). Survived 2 Grok compactions on the fixed runner. Reviewed (`SetPos` position offset, `FreezeBrain` +0x79 re-decompiled; found extra entity-side freeze bit). Merged → "Object model". Puppet plan: `cScrPlayer`/`cObjHumanEx` with null brain driven by `SetPos`/`SetAngle` (unverified at runtime). Open: player Hurt body, rifle fire function, who ticks newly added entities.
 - **Track A (net layer)** — `re/notes/net-layer.md`. Reviewed (imports/WSAStartup/export RVAs re-checked with pefile). Merged → `MEMORY.md` "Net layer". Verdict Route E accepted.
 - **Track C (assets)** — `re/notes/assets.md`, `re/scripts/asset_inventory.py`. Reviewed (loose-cfg override confirmed at runtime; map files + `AddAnimal` script confirmed). Merged → "Assets". Test maps: HUNTMAP4 (Phases 3–4), MAPARENA (Phase 5).
 - **Track E (runtime)** — `re/notes/renderer.md`, captures `re/notes/runtime-*.txt`, `re/scripts/runtime-exp.ps1`. Job process died on the stderr bug after writing the deliverable. Reviewed (`-spmap HUNTMAP1` direct load re-checked in logs). Merged → "Runtime probe" + `docs/mod-learnings.md` "Testing loop".
@@ -34,6 +34,7 @@ Both run on the fixed runner. A job is finished when its log ends with `=== <nam
 - None blocking. Watch: Claude usage limits (keep Claude to orchestration + review); two instances on one PC (mutex, DirectInput exclusive, shared `debug.log` — use `game\` + `game2\` copies).
 
 ## Recent results (newest first)
+- 2026-10-16 10:10: Track B done. Per-animal AI freeze exists (`FreezeBrain`, brain `+0x79`) — key enabler for host-owned animals. Entity world pos `+0xE8`, health `+0x19C`.
 - 2026-10-16 09:55: Track E done. `-spmap <MAP>` loads a hunt map directly (dev loop). Loose `Cfg\console.cfg` → windowed mode. No UDP socket in any MP experiment.
 - 2026-10-16 09:40: Track C done. Loose files in `game\Data\` override `data.arc`; animals placed by level scripts (`WORLD.SCR` `AddAnimal`).
 - 2026-10-16 09:20: **Route E decided.** Engine netcode is dead code; SP "server" is in-process `cSpServer`.

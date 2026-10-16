@@ -59,6 +59,18 @@ Format: fact — evidence. Add only verified items; hypotheses go in `re/notes/`
 - Animals are placed by level script: `WORLD.SCR` → `AddAnimal(ANIMAL_<SPECIES>, TRUE, "<bsp entity name>")`; species brains/health in `SCRIPTS\MODELS\ANIMALS\`. Free-hunt maps place 4 prey + 1 predator (HUNTMAP4: 4 red deer + 1 puma; 2 spawn points).
 - No multiplayer/lobby content exists in the archive (no `sv_multiplayer`, `cl_join`, `lobby`, `player2` in scripts/GUI/BSP text).
 
+## Object model (Track B, `re/notes/object-model.md`, structs in `mod/src/game/types_draft.h`; reviewed 2026-10-16)
+RVAs: EngineDll7 unless noted (CommonDll7 = "C", GameDll7 = "G").
+- `cObjEntity` size `0x194` (`CreatecObjEntity` `0xacda0`). Id/index int16 `+0x04`; manager ptr `+0xB4`; model ptr `+0xE4`; **world position tVect3 `+0xE8`** (lead re-checked: `cObjEntity::SetPos` `0xbc130` writes `+0xE8/+0xEC/+0xF0`, local pos `+0x0C`); phys ptr `+0x118`.
+- `cObjScriptedEntity` (C): health float `+0x19C` (ctor 100.0, `GetHealth` C `0x1b30`); dead = props bit `0x400` at `+0xC0`.
+- Hunt characters derive from `cObjCharacterEx` (C, brain ptr `+0x200`, `GetBrain` `0x14920`); legacy `cObjCharacter` (brain `+0x210`, team `+0x214`) is a separate tree. `cObjHumanEx::IsPlayer` = bit 3 of `+0x3B4`.
+- Game classes (G): animal `cScrAnimal` size `0x71c` vtable G `0xff470`; player `cScrPlayer` `0x4e8` vtable G `0x10a2e0`; playable hunter `cScr_ModHunter` `0x838` vtable G `0x106ff0` (derives from cScrPlayer, profile ptr `+0x1F8`).
+- **Per-animal AI freeze:** `cAIHuntBrain_Animal::FreezeBrain` (C `0x158a0`) writes brain byte `+0x79` (lead re-checked); brain `Update` (C `0x95530`) returns early when set, before senses/pathfinding/body commands; animation (`cObjEntity::Update` `0xbc000`) and physics (G `FUN_1001f3c0`) keep running. Separate entity-side flag: `cObjCharacterEx::IsBrainFrozen` (C `0x149b0`) = bit 4 of `+0x204` (lead found; semantics vs brain flag unverified).
+- Animal brain `cAIHuntBrain_Animal` size `0x290`; target id int `+0x254` (`SetTargetIdx` C `0x15d90`), threat ptr `+0x25C`; sense passes overwrite the target unless frozen.
+- Damage: `cScrEntity::Hurt` (C `0x3fbc0`) only forwards to entity vfunc `+0x14c` (empty on cScrAnimal); animal health changes via `FuncInflictDamage` (C `0x9a540`, subtracts from `+0x19C`); animal death presentation vfunc `+0x154` (G `0x1e8b0`). Hunter health is profile attribute 9 via hunter vfunc `+0x14c` (G `0x530c0`, god-mode gated), not `+0x19C`.
+- `cObjEntity::ClientSpawn`/`Spawn` are empty; humans spawn via `cObjHumanEx::Spawn`. `cObjManager::Get` (`0xaae30`): entity ptr array `+0x04`, count `+0x08`, cap `0x400`; `AddEntity` `0xbd4b0`. Active camera export `m_pActiveCamera` (C RVA `0x1adfe0`).
+- `cAIHuntAnimalInterface::SetTimeMultiplier` (C `0x13bf0`) has no callers — not the slow-mo path.
+
 ## Runtime probe (Track E, `re/notes/renderer.md`; reviewed 2026-10-16)
 - Renderer: D3D8 only. `Direct3DCreate8` ×3 (callers EngineDll7 `+0x352a3e`, `+0x35211c`, `+0x358f9e`), one HAL device (behavior `0x84` = mixed VP + multithreaded). `Present` called from EngineDll7 `+0x354cfd`, `EndScene` from `+0x354b63` (vtable slots 15 / 35). `Direct3DCreate9` (`+0x35a43b`) creates no device — `runtime-baseline-probe.txt`.
 - Default device: 640×480 `A8R8G8B8`, fullscreen, 240 Hz, `D3DPRESENT_INTERVAL_IMMEDIATE`. A loose `game\Data\Cfg\console.cfg` makes it **windowed** 640×480 (`r_windowed` default 1); the game rewrites that file on shutdown as an `addvar` dump. `game\Data\console.cfg` (wrong path) is ignored.
