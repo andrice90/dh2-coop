@@ -1,6 +1,6 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-16 15:25 (America/Chicago, system clock) by the Claude lead session.
+**Last updated:** 2026-10-16 15:47 (America/Chicago, system clock) by the Claude lead session.
 
 New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap, `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail.
 
@@ -14,13 +14,22 @@ New session? Follow **Resume protocol** at the bottom. This file is the single s
 
 User-confirmed: movement, rotation, speed, armed poses, fire and reload, weapon-in-hand alignment and the muzzle flash. Not yet seen by the user: shotgun/rifle (left hand) and the crouch pose.
 
+## Phase 4 (shared animals): IN PROGRESS. Lead away → Grok continues per `docs/handoff-grok-p4.md`
+- **Handoff doc for Grok Build:** `docs/handoff-grok-p4.md`. The user sends it to Grok; Grok logs progress in a `## Grok session log (lead away)` section here.
+- **Lead findings 15:20–15:45** (`re/notes/lead-animals.md`, commits `cdc8a9c`, `97c0e71`):
+  - **Animal ids:** 120–124 on every instance, but spawn positions are random per instance, so the host sends positions.
+  - **Driving an animal:**
+    - `FreezeBrain`; **keep physics** (unlinked animals are not drawn).
+    - `HandleKey("position"/"angle")` moves entity + physics body together.
+    - Place in the **pre-render callback** (OnFrame placement flickers).
+    - `SetBodyState(name)` mirrors animation (deer states `Walk`/`Run`/`IdleAttack`/`CutScene`/`PostPlayAnim`).
+  - **Hits:** `FuncInflictDamage` only subtracts `+0x19C`, so clients detect local health drops → `AnimalHit` → host applies.
+  - **User solo spike check:** a deer circles and runs in front of the hunter, steadier after the pre-render move. Test-only artifacts: fixed height sinks into the terrain, and the deer is invisible over part of the circle.
+
 ## In flight
 | Job | Owner | Log | Deliverable |
 |---|---|---|---|
-| p4a-net-animals (high, started ~15:40) | Grok 4.7, no game | `re/jobs/p4a-net-animals.out.log` | `AnimalStates`/`AnimalHit` messages in `mod/src/net/*`, tests, `docs/net-protocol.md`, `re/notes/p4a-net-animals.md` |
-
-Phase 4 lead work in progress: the animal control experiment (`mod/src/coop/animals.cpp`, `re/notes/lead-animals.md`). A single game with `[Animals] Spike=1` is open for the user's visual check.
-
+| p4a-net-animals (high, started 15:36) | Grok 4.7, no game | `re/jobs/p4a-net-animals.out.log` | `AnimalStates`/`AnimalHit` messages in `mod/src/net/*` (uncommitted, in progress), tests, `docs/net-protocol.md`, `re/notes/p4a-net-animals.md` |
 ## Latest results (14:30–15:22)
 - **Actions networked** (`7ebea6f`):
   - Tracker polls per frame: weapon state `Fire`/`Reload` via `cObjItemEx::GetCurrentState`, crouch from eye height (< 1.40 m), and weapon kind from the active item's model name.
@@ -50,11 +59,7 @@ Phase 4 lead work in progress: the animal control experiment (`mod/src/coop/anim
 4. **Cleanup:**
    - Remove/guard the Draw diagnostic hook and spike code.
    - `[Tracker] DiffHunter` diagnostics stay (default off).
-5. **Phase 4 (animals):**
-   - Freeze brains on clients (`FreezeBrain`).
-   - Host broadcasts animal transforms plus body-command bits (`cAIHuntBrain_Animal::GetBodyCommands/SetBodyCommand`).
-   - Animal physics on clients probably needs the unlink treatment (puppet lesson).
-   - Shots from clients must hit host animals.
+5. **Phase 4: follow `docs/handoff-grok-p4.md`.** P4a (net messages) → P4b (`re/jobs/p4b-animal-sync.md`: host broadcast + client apply) → P4c (hits/death). Lead-only open questions: real animal heading on the host (`+0xF4` unreliable, velocity used meanwhile); whether remote hits trigger flee; death replication.
 6. Spawn overlap: both players spawn on the same point. Puppets are non-solid, so this is harmless. Option: HUNTMAP4's second spawn point.
 
 ## Done

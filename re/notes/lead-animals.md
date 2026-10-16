@@ -36,7 +36,15 @@ forward their hits to the host.
 - Remaining spike artifacts, which are test-only:
   - Fixed y (feet + 0.7 m) sinks into the terrain.
   - The circle follows the hunter.
-  - The deer is invisible over part of the circle (user, by clock position: visible 10–1 o'clock, gone 2–6, one frame at 6). Probably underground or BSP-culled on that side. Re-check with real host positions (P4b); if it persists there, compare the world AABB/BSP link (`+0x124`) of a visible vs an invisible frame.
+  - The deer is invisible over part of the circle (user, by clock position: visible 10–1 o'clock, gone 2–6, one frame at 6). **The user says it is not underground ("not obscured by ground mesh, it's above that") → culling.**
+  - Our world box is not the cause: it is symmetric (`box rel (-2.66,-1.67,-2.66)-(2.66,4.04,2.66)`, 15:40).
+  - **Hypotheses:**
+    - (a) The renderer culls animals by their dynamic-skeleton/physics-body bounds, which lag a teleported root.
+    - (b) BSP leaf visibility for the leaf the entity is linked to.
+  - **Experiment (lead):** hook `cObjEntity::Draw` (diag hook exists in `puppets.cpp`, `Spike=1`; set the watched entity to the spike deer) and log draws/frame against the circle angle. Also log `+0x124` (BSP link) and `+0xC4` box per frame.
+    - Draw not called on the bad side: a BSP/link issue.
+    - Draw called: a model-level frustum test (skeleton bounds).
+  - Re-check in P4b with real, smoothly moving host positions; it may not occur there.
 
 ## Design (host-authoritative)
 

@@ -9,6 +9,7 @@
 | `PLAN.md` | Roadmap, phases, decisions, orchestration model | Lead, when scope/decisions change |
 | `MEMORY.md` | Verified engine/decompilation facts with evidence | Lead only (merges workers' "Proposed MEMORY facts") |
 | `docs/mod-learnings.md` | Build, injection, hooking, testing and orchestration learnings | Lead (from worker reports) |
+| `docs/handoff-grok-p4.md` | Phase 4 handoff for Grok Build while the lead is away (tasks, rules, test how-to) | Lead |
 | `re/notes/*.md` | Per-topic RE detail and hypotheses | Workers (their deliverables) |
 | `re/jobs/*.md`, `*.out.log` | Worker job specs and logs | Lead writes specs; runner writes logs |
 
