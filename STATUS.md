@@ -1,8 +1,8 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-16 16:31 (America/Chicago, system clock) by Grok, from the user's death and success-screen report.
+**Last updated:** 2026-10-16 16:32 (America/Chicago, system clock) by Grok. Session write-up: `GROK_p4-session.md`.
 
-New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap, `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail.
+New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap, `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail. Grok's Phase 4 write-up is `GROK_p4-session.md`.
 
 ## Current phase
 **Phase 3 (ghost mode): DONE, user-confirmed 15:30** ("This is it! they look great, animations, gun model alignment, muzzle flash"). Two local instances connect. Each one shows the other player as an NPC body (mountain guide) that:
@@ -87,6 +87,7 @@ User-confirmed: movement, rotation, speed, armed poses, fire and reload, weapon-
 - **16:05** — Re-apply the host state whenever the live name differs. Run 2: 28 pairs per id, max error 0.010 m, yaw error 0, no state mismatches. No deer in the captures. No `AnimalHit` (nothing to shoot). Puppets still walked.
 - **16:13** — User: positions looked good. Host killed deer 121; the client still saw it standing, then "Press F to get meat" completed only the client. Logs (quoted in `re/notes/p4c-events.md`): both sides had `Dead` and hp 0 with drift 0.000. Host passed through `Die`; the client snapshot skipped it. No `AnimalHit`. Both processes were still in the match at 16:13:00.
 - **16:31** — `GameEvent` (id 48, channel 2) is the scalable envelope: client request, host commit, 64-deep journal replayed on join. Kinds: `1` AnimalDied (`PresentDeath` once, then stop driving the pose), `2` MapComplete (`SetMapIsComplete` swallowed on the client, run on the host, applied back). `dh2net_test` 3406 checks, 0 failures. ASI rebuilt after the last hook tweak. In-game result UNVERIFIED.
+- **16:32** — Opened the pair again (`run-coop-local.ps1`, host pid 20052, client pid 26480). Both logs show the event registry and the `SetMapIsComplete` / `GetLastmap` hooks. That launch truncated the 16:08–16:13 logs. Quotes live in `re/notes/p4c-events.md`. Session write-up: `GROK_p4-session.md`. Windows left open for the user.
 
 ## Blockers / risks
 - Claude usage limits: keep Claude on expert work and review; delegate mechanical jobs to Grok (`tools-src/grokjob.ps1`).
