@@ -15,7 +15,15 @@ Nothing running. `re/jobs/p3-puppet-visibility.md` is **obsolete** (solved) — 
 ## Latest result (~11:50)
 Two-instance run (`run-coop-local.ps1 -Seconds 120`): **both instances spawned a puppet for the other player** (`puppets: spawned puppet (remote 1)` on host, `(remote 0)` on client) and switched animations idle → walk/forward → run/forward from the remote player's networked speed. No crashes. Visual confirmation from the user pending.
 
+## User feedback on the two-instance run (~11:55)
+User saw both puppets but **they did not move/animate** when moving the other window's player. Logs explain most of it:
+- `game2` (unfocused at times) **stalled**: heartbeat fell to avg_dt 0.113 s (~9 fps) then stopped logging → its OnFrame/net pump stopped → host's rx for player 1 froze at seq 729 (`coop: remote 1 ... rx=711` constant).
+- The host's own hunter position did not change during the client's receive window (same pos with rising seq) → no movement to show.
+→ **`m_bAllowBackground=1` is not enough: an unfocused instance still throttles/pauses.** Puppet movement/animation cannot be judged until both instances run at full rate. Also: windows overlapped → hard to observe.
+
 ## Next steps (in order)
+0. **Unfocused-instance stall (lead/expert):** find the real inactive-window throttle — decompile `cApplication` message handling for `WM_ACTIVATEAPP`/`WM_ACTIVATE` (debug.log prints "Application loses focus"), DirectInput unacquire path (`[INPUT] Input unacquire`), and any `Sleep` in `cApplication::Run` when inactive; patch so both instances keep simulating at ~100 fps. Verify with heartbeat in both `dh2coop.log`s while switching focus.
+0b. **Side-by-side windows (Grok, mechanical):** make `run-coop-local.ps1` place the two windows next to each other (e.g. after launch, `SetWindowPos` via a small C#/PowerShell helper: game at x=0, game2 at x=660) so both are visible; optional: a `[Overlay]` line showing "frames/s" and "rx/s" per remote to make stalls obvious.
 1. **Two-instance ghost test (logs ✔, visual pending):** `.\run-coop-local.ps1 -Seconds 120` with `[Puppets] Spike=0` (default in `mod/dh2coop.ini`); each `dh2coop.log` should show `puppets: spawned puppet (remote N)`; user confirms each window shows the other player's NPC body moving. Then tune: puppet y offset (hunter pos y is eye/feet-relative?), anim names for NPC GAME.AP (`walk/forward`, `run/forward`; "idle" name unverified), facing (`SetAngle` yaw; check it matches movement).
 2. Remove/guard the Draw diagnostic hook (only installed with `Spike=1`).
 3. Puppet animation quality: idle/walk/run via `SetAnim` (vt `+0x174`) from interpolated speed (already wired; verify visually).
