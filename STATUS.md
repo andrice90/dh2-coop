@@ -8,13 +8,18 @@ New session? Follow **Resume protocol** at the bottom. This file is the single s
 **Phase 2 — Mod skeleton: core exit criterion met (log-based).** Two instances on one PC connect over ENet and each logs the other's position at 20 Hz (`coop: remote ...` lines). Remaining for Phase 2: in-game overlay (P2b) and resolving the hunter position source.
 
 ## In flight
-Nothing running. (No Grok jobs active.)
+| Job | Started | Owner | Log | Deliverable |
+|---|---|---|---|---|
+| p2b-overlay (high) | 10:32 | Grok 4.7, **owns build dir + game launches** | `re/jobs/p2b-overlay.out.log` | `mod/src/ui/**` (ImGui DX8 backend + F8 overlay from `coop::Snapshot()`), `mod/third_party/d3d8/**` (mingw-w64 headers), `re/notes/p2b-overlay.md` + screenshot |
+| lead puppets (main thread) | 10:35 | Claude Opus (lead) | `re/notes/lead-puppets.md` | static RE done (entity Lua lump, `HandleKey`, TEENM third-person model, `SetAnim`); next: runtime class dump (`dh2coop-classes.txt`) + one-puppet spike after p2b frees the build dir |
+
+While a Grok job owns `mod/build`, the lead compiles in `mod/build-lead` (gitignored) and does not launch the game.
 
 ## Next steps (in order)
-1. **Hunter position source (lead, expert):** hunter `+0xE8` reads a constant (0,-1.69,0) with no input. Find where the player's world position/yaw actually live (phys object `+0x118`, camera `m_pActiveCamera`, or a player controller). Needs either (a) static RE of the hunter movement/camera update, or (b) a human movement test: user runs `run-game.ps1 -ExtraArgs '-nointro -developper -cheats -spmap HUNTMAP4'`, walks around for 20 s, we diff the logs. Prefer (a) first, then confirm with (b).
-2. **P2b overlay (Grok scaffold, lead review):** Dear ImGui on the D3D8 device via `dh2::d3d8::AddPresentCallback` (main thread only); F8 toggle; panels: session (role, id, peers, RTT), local hunter sample, remote players, animal count. Spec still to write (`re/jobs/p2b-overlay.md`).
-3. **Phase 3 ghost mode (lead):** spawn a puppet per remote player (`cObjManager::CreateEntity("cScrPlayer"/human class)` + `AddEntity`, null brain) and drive it with `net::Interp` samples. Design note first: `re/notes/lead-puppets.md`.
-4. Character facing: animals' `+0xF4` stays 0 while moving — find the real heading field (needed for Phase 4 animal sync).
+1. Review p2b when it lands (build, screenshot, code read of the DX8 backend state handling).
+2. **Phase 3 puppet spike (lead):** run once to get `game\Bin\dh2coop-classes.txt` + hunter `model_name`; pick the entity class; spawn one puppet after map load (`CreateEntity` → `HandleKey("model_name", teenm skin + huntmap4.ap)` → manager add → `Spawn`), drive with `SetPos`/`SetAngle`/`SetAnim`; then per remote player with `net::Interp`.
+3. Character facing for animals (Phase 4): `+0xF4` is only sometimes written — find the real heading.
+(Hunter position source: DONE — user walk test 10:24 confirmed `+0xE8`/`+0xF4.y`.)
 
 ## Done
 - **P2 integration (lead, 10:00–10:20)** — `mod/src/coop/coop.cpp` (settings, `coop_status/host/join/leave` console commands, `m_bAllowBackground`, ENet session pump, 20 Hz PlayerState send, remote log), `coop/player_tracker.cpp` (manager via `AddEntity` hook, vtable classification, hunter/animal samples), `coop/slowmo.cpp` (signature-checked `cHUDSlowMotion::Enable` block + `frametime 1`), `engine/console_cmds.*` (cdecl `AddStaticFuncf`). Framework fix: `OnFrame` only on the device-window thread. `run-coop-local.ps1` now passes `-coophost` / `-coopjoin 127.0.0.1`. Runtime-verified in two-instance runs (see MEMORY "Lead runtime findings").
