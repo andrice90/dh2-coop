@@ -5,14 +5,14 @@
 New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap, `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail.
 
 ## Current phase
-**Phase 3 (ghost mode): nearly complete.** Two local instances connect. Each one shows the other player as an NPC body (mountain guide) that:
+**Phase 3 (ghost mode): DONE, user-confirmed 15:30** ("This is it! they look great, animations, gun model alignment, muzzle flash"). Two local instances connect. Each one shows the other player as an NPC body (mountain guide) that:
 - follows the remote position and **view yaw** (also while standing still);
 - stands on the ground;
 - plays walk/strafe/back/run clips by movement direction;
 - holds the remote player's **weapon model** in hand;
 - plays the armed idle/walk clips, **fire per shot**, **reload**, and a crouch pose.
 
-User-confirmed: movement, rotation, speed, armed poses, fire and reload. Weapon-in-hand fix (15:21) is screenshot-verified; user check pending.
+User-confirmed: movement, rotation, speed, armed poses, fire and reload, weapon-in-hand alignment and the muzzle flash. Not yet seen by the user: shotgun/rifle (left hand) and the crouch pose.
 
 ## In flight
 Nothing. No Grok jobs running. Two game windows may be open for the user's weapon check.
@@ -36,9 +36,8 @@ Nothing. No Grok jobs running. Two game windows may be open for the user's weapo
   - Details in MEMORY.md and `re/notes/lead-puppets.md`.
 
 ## Next steps (in order)
-1. **User check of the weapon model.**
-   - Handgun: aligned, the muzzle flash only on shots.
-   - Also try the shotgun and the rifle (left hand), and give a verdict on the crouch pose (`coveridle`; alternatives `cover`, `crouchidlecar`, `hurtsit` via `[Puppets] CrouchClip`).
+1. **Leftover Phase 3 checks (low priority):**
+   - Try the shotgun and the rifle (left hand), and give a verdict on the crouch pose (`coveridle`; alternatives `cover`, `crouchidlecar`, `hurtsit` via `[Puppets] CrouchClip`).
 2. **Crouch key unknown.** Ask the user, then add it to scripted tests.
 3. **Polish (optional):**
    - Feet sliding (anim speed factor).
