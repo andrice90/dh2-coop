@@ -10,6 +10,7 @@
 | `MEMORY.md` | Verified engine/decompilation facts with evidence | Lead only (merges workers' "Proposed MEMORY facts") |
 | `docs/mod-learnings.md` | Build, injection, hooking, testing and orchestration learnings | Lead (from worker reports) |
 | `docs/handoff-grok-p4.md` | Phase 4 handoff for Grok Build while the lead is away (tasks, rules, test how-to) | Lead |
+| `GROK_p4-session.md` | What Grok changed and learned in the Phase 4 session (P4b mirror, GameEvent death and map complete) | Grok |
 | `re/notes/*.md` | Per-topic RE detail and hypotheses | Workers (their deliverables) |
 | `re/jobs/*.md`, `*.out.log` | Worker job specs and logs | Lead writes specs; runner writes logs |
 
