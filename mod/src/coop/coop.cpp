@@ -262,9 +262,12 @@ private:
         st.pos[0] = s.pos.x;
         st.pos[1] = s.pos.y;
         st.pos[2] = s.pos.z;
-        // Angle component mapping is provisional until established from motion logs (lead-player-tracker.md).
-        st.pitch = s.angle.x;
-        st.yaw = s.angle.y;
+        // Hunter +0xF4.y = heading in degrees, unwrapped (seen 420°), yaw = atan2(dx, dz): 0° = +z, 90° = +x.
+        // Pitch is not stored on the hunter entity (+0xF4.x stays 0 while looking around) — camera, TBD.
+        float yaw = std::fmod(s.angle.y, 360.f);
+        if (yaw < 0.f) yaw += 360.f;
+        st.yaw = yaw;
+        st.pitch = 0.f;
         if (have_prev_) {
             const float sec = static_cast<float>(st.tickMs - prev_tick_) / 1000.f;
             if (sec > 0.f) {
