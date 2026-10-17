@@ -16,6 +16,7 @@
 #include "coop/coop.h"
 #include "coop/player_tracker.h"
 #include "core/hook.h"
+#include "core/lifecycle.h"
 #include "core/log.h"
 #include "core/exports.h"
 #include "core/safe_mem.h"
@@ -198,7 +199,13 @@ WeaponModel weapon_model(int kind) {
 
 void weapon_anim(Puppet& p);
 
+// Unlink first: the hand controller's cModelPartLink holds a reference on the weapon's model owner, and a link left
+// in place is released a second time when the world is torn down (StopServer crash, 2026-10-16 20:42).
 void drop_weapon(Puppet& p) {
+    if (p.weapon && p.entity) {
+        const WeaponModel m = weapon_model(p.weapon_kind);
+        if (m.hand) entity::UnlinkPart(p.entity, m.hand);
+    }
     if (p.weapon && g_spawn_manager) {
         entity::Detach(p.weapon);
         entity::RemoveEntity(g_spawn_manager, p.weapon);
@@ -231,8 +238,11 @@ void sync_weapon(Puppet& p, int kind) {
     const int tag = entity::TagIndex(p.entity, m.hand);
     const int attached = tag >= 0 ? entity::Attach(w, puppet_id, tag, 1) : 0;
     const int linked = attached == 1 ? entity::LinkPart(p.entity, w, m.hand) : 0;
-    spdlog::info("puppets: weapon kind {} '{}' entity {:#x} index={} tag {}={} attach={} link={}", kind, m.skin,
-                 reinterpret_cast<uintptr_t>(w), index, m.hand, tag, attached, linked);
+    int pref = -99, wref = -99;
+    core::safe_read(static_cast<char*>(p.entity) + 0xb8, pref);
+    core::safe_read(static_cast<char*>(w) + 0xb8, wref);
+    spdlog::info("puppets: weapon kind {} '{}' entity {:#x} index={} tag {}={} attach={} link={} ref puppet={} weapon={}",
+                 kind, m.skin, reinterpret_cast<uintptr_t>(w), index, m.hand, tag, attached, linked, pref, wref);
     if (index < 0 || attached != 1) {
         if (index >= 0) entity::RemoveEntity(mgr, w);
         p.weapon_failed = true;
@@ -343,7 +353,29 @@ public:
     }
 
     void OnMapUnloading() override {
-        for (auto& [id, p] : g_puppets) unregister_target(p);
+        // Entities are still alive here: undo every engine-side link to our puppets before DeleteAllObjects.
+        for (auto& [id, p] : g_puppets) {
+            int pref = -99, wref = -99, wpref = -99;
+            if (p.entity) core::safe_read(static_cast<char*>(p.entity) + 0xb8, pref);
+            if (p.weapon) core::safe_read(static_cast<char*>(p.weapon) + 0xb8, wref);
+            void* wkeep = p.weapon;
+            unregister_target(p);
+            // Break the hand/weapon sync ring (mutual references) and detach, but leave the deletion to
+            // DeleteAllObjects: a RemoveEntity right before it destroyed the weapon twice (20:59:58 crash, refs 2->0).
+            if (p.weapon && p.entity) {
+                const WeaponModel m = weapon_model(p.weapon_kind);
+                if (m.hand) entity::UnlinkPart(p.entity, m.hand);
+                entity::Detach(p.weapon);
+            }
+            p.weapon = nullptr;
+            p.weapon_kind = 0;
+            if (p.entity) core::safe_read(static_cast<char*>(p.entity) + 0xb8, wpref);
+            int wafter = -99;
+            if (wkeep) core::safe_read(static_cast<char*>(wkeep) + 0xb8, wafter);
+            spdlog::info("puppets: unloading remote {} puppet {:#x} ref {}->{} weapon {:#x} ref {}->{}", id,
+                         reinterpret_cast<uintptr_t>(p.entity), pref, wpref, reinterpret_cast<uintptr_t>(wkeep), wref,
+                         wafter);
+        }
     }
 
     void OnFrame(float dt) override {

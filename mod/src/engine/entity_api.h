@@ -43,6 +43,10 @@ bool Detach(void* ent);
 // Binds child's model part 0 to the owner's bone `tag` (cScrEntity::LinkPart equivalent): the child then follows
 // the owner's animated bone. Returns 1 linked, 0 not found, -1 fault.
 int LinkPart(void* owner, void* child, const char* tag);
+// Reverse of LinkPart: the hand part's SetSyncWith(nullptr) (vt +0x38), which drops the mutual entity references of the
+// sync ring. Call before removing either entity and before the world teardown.
+// 1 unlinked, 2 nothing linked, 0 no model/bone/controller, -1 fault, -2 bad args.
+int UnlinkPart(void* owner, const char* tag);
 // Body state machine of the entity's model part 0 (scripted bodies: animals, items, NPCs). Name of the current
 // state ("" if none/fault); switch to a named state (reset = call the machine's vt +0x60 first, as
 // cObjItemEx::Activate does). 1 ok, 0 no machine, -1 fault.

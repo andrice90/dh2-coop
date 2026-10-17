@@ -54,6 +54,8 @@ HANDLE WINAPI hk_CreateMutexA(LPSECURITY_ATTRIBUTES sa, BOOL owner, LPCSTR name)
 }
 
 bool g_bsp_loaded_in_start = false;
+bool g_last_start_reset = false;
+bool g_full_reload = false;  // [Coop] FullReloadOnReplay (experiment; did not stop the replay crash, 21:12)
 
 int __fastcall hk_BspLoad(void* self, void*, char* name, unsigned flags, int arg) {
     const ULONGLONG t0 = GetTickCount64();
@@ -77,11 +79,25 @@ safetyhook::InlineHook* g_start_hook = nullptr;
 
 int __fastcall hk_StartGame(void* self, void*, const char* map, int arg) {
     g_bsp_loaded_in_start = false;
+    g_last_start_reset = false;
     const std::string name = safe_cstr(map, 64);
+    // Main7's map loader (0x101d0) resets the loaded BSP instead of reloading when the name matches the current map
+    // (char* at Main7 0x3d590). After such a reset with a puppet weapon around, the next world teardown crashed in
+    // cSndDrvDS::WaveRelease (2026-10-16 20:42-21:11). A null name takes the normal map-change path (full load).
+    // [Coop] FullReloadOnReplay=0 restores the engine behavior. The old name string is leaked (a few bytes).
+    if (g_full_reload && !name.empty()) {
+        auto** current = reinterpret_cast<char**>(reinterpret_cast<uint8_t*>(GetModuleHandleA(nullptr)) + 0x3d590);
+        const std::string cur = *current ? safe_cstr(*current, 64) : std::string();
+        if (!cur.empty() && _stricmp(cur.c_str(), name.c_str()) == 0) {
+            *current = nullptr;
+            spdlog::info("cSpServer::StartGame('{}'): same map, forcing a full reload", name);
+        }
+    }
     const int r = g_start_hook->unsafe_thiscall<int>(self, map, arg);
     spdlog::info("cSpServer::StartGame('{}', {}) -> {} (bsp {})", name, arg, r,
                  g_bsp_loaded_in_start ? "loaded" : "reset, same map");
     if (!g_bsp_loaded_in_start && !name.empty()) {
+        g_last_start_reset = true;
         const std::string label = "Bsp\\" + name + ".bsp";
         modules::DispatchMapLoaded(label.c_str());
         console::OnMapLoaded(label.c_str());
@@ -112,6 +128,8 @@ void* checked_main7(uintptr_t rva, const char* label) {
 }
 
 void install_start_game_hook() {
+    const std::string ini = (self_dir() / "dh2coop.ini").string();
+    g_full_reload = GetPrivateProfileIntA("Coop", "FullReloadOnReplay", 0, ini.c_str()) != 0;
     g_start_hook = install_hook("cSpServer::StartGame", checked_main7(0x1ed80, "cSpServer::StartGame"),
                                 reinterpret_cast<void*>(&hk_StartGame));
     g_stop_hook = install_hook("cSpServer::StopServer", checked_main7(0x1b060, "cSpServer::StopServer"),
@@ -244,6 +262,8 @@ void install_crash_handlers() {
     AddVectoredExceptionHandler(0, first_chance_logger);
     spdlog::info("crash filter installed; dump path {}", dump.string());
 }
+
+bool LastMapStartWasReset() { return g_last_start_reset; }
 
 void request_shutdown() {
     if (g_stop) SetEvent(g_stop);

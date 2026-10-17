@@ -6,6 +6,7 @@
 #include <spdlog/spdlog.h>
 
 #include "core/exports.h"
+#include "core/safe_mem.h"
 
 namespace dh2::entity {
 namespace {
@@ -152,6 +153,18 @@ bool guarded_detach(void* ent) {
 using GetTagFn = void*(__thiscall*)(void* model, const char* name);
 using GetPartFn = void*(__thiscall*)(void* model, int index);
 using LinkFn = void(__thiscall*)(void* ctrl, void* part);
+struct LinkDiag {
+    void* ctrl = nullptr;
+    void* ctrl_vt = nullptr;
+    void* link_fn = nullptr;
+    void* part = nullptr;
+    void* part_model = nullptr;
+    void* part_owner = nullptr;
+    void* part_ring_before = nullptr;
+    void* hand_sync_before = nullptr;
+    void* hand_next_before = nullptr;
+    void* hand_next_after = nullptr;
+} g_link_diag;
 int guarded_link_part(void* owner, void* child, const char* tag) {
     __try {
         void* owner_model = *reinterpret_cast<void**>(static_cast<char*>(owner) + 0xE4);
@@ -163,7 +176,43 @@ int guarded_link_part(void* owner, void* child, const char* tag) {
         if (!ctrl) return 0;
         void* part = reinterpret_cast<GetPartFn>(slot(child_model, 0xf0))(child_model, 0);
         if (!part) return 0;
+        // Sync-ring diagnostics (cModelPartLink +4 = owner entity): who is already in the weapon part's ring?
+        g_link_diag.part_ring_before = *reinterpret_cast<void**>(static_cast<char*>(part) + 0xf4 + 4);
+        g_link_diag.hand_sync_before = *reinterpret_cast<void**>(static_cast<char*>(ctrl) + 0x100 + 4);
+        g_link_diag.hand_next_before = *reinterpret_cast<void**>(static_cast<char*>(ctrl) + 0x10c + 4);
         reinterpret_cast<LinkFn>(slot(ctrl, 0x38))(ctrl, part);
+        g_link_diag.hand_next_after = *reinterpret_cast<void**>(static_cast<char*>(ctrl) + 0x10c + 4);
+        g_link_diag.ctrl = ctrl;
+        g_link_diag.ctrl_vt = *reinterpret_cast<void**>(ctrl);
+        g_link_diag.link_fn = slot(ctrl, 0x38);
+        g_link_diag.part = part;
+        g_link_diag.part_model = *reinterpret_cast<void**>(static_cast<char*>(part) + 0x68);
+        g_link_diag.part_owner = g_link_diag.part_model
+                                     ? *reinterpret_cast<void**>(static_cast<char*>(g_link_diag.part_model) + 0xf8)
+                                     : nullptr;
+        return 1;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+
+// Reverse of LinkPart. The "controller" at bone +0x138 is itself a model part, and vt +0x38 is
+// cModelPart::SetSyncWith(part) (EngineDll7 0x1e7050; GameDll's cPartHumanTorso thunk). It builds a sync ring:
+// hand +0x100 -> weapon part, weapon part +0xf4 -> hand. Each cModelPartLink InternalAddRefs the other part's
+// owner entity, so puppet and weapon hold references on each other. The world teardown then destroys one of them
+// twice (2026-10-16 20:42/20:51 crash in cSndDrvDS::WaveRelease from StopServer -> DeleteAllObjects, only with
+// puppet weapons). SetSyncWith(nullptr) is the engine's own way out: it unthreads the ring and Unlinks both links.
+int guarded_unlink_part(void* owner, const char* tag) {
+    __try {
+        void* owner_model = *reinterpret_cast<void**>(static_cast<char*>(owner) + 0xE4);
+        if (!owner_model) return 0;
+        void* bone = reinterpret_cast<GetTagFn>(slot(owner_model, 0xe4))(owner_model, tag);
+        if (!bone) return 0;
+        void* ctrl = *reinterpret_cast<void**>(static_cast<char*>(bone) + 0x138);
+        if (!ctrl) return 0;
+        void* synced = *reinterpret_cast<void**>(static_cast<char*>(ctrl) + 0x100 + 4);  // link +4 = owner entity
+        if (!synced) return 2;
+        reinterpret_cast<LinkFn>(slot(ctrl, 0x38))(ctrl, nullptr);
         return 1;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return -1;
@@ -409,8 +458,36 @@ int Attach(void* child, int parentId, int tag, int flag) {
     return (child && g_attach) ? guarded_attach(child, parentId, tag, flag) : -1;
 }
 bool Detach(void* ent) { return ent && g_detach && guarded_detach(ent); }
+int UnlinkPart(void* owner, const char* tag) {
+    if (!owner || !tag) return -2;
+    const int r = guarded_unlink_part(owner, tag);
+    spdlog::info("entity_api: UnlinkPart owner={:#x} tag='{}' -> {} (SetSyncWith(nullptr))",
+                 reinterpret_cast<uintptr_t>(owner), tag, r);
+    return r;
+}
+
 int LinkPart(void* owner, void* child, const char* tag) {
-    return (owner && child && tag) ? guarded_link_part(owner, child, tag) : -1;
+    if (!owner || !child || !tag) return -1;
+    g_link_diag = {};
+    const int r = guarded_link_part(owner, child, tag);
+    spdlog::info(
+        "entity_api: LinkPart owner={:#x} child={:#x} tag='{}' -> {} ctrl={:#x} vt={} fn={} part={:#x} model={:#x} "
+        "model+0xf8={:#x}",
+        reinterpret_cast<uintptr_t>(owner), reinterpret_cast<uintptr_t>(child), tag, r,
+        reinterpret_cast<uintptr_t>(g_link_diag.ctrl), core::describe_address(g_link_diag.ctrl_vt),
+        core::describe_address(g_link_diag.link_fn), reinterpret_cast<uintptr_t>(g_link_diag.part),
+        reinterpret_cast<uintptr_t>(g_link_diag.part_model), reinterpret_cast<uintptr_t>(g_link_diag.part_owner));
+    auto vt_of = [](void* e) -> std::string {
+        void* vt = nullptr;
+        return (e && core::safe_read(e, vt)) ? core::describe_address(vt) : std::string("-");
+    };
+    spdlog::info("entity_api: LinkPart ring: part+0xf4 before={:#x} ({}) hand+0x100 before={:#x} hand+0x10c before={:#x} "
+                 "after={:#x} ({})",
+                 reinterpret_cast<uintptr_t>(g_link_diag.part_ring_before), vt_of(g_link_diag.part_ring_before),
+                 reinterpret_cast<uintptr_t>(g_link_diag.hand_sync_before),
+                 reinterpret_cast<uintptr_t>(g_link_diag.hand_next_before),
+                 reinterpret_cast<uintptr_t>(g_link_diag.hand_next_after), vt_of(g_link_diag.hand_next_after));
+    return r;
 }
 
 int AddEntity(void* mgr, void* ent) { return (mgr && ent) ? guarded_add(mgr, ent) : -1; }

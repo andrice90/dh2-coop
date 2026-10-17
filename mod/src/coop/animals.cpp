@@ -8,6 +8,7 @@
 #include "coop/events.h"
 
 #include <windows.h>
+#include <intrin.h>
 
 #include <atomic>
 #include <chrono>
@@ -56,10 +57,43 @@ void __fastcall hk_Draw(void* self, void* /*edx*/) {
     g_draw_hook->unsafe_thiscall<void>(self);
 }
 
+// Hit-path diagnostics ([Animals] HitDiag=1): which engine call a real bullet takes into an animal. The client's own
+// shots at a mirrored deer produced no health drop in the 20:32 user test, so log both candidate entries.
+safetyhook::InlineHook* g_inflict_hook = nullptr;
+safetyhook::InlineHook* g_onhurt_hook = nullptr;
+std::atomic<int> g_hit_diag_left{40};
+
+void __cdecl hk_FuncInflictDamage(void* animal, float dmg) {
+    float before = 0.f;
+    core::safe_read(static_cast<char*>(animal) + 0x19C, before);
+    g_inflict_hook->unsafe_ccall<void>(animal, dmg);
+    if (g_hit_diag_left.fetch_sub(1) > 0) {
+        int16_t id = -1;
+        core::safe_read(static_cast<char*>(animal) + 0x04, id);
+        spdlog::info("animals: diag FuncInflictDamage id={} dmg={:.2f} hp {:.1f}-> caller={}", id, dmg, before,
+                     core::describe_address(_ReturnAddress()));
+    }
+}
+
+void __fastcall hk_OnHurt(void* self, void*, void* attacker, float dmg, int type, const void* pos, const void* dir) {
+    if (g_hit_diag_left.fetch_sub(1) > 0) {
+        int16_t id = -1;
+        uint8_t kind = 0;
+        float hp = 0.f;
+        core::safe_read(static_cast<char*>(self) + 0x04, id);
+        core::safe_read(static_cast<char*>(self) + 0xA7, kind);
+        core::safe_read(static_cast<char*>(self) + 0x19C, hp);
+        spdlog::info("animals: diag OnHurt id={} kind={:#x} dmg={:.2f} type={} hp={:.1f} attacker={:#x} caller={}", id,
+                     kind, dmg, type, hp, reinterpret_cast<uintptr_t>(attacker), core::describe_address(_ReturnAddress()));
+    }
+    g_onhurt_hook->unsafe_thiscall<void>(self, attacker, dmg, type, pos, dir);
+}
+
 bool g_log_states = true;
 bool g_sync_log = true;
 bool g_spike = false;
 bool g_spike_unlink = true;
+bool g_unfreeze_dead = true;  // [Animals] UnfreezeDead=1: release a client animal's brain after PresentDeath
 float g_spike_y = 0.7f;
 
 std::string ini_path() { return (core::self_dir() / "dh2coop.ini").string(); }
@@ -222,6 +256,7 @@ public:
         g_sync_log = GetPrivateProfileIntA("Animals", "SyncLog", 1, ini_path().c_str()) != 0;
         g_spike = GetPrivateProfileIntA("Animals", "Spike", 0, ini_path().c_str()) != 0;
         g_spike_unlink = GetPrivateProfileIntA("Animals", "SpikeUnlink", 1, ini_path().c_str()) != 0;
+        g_unfreeze_dead = GetPrivateProfileIntA("Animals", "UnfreezeDead", 1, ini_path().c_str()) != 0;
         char y[32] = {};
         GetPrivateProfileStringA("Animals", "SpikeYOffset", "0.7", y, sizeof y, ini_path().c_str());
         g_spike_y = static_cast<float>(std::atof(y));
@@ -231,10 +266,31 @@ public:
     }
 
     void OnEngineReady(HMODULE engine) override {
+        if (GetPrivateProfileIntA("Animals", "HitDiag", 1, ini_path().c_str()) != 0) {
+            if (HMODULE common = core::wait_for_module("CommonDll7.dll", 10000)) {
+                g_inflict_hook = core::install_hook(
+                    "FuncInflictDamage (hit diag)",
+                    core::find_export(common, "?FuncInflictDamage@cAIHuntAnimalInterface@@KAXPAXM@Z"),
+                    reinterpret_cast<void*>(&hk_FuncInflictDamage));
+                g_onhurt_hook = core::install_hook(
+                    "cObjScriptedEntity::OnHurt (hit diag)",
+                    core::find_export(common, "?OnHurt@cObjScriptedEntity@@UAEXPAV1@MHABUtVect3@@1@Z"),
+                    reinterpret_cast<void*>(&hk_OnHurt));
+            }
+        }
         if (g_spike) {
             void* draw = core::find_export(engine, "?Draw@cObjEntity@@UAEXXZ");
             g_draw_hook = core::install_hook("cObjEntity::Draw (animal diag)", draw, reinterpret_cast<void*>(&hk_Draw));
         }
+    }
+
+    // Every animal is about to be freed: forget pointers so nothing touches them until the next map.
+    void OnMapUnloading() override {
+        states_.clear();
+        spike_ = nullptr;
+        g_watch.store(nullptr);
+        mirrors_.clear();
+        dead_.clear();
     }
 
     void OnMapLoaded(const char*) override {
@@ -365,9 +421,26 @@ public:
         }
         float before = 0.f;
         core::safe_read(static_cast<char*>(ent) + kEntHealth, before);
+        if (before <= 0.f) {
+            spdlog::info("animals: AnimalHit id={} shooter={} dmg={:.2f} ignored (already dead)", hit.animalId,
+                         hit.shooterId, hit.damage);
+            return;
+        }
         const bool ok = entity::InflictDamage(ent, hit.damage);
         float after = before;
         core::safe_read(static_cast<char*>(ent) + kEntHealth, after);
+        if (after < 0.f) {
+            // cObjScriptedEntity::OnHurt clamps at 0; FuncInflictDamage does not. Scripts and the claim prompt
+            // treat a dead animal as health 0.
+            *reinterpret_cast<float*>(static_cast<char*>(ent) + kEntHealth) = 0.f;
+            after = 0.f;
+        }
+        // A bullet takes cObjScriptedEntity::OnHurt, which runs the death vfunc at 0. FuncInflictDamage only subtracts,
+        // so a lethal remote hit left the host deer standing at hp 0 (coop_kill test 20:38). Present it here.
+        if (after <= 0.f) {
+            const bool dead = entity::PresentDeath(ent);
+            spdlog::info("animals: AnimalHit id={} lethal -> PresentDeath {}", hit.animalId, dead);
+        }
         spdlog::info("animals: AnimalHit id={} shooter={} dmg={:.2f} hp {:.1f}->{:.1f} ok={}", hit.animalId,
                      hit.shooterId, hit.damage, before, after, ok);
     }
@@ -385,6 +458,8 @@ public:
         logged_tx_ = false;
         logged_rx_ = false;
     }
+
+    bool IsClientMirror() const { return session_active_ && !hosting_; }
 
     void NoteDeath(uint16_t id) {
         if (hosting_ || !session_active_) return;
@@ -464,6 +539,11 @@ private:
                 }
                 continue;
             }
+            if (m.death_presented) {
+                // The released brain plays the death; only the health is pinned (claim needs exactly 0).
+                *reinterpret_cast<float*>(static_cast<char*>(ent) + kEntHealth) = 0.f;
+                continue;
+            }
             if (!m.frozen) {
                 const bool ok = entity::FreezeBrain(ent, true);
                 if (!m.freeze_logged) {
@@ -478,8 +558,19 @@ private:
             AnimalSample sample;
             if (!m.buffer.Sample(t, sample)) continue;
 
+            if (dead_.count(id) != 0) {
+                // Dead (the reliable commit arrives before the delayed snapshot says so). Health stays 0: a stale
+                // sample (hp 45, 100 ms old) revived the client deer, and PresentDeath's own 0 then looked like a
+                // client hit (2026-10-16 20:32 user test). The claim prompt needs an animal at exactly 0.
+                *reinterpret_cast<float*>(static_cast<char*>(ent) + kEntHealth) = 0.f;
+                m.last_host_hp = 0.f;
+                m.have_hp = true;
+                if (!m.death_presented) PresentDeathOnce(id, m, ent, sample);
+                continue;
+            }
+
             float localHp = 0.f;
-            if (core::safe_read(static_cast<char*>(ent) + kEntHealth, localHp) && m.have_hp &&
+            if (core::safe_read(static_cast<char*>(ent) + kEntHealth, localHp) && m.have_hp && m.last_host_hp > 0.f &&
                 localHp < m.last_host_hp - 0.01f) {
                 net::AnimalHit hit;
                 hit.animalId = id;
@@ -494,20 +585,10 @@ private:
 
             const bool parked = (sample.flags & net::animal_flag::kParked) != 0 || sample.pos[1] < -1000.f;
             const bool dead = !parked && ((sample.flags & net::animal_flag::kDead) != 0 || sample.health <= 0.f);
-            if (dead) dead_.insert(id);
-            if (dead_.count(id) != 0) {
-                // One place at the corpse, then the death vfunc. Later frames must not HandleKey or
-                // SetBodyState: that pins the standing pose. "Dead" is not the fall clip.
-                if (!m.death_presented) {
-                    entity::Vec3 pos{sample.pos[0], sample.pos[1], sample.pos[2]};
-                    if (m.have_rel) PlaceEntity(ent, pos, sample.yaw, m.rel);
-                    m.last_target = pos;
-                    m.last_yaw = sample.yaw;
-                    m.have_target = true;
-                    m.death_presented = entity::PresentDeath(ent);
-                    spdlog::info("animals: present death id={} ok={} pos=({:.1f},{:.1f},{:.1f})", id, m.death_presented,
-                                 pos.x, pos.y, pos.z);
-                }
+            if (dead) {
+                dead_.insert(id);
+                *reinterpret_cast<float*>(static_cast<char*>(ent) + kEntHealth) = 0.f;
+                PresentDeathOnce(id, m, ent, sample);
                 continue;
             }
 
@@ -547,6 +628,26 @@ private:
                 }
             }
         }
+    }
+
+    // One place at the corpse, then the death vfunc. Later frames must not HandleKey or SetBodyState: that pins
+    // the standing pose. A frozen brain never runs the death itself (user 20:32: PresentDeath ok, deer stayed
+    // standing, state went IdleAttack), so the brain is released afterwards to play the fall like the host's.
+    void PresentDeathOnce(uint16_t id, Mirror& m, void* ent, const AnimalSample& sample) {
+        if (m.death_presented) return;
+        entity::Vec3 pos{sample.pos[0], sample.pos[1], sample.pos[2]};
+        if (m.have_rel) PlaceEntity(ent, pos, sample.yaw, m.rel);
+        m.last_target = pos;
+        m.last_yaw = sample.yaw;
+        m.have_target = true;
+        m.death_presented = entity::PresentDeath(ent);
+        bool unfrozen = false;
+        if (g_unfreeze_dead && m.frozen) {
+            unfrozen = entity::FreezeBrain(ent, false);
+            if (unfrozen) m.frozen = false;
+        }
+        spdlog::info("animals: present death id={} ok={} unfrozen={} pos=({:.1f},{:.1f},{:.1f}) state='{}'", id,
+                     m.death_presented, unfrozen, pos.x, pos.y, pos.z, entity::BodyStateName(ent));
     }
 
     void Spike(float dt, const LocalPlayerSample& local, const std::vector<void*>& animals) {
@@ -707,6 +808,12 @@ bool DebugDamage(uint16_t id, float damage) {
     core::safe_read(static_cast<char*>(ent) + kEntHealth, before);
     const bool ok = entity::InflictDamage(ent, damage);
     core::safe_read(static_cast<char*>(ent) + kEntHealth, after);
+    if (after < 0.f) {
+        *reinterpret_cast<float*>(static_cast<char*>(ent) + kEntHealth) = 0.f;  // as OnHurt: dead = exactly 0
+        after = 0.f;
+    }
+    // On a client this is a simulated bullet on the mirror: the host decides the death. Host/solo: present it.
+    if (after <= 0.f && before > 0.f && (!g_self || !g_self->IsClientMirror())) entity::PresentDeath(ent);
     spdlog::info("animals: coop_kill id={} dmg={:.1f} hp {:.1f}->{:.1f} ok={}", id, damage, before, after, ok);
     return ok;
 }

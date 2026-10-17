@@ -47,6 +47,8 @@ foreach ($tree in @($game, $game2)) {
     $bin = Join-Path $tree 'Bin'
     Copy-Item $asi (Join-Path $bin 'dh2coop.asi') -Force
     Copy-Item $ini (Join-Path $bin 'dh2coop.ini') -Force
+    # A command file left by a crashed test would otherwise run in the new game (dh2coop.cmd channel).
+    Remove-Item (Join-Path $bin 'dh2coop.cmd') -ErrorAction SilentlyContinue
     $cfgDir = Join-Path $tree 'Data\Cfg'
     New-Item -ItemType Directory -Force $cfgDir | Out-Null
     Copy-Item $cfg (Join-Path $cfgDir 'console.cfg') -Force

@@ -169,12 +169,21 @@ void __cdecl cmd_claim(const char* arg) {
     events::DebugClaim(static_cast<uint16_t>(id));
 }
 
+std::filesystem::file_time_type g_cmd_epoch{};  // set in OnInit: command files older than this are stale
+
 // Automation channel: Bin\dh2coop.cmd, one console line per line. Read, deleted, then queued with
 // cConsole::Exec (game thread). Lets test scripts drive coop_* and engine commands without typing.
 void PollCommandFile() {
     const std::filesystem::path path = core::self_dir() / "dh2coop.cmd";
     std::error_code ec;
     if (!std::filesystem::exists(path, ec)) return;
+    // A file left by an earlier (crashed) run must not drive this one: it once sent a fresh host to the menu.
+    const auto written = std::filesystem::last_write_time(path, ec);
+    if (!ec && written < g_cmd_epoch) {
+        std::filesystem::remove(path, ec);
+        spdlog::warn("coop: ignored stale {} (written before this process started)", path.string());
+        return;
+    }
     std::vector<std::string> lines;
     {
         std::ifstream in(path);
@@ -196,7 +205,10 @@ public:
     const char* Name() const override { return "coop"; }
     int Priority() const override { return 40; }
 
-    void OnInit() override { load_settings(); }
+    void OnInit() override {
+        load_settings();
+        g_cmd_epoch = std::filesystem::file_time_type::clock::now();
+    }
 
     void OnEngineReady(HMODULE engine) override {
         console_cmds::Bind(engine);

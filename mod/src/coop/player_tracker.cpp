@@ -224,10 +224,22 @@ public:
 
     void OnGameDllLoaded(HMODULE game) override { g_game_base.store(reinterpret_cast<uintptr_t>(game)); }
 
+    // The teardown frees every entity: drop the pointers now, so no module (or the pre-render callback) reads or
+    // writes freed animals between StopServer and the next scan (first-chance faults after a map change, 20:41).
+    void OnMapUnloading() override {
+        g_local = {};
+        g_map_ready = false;
+        g_animal_list.clear();
+        g_animals = 0;
+    }
+
     void OnMapLoaded(const char* bspName) override {
         map_ = bspName ? bspName : "";
         if (diff_hunter_) g_setcam_log = 40;
         g_local = {};
+        g_map_ready = false;
+        g_animal_list.clear();
+        g_animals = 0;
         g_hunter_model.clear();
         histogram_logged_ = false;
         animal_log_seconds_ = 0;

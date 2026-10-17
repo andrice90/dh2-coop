@@ -15,4 +15,9 @@ void request_shutdown();
 // Blocks the ASI init thread until process detach. Dispatches module events.
 void run_lifecycle();
 
+// True while the current map came from a same-map restart (results screen "replay"): cSpServer::StartGame reset
+// the BSP instead of loading it, and resources (sounds of on-demand models) are in a reset state. Valid from
+// OnMapLoaded on.
+bool LastMapStartWasReset();
+
 }  // namespace dh2::core
