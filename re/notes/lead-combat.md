@@ -1,4 +1,33 @@
-# Phase 5 — shared combat: lead plan (2026-10-16 20:25, static analysis only)
+# Phase 5 — shared combat
+
+## Status 2026-10-17 11:15: host animals fight every player (user-verified on MAP3B)
+User: the leopards targeted the client and its health dropped. The client then ran behind the host, and they switched to the host.
+The defaults in `mod/dh2coop.ini` are now `[Puppets] Physics=1 AttackTarget=1`. Code: `mod/src/coop/combat.cpp`, puppet body in `puppets.cpp`.
+
+How it works:
+1. **Puppet body.** The puppet keeps its physics body.
+   - Collision words are set to `PlaySA`'s `0xfffffff8, 0xfffffff8, 7`. It stands on the world and does not push characters.
+   - Every frame the `"position"` key places the body's centre at feet + `+0x78` (half height).
+2. **Targets.** Puppets are in the attack list (`AddAttackTarget`) while their player is alive (`kFlagDead` removes them).
+   - Every 0.5 s the host switches an animal that chases a player to `GetClosestAttackTarget` when that player is 3 m+ closer (the engine's own stuck-retarget calls).
+   - A client's non-lethal `AnimalHit` calls the animal brain's `OnHurt(puppet)`.
+3. **Hits on a puppet.** They arrive at `cObjScriptedEntity::OnHurt`, not `cObjCharacter::OnHurt`.
+   - The host sends `kPlayerHurt` (not journaled) and the puppet takes nothing.
+   - The client calls its own hunter's vt `+0x14C` with its mirror of the animal as the attacker.
+4. **Sync attacks (pounce).** `PlaySA(m4x4)` on a puppet becomes `kPlayerKnock` (clip + facing yaw), and `OnEndSA` becomes `kPlayerKnockEnd`. The client runs its hunter's vt `+0x210` / `+0x214`. Not yet seen live from an animal. A player's knock uses the same calls and is verified.
+
+What went wrong on the way (keep):
+- **Default collision words:** the puppet lifted both players without end (y −2.9 → 65).
+- **Collision words in the wrong order:** I wrote `7, 7, 0xfffffff8`, which equal the defaults, so nothing changed.
+- **No `"position"` key:** the body kept the puppet at the map origin, so it was invisible.
+- **Key at the feet:** the model was drawn 0.9 m into the ground.
+- **`CharacterFreeze`:** it is input-only, not a physics freeze.
+
+Open:
+- Dead clients: `+0x6CC` is set, and the host drops the puppet from the list. An animal mid-attack may finish one more hit.
+- Scripted non-player targets are left alone (only animals already chasing a player are switched).
+
+# Original plan (2026-10-16 20:25, static analysis only)
 
 Problem today:
 - A client's animals are frozen mirrors, so nothing on a client can hurt that client: clients are invulnerable.

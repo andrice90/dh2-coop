@@ -11,9 +11,9 @@
 #   .\run-coop-local.ps1 -Players 3 -LateJoin 20 -Seconds 60 -Map MAP3B
 #   .\run-coop-local.ps1 -AddClient 3 -Map HUNTMAP4
 #   .\run-coop-local.ps1 -Map MAP3B -Combat
-# -Combat     EXPERIMENTAL, not for play yet: [Puppets] Physics=1 AttackTarget=1 in every copied ini (host
-#             animals may attack the client players; mod\dh2coop.ini keeps both off). Known: the other player's
-#             puppet sinks into the ground (its non-colliding physics body falls). re/notes/lead-combat.md.
+# -Combat     Forces [Puppets] Physics=1 AttackTarget=1 in every copied ini (host animals attack the nearest
+#             player, clients included). Both are the mod\dh2coop.ini defaults since 2026-10-17, so this only
+#             matters if you turned them off there. re/notes/lead-combat.md.
 # -Players    2 (default) through 4. Trees: game (host), game2, game3, game4.
 #             Names written into each Bin\dh2coop.ini: Host, P2, P3, P4. Every client joins 127.0.0.1.
 # -LateJoin   Seconds to wait, after the previous client is welcomed (or after host start, when the

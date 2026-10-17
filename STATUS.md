@@ -1,18 +1,22 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-17 10:05 (America/Chicago) by the lead (Opus). Session 2026-10-17 morning is the next section. The Cursor worker's night log follows.
+**Last updated:** 2026-10-17 11:20 (America/Chicago) by the lead (Opus). Session 2026-10-17 is the next section. The Cursor worker's night log follows.
 
 ## Lead session 2026-10-17 (user goals: untested objective types, 4 players, drop-in/drop-out, player markers; stretch: knock other players over)
 User report at session start: a story map played with NPC + animal sync, scripted events and objectives on both, client death + F9 revive, host death = game over, and map-to-map progression in unison.
 
-| Track | Owner | State |
-|---|---|---|
-| Drop-in join (`kSyncRequest`/`kSyncDone`, per-client replay, catch-up cutscene skip, teleport to host) | lead | `437c7bd`, compiled, **not runtime-tested**. Design: `re/notes/lead-dropin.md` |
-| Phase 5 combat: puppets as attack targets with physics, animal hurt / sync-attack knockdown forwarded to the player's own hunter (`combat.cpp`, `kPlayerHurt`/`kPlayerKnock`/`kPlayerKnockEnd`) | lead | compiled, **not runtime-tested**; needs `[Puppets] AttackTarget=1 Physics=1` |
-| 4-player launcher (`-Players`, `-LateJoin`, `-AddClient`) | Cursor `coop4-launcher` | running |
-| Player markers (F7, `[Overlay] Markers`) | Cursor `player-markers`, worktree `D:\scary hunt\dh2coop-markers` branch `markers` | running |
-| Objective mechanics + test checklist | Cursor `story-objectives` | done: `re/notes/story-objectives.md` |
-| Knockdown engine path | Cursor `knockdown-re` | done: `re/notes/knockdown.md` |
+| Track | State |
+|---|---|
+| **4 players** (`run-coop-local -Players 4`, 2x2 grid) | Verified 10:12: each client sees the other three, no reloads, no crashes. |
+| **Drop-in** (`kSyncRequest`/`kSyncDone`; per-client replay; old cutscenes skipped; teleport if more than 20 m from the host) | Verified MAP12C 10:21 (`tools-src\dropin-test.ps1`): late joiner synced in 1 s, skipped the yeti cutscene, moved next to the host. Design `re/notes/lead-dropin.md`. |
+| **Drop-out** | Puppet removed on leave. A guarded first-chance AV in `UnlinkPart` (`BipLHand`) on leave is harmless; open. |
+| **Player markers** (F7, diamond + name + metres, edge arrows) | Cursor worker, merged `56a01b0`; seen in the knock screenshots. |
+| **Animals fight every player** (`combat.cpp`, puppets with a non-colliding physics body, nearest-player retarget, hits forwarded with `kPlayerHurt`) | **User-verified 11:14 on MAP3B.** Now the default (`[Puppets] Physics=1 AttackTarget=1`). `re/notes/lead-combat.md`. |
+| **Players knock each other over** (shot or melee; that map's `pl_*_syncattack` clip, then get-up; `coop_knock <id>` for tests) | Verified both directions 10:25 (`tools-src\knock-test.ps1`). |
+| **Objective types** | Worker report `re/notes/story-objectives.md`: guide/companion NPCs and animal chases read the host's `"hunter"`. Checklist maps: MAP3A, MAP9, MAP2B, MAP7, MAP8, MAP4A, MAP5, MAP11A (user to play). |
+| Fixed along the way | 3+ player journal re-broadcast (existing clients reloaded the map); trigger fire request flood (~100/s) that crashed a client on MAP12C; stuck NPC sync attack on clients. |
+| **Open: MAP12C yeti fight crashes clients** | Pre-existing: client exits ~10 s after the yeti starts attacking (first-chance `EngineDll7+0x28b337`, a dynamic-array push). The client yeti stays in a sync attack that started before the join; ending it (`OnEndSA`) faults on the yeti. |
+| **Open: NPC follow target** | Cursor `npc-follow-re` finished; lead review pending: `re/notes/npc-follow.md`. |
 
 Found while reading the code: with 3+ players, every join re-sent the host's journal to *all* clients, so the existing clients `spmap`ed their current map (the replay crash) and replayed `PlaySA`/mission end. Fixed by the per-client sync.
 
