@@ -6,7 +6,7 @@ param([int]$Watch = 60, [switch]$Keep)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 function Get-Game([string]$tree) {
-    Get-Process Main7 -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*\dh2coop\$tree\Bin\Main7.exe" } |
+    Get-Process Main7 -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$root\$tree\Bin\Main7.exe" } |
         Select-Object -First 1
 }
 function Send-Cmd([string]$tree, [string]$line) {

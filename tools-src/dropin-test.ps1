@@ -16,7 +16,7 @@ $shots = Join-Path $root 're\notes\coop-local'
 New-Item -ItemType Directory -Force $shots | Out-Null
 
 function Get-Game([string]$tree) {
-    Get-Process Main7 -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*\dh2coop\$tree\Bin\Main7.exe" } |
+    Get-Process Main7 -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$root\$tree\Bin\Main7.exe" } |
         Select-Object -First 1
 }
 

@@ -54,7 +54,12 @@ if (-not (Test-Path $asi)) { throw "expected output not found: $asi" }
 
 if ($NoInstall) { return }
 
-if (Get-Process Main7 -ErrorAction SilentlyContinue) { throw 'Main7.exe is running; close it before installing the ASI.' }
+# Only a game from this checkout's game\Bin holds the file; other worktrees may be running their own copies.
+$hostExe = [System.IO.Path]::GetFullPath((Join-Path $binDir 'Main7.exe'))
+foreach ($p in @(Get-Process Main7 -ErrorAction SilentlyContinue)) {
+    $exe = $null; try { $exe = $p.Path } catch { }
+    if (-not $exe -or $exe -ieq $hostExe) { throw "Main7.exe (pid $($p.Id)) is running from $binDir; close it before installing the ASI." }
+}
 Copy-Item $asi (Join-Path $binDir 'dh2coop.asi') -Force
 $iniDst = Join-Path $binDir 'dh2coop.ini'
 if ($ForceIni -or -not (Test-Path $iniDst)) { Copy-Item (Join-Path $modDir 'dh2coop.ini') $iniDst -Force }

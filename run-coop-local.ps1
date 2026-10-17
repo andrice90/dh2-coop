@@ -11,6 +11,8 @@
 #   .\run-coop-local.ps1 -Players 3 -LateJoin 20 -Seconds 60 -Map MAP3B
 #   .\run-coop-local.ps1 -AddClient 3 -Map HUNTMAP4
 #   .\run-coop-local.ps1 -Map MAP3B -Combat
+# -Port       UDP port written into every copied ini; clients join 127.0.0.1:<Port>. Default 27420. Give each
+#             worktree its own port when sessions from several checkouts run on this PC at the same time.
 # -Combat     Forces [Puppets] Physics=1 AttackTarget=1 in every copied ini (host animals attack the nearest
 #             player, clients included). Both are the mod\dh2coop.ini defaults since 2026-10-17, so this only
 #             matters if you turned them off there. re/notes/lead-combat.md.
@@ -40,7 +42,8 @@ param(
     [int]$Players = 2,
     [int]$LateJoin = 0,
     [int]$AddClient = 0,
-    [switch]$Combat
+    [switch]$Combat,
+    [int]$Port = 27420
 )
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -137,6 +140,11 @@ function Install-TreeFiles([string]$Tree, [string]$PlayerName) {
     $iniDest = Join-Path $bin 'dh2coop.ini'
     Copy-Item $ini $iniDest -Force
     Set-PlayerNameIni $iniDest $PlayerName
+    if ($Port -ne 27420) {
+        $text = [System.IO.File]::ReadAllText($iniDest)
+        $text = [regex]::Replace($text, '(?m)^Port=\d+', "Port=$Port")
+        [System.IO.File]::WriteAllText($iniDest, $text, (New-Object System.Text.ASCIIEncoding))
+    }
     if ($Combat) {
         # Phase 5 test: host animals may attack client puppets (needs the puppet's physics body).
         $text = [System.IO.File]::ReadAllText($iniDest)
@@ -590,18 +598,23 @@ if ($AddClient -ne 0) {
         if ($row.Bin -ieq $targetBin) { throw "target tree already running: $role pid=$($row.Id)" }
     }
     Assert-DiscMounted
-    "launch: $launch -coopjoin 127.0.0.1 (AddClient $AddClient, $role)"
+    "launch: $launch -coopjoin 127.0.0.1:$Port (AddClient $AddClient, $role)"
     Sync-ClientTree $tree
     Install-TreeFiles $tree (Get-SlotPlayerName $AddClient)
     $startedAt = Get-Date
-    $proc = Start-Instance $tree '-coopjoin 127.0.0.1'
+    $proc = Start-Instance $tree "-coopjoin 127.0.0.1:$Port"
     $welcome = Wait-ClientWelcomed $proc (Join-Path $tree 'Bin\dh2coop.log') $role $startedAt
     Write-Host $welcome
     return
 }
 
-if (Get-Process Main7 -ErrorAction SilentlyContinue) {
-    throw 'Main7.exe is already running. Close it before run-coop-local.ps1.'
+# Only this checkout's trees: other worktrees may run their own sessions at the same time (each with its own -Port).
+$rootFull = [System.IO.Path]::GetFullPath($root).TrimEnd('\') + '\'
+foreach ($row in @(Get-RunningMain7)) {
+    if (-not $row.Bin) { throw "Main7 pid=$($row.Id) has no readable path. Close it before run-coop-local.ps1." }
+    if ($row.Bin.StartsWith($rootFull, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Main7.exe from this checkout is already running (pid=$($row.Id), $($row.Bin)). Close it first."
+    }
 }
 
 Assert-DiscMounted
@@ -637,9 +650,9 @@ try {
         }
         $tree = Get-SlotTree $slot
         $startedAt = Get-Date
-        $proc = Start-Instance $tree '-coopjoin 127.0.0.1'
+        $proc = Start-Instance $tree "-coopjoin 127.0.0.1:$Port"
         Add-Launched $role $tree $proc
-        Write-Run "role=$role pid=$($proc.Id) args=-coopjoin 127.0.0.1"
+        Write-Run "role=$role pid=$($proc.Id) args=-coopjoin 127.0.0.1:$Port"
         [void](Wait-ClientWelcomed $proc (Join-Path $tree 'Bin\dh2coop.log') $role $startedAt)
     }
 
