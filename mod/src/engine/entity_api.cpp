@@ -240,6 +240,32 @@ const char* guarded_state_name(void* ent) {
     }
 }
 
+using PartSetAnimFn = int(__thiscall*)(void* part, const char* name);
+PartSetAnimFn g_part_set_anim = nullptr;
+
+int guarded_set_anim_parts(void* ent, const char* clip, bool skip_first) {
+    __try {
+        if (!g_part_set_anim) {
+            if (HMODULE engine = GetModuleHandleA("EngineDll7.dll"))
+                g_part_set_anim = reinterpret_cast<PartSetAnimFn>(
+                    GetProcAddress(engine, "?SetAnim@cModelPart@@UAEHPBD@Z"));
+        }
+        if (!g_part_set_anim || !clip) return 0;
+        void* model = *reinterpret_cast<void**>(static_cast<char*>(ent) + 0xE4);
+        if (!model) return 0;
+        const short parts = reinterpret_cast<short(__thiscall*)(void*)>(slot(model, 0xf8))(model);
+        int applied = 0;
+        for (int i = skip_first ? 1 : 0; i < parts; ++i) {
+            void* part = reinterpret_cast<GetPartFn>(slot(model, 0xf0))(model, i);
+            if (!part) continue;
+            if (g_part_set_anim(part, clip) > 0) ++applied;
+        }
+        return applied;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+
 int guarded_set_state(void* ent, const char* name, bool reset) {
     __try {
         void* sm = body_states(ent);
@@ -373,6 +399,10 @@ bool Spawn(void* ent) { return ent && guarded_void(ent, kVtSpawn); }
 bool SetPos(void* ent, const Vec3& pos) { return ent && guarded_vec(ent, kVtSetPos, &pos); }
 bool SetAngle(void* ent, const Vec3& a) { return ent && guarded_vec(ent, kVtSetAngle, &a); }
 bool SetAnim(void* ent, const char* anim) { return ent && anim && guarded_str(ent, kVtSetAnim, anim); }
+
+int SetAnimOnParts(void* ent, const char* clip, bool skip_first) {
+    return ent && clip ? guarded_set_anim_parts(ent, clip, skip_first) : 0;
+}
 bool BspUpdate(void* ent) {
     if (!ent || !g_bsp_update || !g_bsp_slot) return false;
     void* bsp = *g_bsp_slot;

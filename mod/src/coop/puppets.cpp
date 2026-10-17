@@ -42,6 +42,11 @@ struct Puppet {
     void* weapon = nullptr; // third-person weapon entity attached to the puppet's hand
     int weapon_kind = 0;    // net::WeaponKind currently attached
     bool weapon_failed = false;
+    int last_shots = -1;
+    uint32_t fire_until = 0;
+    std::string arms_buf;
+    std::string arms_shown;
+    std::string gun_shown;
     bool attack_target = false;  // host: registered in the animals' attack-target list (Phase 5)
 };
 
@@ -111,9 +116,9 @@ uint32_t now_ms() {
 
 // The player's own model (teenmm.skin) is only first-person arms ("fpshands1", teenmm1st.skin) — there is
 // no third-person player body. Puppets use a full NPC body instead ([Puppets] Model=, "hunter" = player model).
-// GAME.AP only. Adding shotgun1.ap makes spawn try to create cBodyShotgun1npc, which is not registered
-// on MAP12C; that failed create then breaks later SetAnim calls (client crash 2026-10-16 22:08).
-std::string g_model = "objects/npc/mountainguide/mountainguide.skin,game.ap";
+// shotgun1.ap / handgun3.ap supply the arm clips. Entity SetAnim of a "shotgun1/..." name creates
+// cBodyShotgun1npc (missing on MAP12C and fatal). Those clips are applied on the torso part only.
+std::string g_model = "objects/npc/mountainguide/mountainguide.skin,game.ap,shotgun1.ap,handgun3.ap";
 
 void* spawn_human(const char* why) {
     void* mgr = EntityManager();
@@ -143,25 +148,77 @@ void* spawn_human(const char* why) {
     return ent;
 }
 
-// Clip choice from movement and the remote player's actions. Names: re/notes/anim-names.md.
-// Body clips stay in GAME.AP (idlenormalneutral, walk/forward, ...). A "shotgun1/..." name makes
-// the guide script create cBodyShotgun1npc, which MAP12C does not register. That failed create
-// then access-violates in cObjNPC::Update (client exited 2026-10-16 22:08, about 12s after join).
-// The third-person gun mesh is still attached. SetAnim on that mesh is not called: idlealertneutral
-// on shotgun1.skin asks for the same missing class (host debug 22:13).
+// Legs stay on GAME.AP names (the guide legs script). Arms and the gun use the weapon pack.
+// Entity SetAnim("shotgun1/...") creates the missing cBodyShotgun1npc class, so the arm clips are
+// applied with cModelPart::SetAnim on every part except the legs.
 // Facing vector (sin yaw, cos yaw); right = (cos yaw, -sin yaw) — verified: key A (strafe left) → walk/left.
-std::string choose_clip(const net::InterpSample& s) {
-    if (s.flags & net::kFlagCrouched) return g_crouch_clip;
-    const float vx = s.velocity[0], vz = s.velocity[2];
-    const float speed = std::sqrt(vx * vx + vz * vz);
-    if (speed < kWalkSpeed) return "idlenormalneutral";
-    const float y = s.yaw * 3.14159265f / 180.f;
-    const float fwd = vx * std::sin(y) + vz * std::cos(y);
-    const float right = vx * std::cos(y) - vz * std::sin(y);
-    if (fwd >= std::fabs(right)) return speed >= kRunSpeed ? "run/forward" : "walk/forward";
-    if (-fwd >= std::fabs(right)) return "walk/backward";
-    if (right > 0.f) return "walk/right";
-    return "walk/left";
+struct ClipSet {
+    const char* legs;
+    const char* arms;  // nullptr: leave the torso alone (knife / unarmed)
+    const char* gun;   // clip on the weapon mesh, no pack prefix
+};
+
+ClipSet choose_clips(Puppet& p, const net::InterpSample& s, uint32_t now) {
+    const char* pack = nullptr;
+    if (s.weaponId == net::kWeaponShotgun || s.weaponId == net::kWeaponRifle) pack = "shotgun1/";
+    else if (s.weaponId == net::kWeaponHandgun) pack = "handgun3/";
+    const bool armed = pack != nullptr;
+    const int shots = (s.flags & net::kShotCounterMask) >> net::kShotCounterShift;
+    if (p.last_shots >= 0 && shots != p.last_shots && armed) p.fire_until = now + 400;
+    p.last_shots = shots;
+
+    ClipSet c{"idlenormalneutral", nullptr, "idlealertneutral"};
+    if (armed && now < p.fire_until) {
+        c.legs = "idlenormalneutral";
+        c.arms = "fire";  // filled with pack below
+        c.gun = "fire";
+    } else if (armed && (s.flags & net::kFlagReloading)) {
+        c.gun = s.weaponId == net::kWeaponHandgun ? "reload" : "reload1";
+        c.arms = c.gun;
+    } else if (s.flags & net::kFlagCrouched) {
+        c.legs = g_crouch_clip.c_str();
+        c.arms = "idlealertneutral";
+    } else {
+        const float vx = s.velocity[0], vz = s.velocity[2];
+        const float speed = std::sqrt(vx * vx + vz * vz);
+        if (speed >= kWalkSpeed) {
+            const float y = s.yaw * 3.14159265f / 180.f;
+            const float fwd = vx * std::sin(y) + vz * std::cos(y);
+            const float right = vx * std::cos(y) - vz * std::sin(y);
+            if (fwd >= std::fabs(right)) {
+                if (speed >= kRunSpeed) {
+                    c.legs = "run/forward";
+                    c.arms = "run";
+                    c.gun = "run";
+                } else {
+                    c.legs = "walk/forward";
+                    c.arms = "walkforwardalert";
+                    c.gun = "walkforwardalert";
+                }
+            } else if (-fwd >= std::fabs(right)) {
+                c.legs = "walk/backward";
+                c.arms = "walkbackwardalert";
+                c.gun = "walkbackwardalert";
+            } else if (right > 0.f) {
+                c.legs = "walk/right";
+                c.arms = "walkstraferightalert";
+                c.gun = "walkstraferightalert";
+            } else {
+                c.legs = "walk/left";
+                c.arms = "walkstrafeleftalert";
+                c.gun = "walkstrafeleftalert";
+            }
+        }
+    }
+    if (!armed) {
+        c.arms = nullptr;
+        c.gun = nullptr;
+        p.arms_buf.clear();
+    } else if (c.arms) {
+        p.arms_buf = std::string(pack) + c.arms;
+        c.arms = p.arms_buf.c_str();
+    }
+    return c;
 }
 // Third-person weapon models (OBJECTS\ITEMS\GAME\WEAPONS\<NAME>\<NAME>.SKIN; the *1ST dirs are first-person).
 // Hands as in the NPC weapon scripts (HGUNNPC/SGUNNPC/RIFLENPC.SCR default branch): handgun right, long guns left;
@@ -239,12 +296,26 @@ void place_weapon(Puppet& p) {
     entity::BspUpdate(p.weapon);
 }
 
-void pick_anim(Puppet& p, const std::string& want) {
+void pick_anim(Puppet& p, const ClipSet& clips) {
     if (!g_anim_enabled || !p.entity) return;
-    if (p.anim == want) return;
-    p.anim = want;
-    const bool ok = entity::SetAnim(p.entity, want.c_str());
-    spdlog::info("puppets: entity {:#x} anim '{}' -> {}", reinterpret_cast<uintptr_t>(p.entity), want, ok);
+    const std::string legs = clips.legs ? clips.legs : "";
+    if (p.anim != legs && !legs.empty()) {
+        p.anim = legs;
+        const bool ok = entity::SetAnim(p.entity, legs.c_str());
+        spdlog::info("puppets: entity {:#x} legs '{}' -> {}", reinterpret_cast<uintptr_t>(p.entity), legs, ok);
+    }
+    const std::string arms = clips.arms ? clips.arms : "";
+    if (p.arms_shown != arms) {
+        p.arms_shown = arms;
+        const int n = arms.empty() ? 0 : entity::SetAnimOnParts(p.entity, arms.c_str(), true);
+        spdlog::info("puppets: entity {:#x} arms '{}' parts={}", reinterpret_cast<uintptr_t>(p.entity), arms, n);
+    }
+    const std::string gun = clips.gun ? clips.gun : "";
+    if (p.weapon && p.gun_shown != gun) {
+        p.gun_shown = gun;
+        const int n = gun.empty() ? 0 : entity::SetAnimOnParts(p.weapon, gun.c_str(), false);
+        spdlog::info("puppets: weapon {:#x} anim '{}' parts={}", reinterpret_cast<uintptr_t>(p.weapon), gun, n);
+    }
 }
 
 // Host only: animals pick the closest entry of cAIHuntAnimalInterface's attack-target list
@@ -310,10 +381,11 @@ public:
             p.attack_target = false;
             p.spawn_failed = false;
             p.anim.clear();
-            p.weapon = nullptr;
-            p.weapon_kind = 0;
-            p.weapon_failed = false;
-        }
+    p.weapon = nullptr;
+    p.weapon_kind = 0;
+    p.weapon_failed = false;
+    p.gun_shown.clear();
+}
         g_spawn_manager = nullptr;
         g_spike_entity = nullptr;
         g_spike_wait = 0.f;
@@ -374,7 +446,7 @@ public:
             place(p, {s.pos[0], s.pos[1] + g_y_offset, s.pos[2]}, s.yaw);
             sync_weapon(p, s.weaponId);
             place_weapon(p);
-            pick_anim(p, choose_clip(s));
+            pick_anim(p, choose_clips(p, s, now));
         }
     }
 
@@ -434,7 +506,7 @@ private:
         const entity::Vec3 pos{local.pos.x + 3.f * fx + side * fz, local.pos.y, local.pos.z + 3.f * fz - side * fx};
         const float yawDeg = spike_sign_ < 0 ? local.angle.y : local.angle.y + 180.f;  // face the camera
         place(spike_puppet_, pos, yawDeg);
-        pick_anim(spike_puppet_, "walk/forward");
+        pick_anim(spike_puppet_, ClipSet{"walk/forward", nullptr, nullptr});
         log_accum_ += dt;
         if (log_accum_ >= 2.f) {
             log_accum_ = 0.f;

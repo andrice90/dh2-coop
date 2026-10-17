@@ -25,6 +25,10 @@ bool Spawn(void* ent);                                           // +0x58
 bool SetPos(void* ent, const Vec3& pos);                         // +0xA8
 bool SetAngle(void* ent, const Vec3& angleDeg);                  // +0xB0 (x pitch, y yaw, z roll; degrees)
 bool SetAnim(void* ent, const char* anim);                       // +0x174 (scripted entities only)
+// cModelPart::SetAnim(char const*) on every part except part 0 when skip_first is set.
+// Part 0 is the legs machine (the guide script). The torso/arms are later parts. Returns how many
+// parts accepted the clip. Does not go through the entity script, so it does not create cBodyShotgun1npc.
+int SetAnimOnParts(void* ent, const char* clip, bool skip_first);
 // cBspTree::UpdateEntity(*g_bsp, ent): (re)links the entity into BSP leaves from its world AABB (+0xC4..+0xD8).
 // Runtime-spawned entities are not linked until this runs (link index +0x124 stays -1) → never drawn.
 bool BspUpdate(void* ent);
