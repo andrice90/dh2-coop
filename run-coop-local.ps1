@@ -2,7 +2,9 @@
 # Usage: .\run-coop-local.ps1 [-Seconds N] [-NoArrange] [-Capture] [-Map HUNTMAP4|MAP3B|...]
 #   -NoArrange  do not move the windows
 #   -Capture    every 10s of a -Seconds run, save both windows under re\notes\coop-local\
-# The client starts after the host debug.log reaches engine time 8s (host in the map and listening).
+# The client starts once the host log says "coop: host start" (listening, just after map load).
+# Waiting for engine time 8s drops the client in after a short story intro (MAP12C fires
+# its opening trigger about 6s after load), which leaves the client stuck in that cutscene.
 # Both games are started with Win32_Process.Create so they outlive the launching shell: an agent
 # shell's job object kills Start-Process children when the command returns (the 2026-10-16 16:36
 # and 16:53 "both crashed" runs).
@@ -262,21 +264,27 @@ function Get-LatestEngineTime([string]$DebugPath) {
 }
 
 function Wait-HostInMap([System.Diagnostics.Process]$Proc, [string]$DebugPath) {
-    # Host must be in the map (it starts hosting after the first map load) before the client joins.
-    $need = 8.0
+    # Hosting starts in OnMapLoaded ("coop: host start"). The log path is beside debug.log.
+    $logPath = Join-Path (Split-Path -Parent $DebugPath) 'dh2coop.log'
     $deadline = (Get-Date).AddSeconds(90)
-    $last = -1.0
     while ((Get-Date) -lt $deadline) {
         try { $Proc.Refresh() } catch { throw "game pid=$($Proc.Id) disappeared during startup" }
         if ($Proc.HasExited) { throw "game pid=$($Proc.Id) exited during startup (code $($Proc.ExitCode))" }
-        $last = Get-LatestEngineTime $DebugPath
-        if ($last -ge $need) {
-            Write-Run ("host ready pid={0} engineTime={1:N3} (client waits until {2:N0}s)" -f $Proc.Id, $last, $need)
-            return
+        if (Test-Path -LiteralPath $logPath) {
+            $stream = New-Object System.IO.FileStream($logPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+            $reader = New-Object System.IO.StreamReader($stream)
+            $text = $reader.ReadToEnd()
+            $reader.Dispose()
+            $stream.Dispose()
+            if ($text -match 'coop: host start') {
+                $engine = Get-LatestEngineTime $DebugPath
+                Write-Run ("host ready pid={0} engineTime={1:N3} (listening)" -f $Proc.Id, $engine)
+                return
+            }
         }
         Start-Sleep -Milliseconds 200
     }
-    throw ("host pid={0} did not reach engine time {1:N0}s (last={2})" -f $Proc.Id, $need, $last)
+    throw "host pid=$($Proc.Id) did not log 'coop: host start' within 90s"
 }
 
 function Stop-LaunchedInstances {
