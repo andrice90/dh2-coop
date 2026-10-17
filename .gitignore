@@ -16,6 +16,8 @@ __pycache__/
 re/jobs/*.stdout.tmp
 mod/net-test/build/
 game2/
+game3/
+game4/
 mod/build-lead/
 re/notes/coop-local/
 re/jobs/*.prompt.md
