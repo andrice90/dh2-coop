@@ -21,6 +21,27 @@ User: extend the MAP1/MAP2 fixes to every other map, all weapon models; Grok/cur
 | Drop-out AV, drop-in damage, puppet pitch / feet / crouch / hands / weapon sounds — re-opened | Sonnet | `dh2coop-polish` `puppet-polish` (27500 / H) | `re/notes/puppet-polish.md` |
 | `"hunter"` = nearest player on the host (spook, claim, chases, guides, `NpcFollowNearest`) — re-opened | Opus | `dh2coop-hunter` `hunter-nearest` (27470 / M) | `re/notes/hunter-nearest.md` |
 
+**Lead progress (usage limit hit mid-session, resume here):**
+- Done in main:
+  - `ad8b0b4`: debug.log copy from DllMain; prop anims only for map entities.
+  - `6b40deb`: protocol v2 (build id, password, snapshot map serial), Flip net pump, ENet timeouts. Builds and net-test passes; **not run in game yet**.
+- Lead to-do next:
+  - Run two windows on MAP1 with `6b40deb` (welcome, snapshots, minimize a window → log `network from cRenderDX::Flip`).
+  - Review M3/L11 and the smaller review items: O(1) `EntityById`; per-frame validation of `Animals()`, `Npcs()` and `items_`; L3, L6, L7, L10, L13.
+- Reports in:
+  - log-sweep and code-review are handled; findings went to their owners.
+  - New jobs: `journal-life` (Opus: H1/M5/M6/M8/L8) and `kit-fixes` (Sonnet: L5).
+  - audit-maps-a and audit-maps-c have landed.
+- Their top new gaps:
+  - Pilot maps MAP11A/11C: the player is a `cObjPilot` (vt GameDll `0x109d48`), and the tracker only knows the hunter.
+  - Trigger `OnHit` (`0x6b140`) runs on one machine only, so MAP3A's "find 3" can soft-lock.
+  - Level exits (`0x6c420`/`0x6c610`) are per-client and come from the profile.
+  - `MoveToPos` is a respawn that unfreezes client brains.
+  - Water crocodiles (`cObjCrocodile`) are not mirrored.
+  - Guide death (`0x5fde0`) bypasses `0x91c20`.
+  - `SetCanBeAttacked` is host-only.
+- Still running when the limit hit: audit-b, smoke, weapons, replay, yeti, npc-arms, flow, polish, hunter, journal-life, kit-fixes. Check `git -C D:\scary hunt\dh2coop-<job> log` and `re/notes/<job>.md` in each worktree.
+
 Lead: review each deliverable, cherry-pick into `main`, integration-test, then a second wave from the audit gap lists (vehicles, mines, helicopter, traps, pickups, timers…). Still for the user: bottle host real-bullet retest; two-PC run after merges.
 
 ## Lead session 2026-10-17 (user goals: untested objective types, 4 players, drop-in/drop-out, player markers; stretch: knock other players over)
