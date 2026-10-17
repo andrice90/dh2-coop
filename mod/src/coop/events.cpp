@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <intrin.h>
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstring>
@@ -216,10 +217,17 @@ bool IsMenuMap(const std::string& name) { return name == "MENUMAP"; }
 
 void OnMapStartCommit(const net::GameEvent& ev) {
     const std::string want = MapNameFromLabel(ev.key.c_str());
+    // The name goes into a console command line: accept only plain map names (A-Z, 0-9, _), so a host cannot
+    // smuggle separators or extra commands into this client's console.
+    const bool plain = !want.empty() && want.size() <= 31 &&
+                       std::all_of(want.begin(), want.end(), [](unsigned char c) { return std::isalnum(c) || c == '_'; });
+    if (!plain) {
+        spdlog::warn("events: rejected map name from host (len {})", want.size());
+        return;
+    }
     const bool first = !g_client_seen_map;
     g_client_seen_map = true;
     g_host_map = want;
-    if (want.empty()) return;
     if (first && want == g_map) {
         spdlog::info("events: host map '{}' (serial {}) is already loaded here", want, ev.subjectId);
         return;
