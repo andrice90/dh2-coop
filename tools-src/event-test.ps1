@@ -1,10 +1,14 @@
 # Automated world-event test: two local instances, close CHOOSE ITEM on both, kill a deer on the host
 # (coop_kill through Bin\dh2coop.cmd), claim it from the client (coop_claim), capture both windows, then
 # print the events/animals log lines.
-# Usage: .\tools-src\event-test.ps1 [-Animal 120] [-Settle 25] [-ClaimFrom client|host|none] [-Keep]
+# Usage: .\tools-src\event-test.ps1 [-Animal 120] [-Settle 25] [-KillFrom host|client] [-Damage 1000]
+#                                   [-ClaimFrom client|host|none] [-Keep]
+#   -KillFrom client: the client's coop_kill hits its local mirror like a bullet; the mirror sends AnimalHit.
 param(
     [int]$Animal = 120,
     [int]$Settle = 25,
+    [ValidateSet('client', 'host')][string]$KillFrom = 'host',
+    [float]$Damage = 1000,
     [ValidateSet('client', 'host', 'none')][string]$ClaimFrom = 'client',
     [switch]$Keep
 )
@@ -38,7 +42,8 @@ try {
     Start-Sleep 2
     Shot $p1 'host-0'
     Shot $p2 'client-0'
-    Send-Cmd 'game' "coop_kill $Animal"
+    $killTree = if ($KillFrom -eq 'client') { 'game2' } else { 'game' }
+    Send-Cmd $killTree "coop_kill ${Animal}:$Damage"
     Start-Sleep 4
     Shot $p1 'host-1killed'
     Shot $p2 'client-1killed'
@@ -61,7 +66,7 @@ try {
 foreach ($tree in 'game', 'game2') {
     Write-Host "---- $tree"
     Get-Content "$tree\Bin\dh2coop.log" |
-        Where-Object { $_ -match 'events:|coop_kill|coop: cmd file|present death|death (commit|event)|hook cMission|hook cObjAnimal|joined|welcomed' } |
+        Where-Object { $_ -match 'events:|coop_kill|coop: cmd file|present death|death (commit|event)|AnimalHit|local hit|hook cMission|hook cObjAnimal|joined|welcomed' } |
         Select-Object -First 80 | Write-Host
 }
 exit 0

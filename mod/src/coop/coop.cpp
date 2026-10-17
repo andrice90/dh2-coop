@@ -128,18 +128,19 @@ void __cdecl cmd_join(const char* arg) {
 
 void __cdecl cmd_leave() { RequestLeave(); }
 
-// Test commands. coop_kill <id> [damage]: FuncInflictDamage on the host's (or a solo) animal.
-// coop_claim <id>: run the trophy-claim path as if the engine's claim key had fired for that animal.
+// Test commands. coop_kill <id> [damage]: FuncInflictDamage on that animal. On the host or solo it is
+// the real damage; on a client it hits the local mirror like a bullet would, so the mirror reports an
+// AnimalHit to the host. coop_claim <id>: run the trophy-claim path as if the claim key had fired.
 void __cdecl cmd_kill(const char* arg) {
-    const std::string a = core::safe_cstr(arg, 64);
+    // The engine console passes exactly one token, so the damage rides as "<id>:<damage>".
+    std::string a = core::safe_cstr(arg, 64);
+    for (char& c : a) {
+        if (c == ':' || c == ',') c = ' ';
+    }
     int id = -1;
     float dmg = 1000.f;
     if (std::sscanf(a.c_str(), "%d %f", &id, &dmg) < 1 || id < 0) {
-        spdlog::warn("coop_kill: usage coop_kill <animal id> [damage]");
-        return;
-    }
-    if (g_session.IsConnected() && !g_session.IsHost()) {
-        spdlog::warn("coop_kill: client; the host simulates animals");
+        spdlog::warn("coop_kill: usage coop_kill <animal id>[:damage]");
         return;
     }
     animals::DebugDamage(static_cast<uint16_t>(id), dmg);
