@@ -509,7 +509,9 @@ void Commit(uint16_t kind, uint16_t subject, uint32_t i0, float f0, std::string_
     };
     const int existing = FindJournal(kind, subject, trimmed);
     if (existing >= 0) {
-        send(g_journal[static_cast<size_t>(existing)]);
+        // Everyone synced already has it. A client asking again (its own trigger fired after ours) gets it back
+        // alone: re-broadcasting each repeat flooded the other clients (MAP12C 2026-10-17 10:14, ~100/s).
+        if (actor != 0 && g_synced.count(actor) != 0) SendGameEventTo(actor, g_journal[static_cast<size_t>(existing)]);
         return;
     }
     if (g_journal.size() >= kJournalCap) {

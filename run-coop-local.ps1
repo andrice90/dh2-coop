@@ -10,6 +10,9 @@
 #   .\run-coop-local.ps1 -Map MAP3B
 #   .\run-coop-local.ps1 -Players 3 -LateJoin 20 -Seconds 60 -Map MAP3B
 #   .\run-coop-local.ps1 -AddClient 3 -Map HUNTMAP4
+#   .\run-coop-local.ps1 -Map MAP3B -Combat
+# -Combat     Phase 5 test: [Puppets] Physics=1 AttackTarget=1 in every copied ini (host animals may attack
+#             the client players; mod\dh2coop.ini keeps both off).
 # -Players    2 (default) through 4. Trees: game (host), game2, game3, game4.
 #             Names written into each Bin\dh2coop.ini: Host, P2, P3, P4. Every client joins 127.0.0.1.
 # -LateJoin   Seconds to wait, after the previous client is welcomed (or after host start, when the
@@ -35,7 +38,8 @@ param(
     [string]$Map = 'HUNTMAP4',
     [int]$Players = 2,
     [int]$LateJoin = 0,
-    [int]$AddClient = 0
+    [int]$AddClient = 0,
+    [switch]$Combat
 )
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -132,6 +136,13 @@ function Install-TreeFiles([string]$Tree, [string]$PlayerName) {
     $iniDest = Join-Path $bin 'dh2coop.ini'
     Copy-Item $ini $iniDest -Force
     Set-PlayerNameIni $iniDest $PlayerName
+    if ($Combat) {
+        # Phase 5 test: host animals may attack client puppets (needs the puppet's physics body).
+        $text = [System.IO.File]::ReadAllText($iniDest)
+        $text = [regex]::Replace($text, '(?m)^Physics=\d', 'Physics=1')
+        $text = [regex]::Replace($text, '(?m)^AttackTarget=\d', 'AttackTarget=1')
+        [System.IO.File]::WriteAllText($iniDest, $text, (New-Object System.Text.ASCIIEncoding))
+    }
     # A command file left by a crashed test would otherwise run in the new game (dh2coop.cmd channel).
     Remove-Item (Join-Path $bin 'dh2coop.cmd') -ErrorAction SilentlyContinue
     # Drop the previous log so a welcome/host line from an older run cannot satisfy the wait.

@@ -140,10 +140,34 @@ bool IsActive(void* ent) {
     return active == 1;
 }
 
+// A script fault inside the engine call must not escape into the module dispatcher: it disables the whole
+// coop module (MAP12C 2026-10-17 10:14:28, a forced re-fire faulted in EngineDll and the client went offline).
+bool guarded_activate(void* ent) {
+    __try {
+        g_event_hook->unsafe_fastcall<void>(ent);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
 void Activate(void* ent) {
     g_in_apply = true;
-    g_event_hook->unsafe_fastcall<void>(ent);
+    if (!guarded_activate(ent)) spdlog::error("story: trigger activate faulted id={}", IdOf(ent));
     g_in_apply = false;
+}
+
+// Client: its own swallowed arm/fire repeats every frame while the engine still sees the condition (the host's
+// answer may be deferred behind a cutscene). One request per trigger per few seconds is enough.
+std::unordered_map<int32_t, uint32_t> g_requested;  // (kind << 16 | id) -> GetTickCount of the last request
+
+bool ShouldRequest(uint16_t kind, int16_t id) {
+    const int32_t key = (static_cast<int32_t>(kind) << 16) | static_cast<uint16_t>(id);
+    const uint32_t now = GetTickCount();
+    const auto it = g_requested.find(key);
+    if (it != g_requested.end() && now - it->second < 3000) return false;
+    g_requested[key] = now;
+    return true;
 }
 
 // The same BSP entity id must carry the same name on both sides; otherwise the maps differ and nothing is applied.
@@ -277,11 +301,20 @@ bool HasFired(void* ent) {
     return fired != 0;
 }
 
+bool guarded_fire(void* ent, void* activator) {
+    __try {
+        g_fire_hook->unsafe_thiscall<void>(ent, activator);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
 void Fire(void* ent) {
     void* activator = LocalPlayer().entity;  // the script callback ignores it; the engine only needs non-null
     if (!activator) activator = ent;
     g_in_apply = true;
-    g_fire_hook->unsafe_thiscall<void>(ent, activator);
+    if (!guarded_fire(ent, activator)) spdlog::error("story: trigger OnActivate faulted id={}", IdOf(ent));
     g_in_apply = false;
 }
 
@@ -362,7 +395,13 @@ void __fastcall hk_TriggerFire(void* self, void*, void* activator) {
         if (id >= 0) events::Commit(events::kTriggerFire, static_cast<uint16_t>(id), 0, 0.f, name, 0);
         return;
     }
-    if (id >= 0) events::Request(events::kTriggerFire, static_cast<uint16_t>(id), 0, 0.f, name);
+    // Already decided: the host's fire ran here, or it is waiting behind our cutscene camera.
+    if (g_ran_fire.count(id) != 0) return;
+    for (const net::GameEvent& pending : g_deferred_fires) {
+        if (pending.subjectId == static_cast<uint16_t>(id)) return;
+    }
+    if (id < 0 || !ShouldRequest(events::kTriggerFire, id)) return;
+    events::Request(events::kTriggerFire, static_cast<uint16_t>(id), 0, 0.f, name);
     spdlog::info("story: client fire '{}' (id {}) sent to host", name, id);
 }
 
@@ -384,7 +423,8 @@ void __fastcall hk_TriggerEvent(void* self, void*) {
         return;
     }
     // Client: its own player or script reached this trigger first. The host decides; the commit activates it here.
-    if (id >= 0) events::Request(events::kTriggerEvent, static_cast<uint16_t>(id), 0, 0.f, name);
+    if (id < 0 || !ShouldRequest(events::kTriggerEvent, id)) return;
+    events::Request(events::kTriggerEvent, static_cast<uint16_t>(id), 0, 0.f, name);
     spdlog::info("story: client trigger '{}' (id {}) sent to host", name, id);
 }
 
@@ -535,6 +575,7 @@ public:
         g_playsa.clear();
         g_play_keep.clear();
         g_skip_watch.clear();
+        g_requested.clear();
     }
 
     void OnFrame(float) override {

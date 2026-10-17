@@ -91,6 +91,30 @@ void __fastcall hk_OnHurt(void* self, void*, void* attacker, float dmg, int type
     g_onhurt_hook->unsafe_thiscall<void>(self, attacker, dmg, type, pos, dir);
 }
 
+// cObjCharacterEx sync attack (re/notes/knockdown.md): +0x368 is set by PlaySA and cleared by OnEndSA (vt +0x214),
+// which also restores the part's animation pack and sets every part to Idle.
+bool InSyncAttack(void* ent) {
+    int in_sa = 0;
+    return core::safe_read(static_cast<char*>(ent) + 0x368, in_sa) && in_sa != 0;
+}
+
+// The base class body, not the virtual: the yeti's override faults without its (frozen) attack task
+// (2026-10-17 10:20:27 ok=false); the base clears +0x368, restores physics and sets the parts to Idle.
+bool EndSyncAttack(void* ent) {
+    static void* fn = nullptr;
+    if (!fn) {
+        if (HMODULE common = GetModuleHandleA("CommonDll7.dll"))
+            fn = core::find_export(common, "?OnEndSA@cObjCharacterEx@@UAEXXZ");
+    }
+    if (!fn || !ent) return false;
+    __try {
+        reinterpret_cast<void(__thiscall*)(void*)>(fn)(ent);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
 bool g_log_states = true;
 bool g_sync_log = true;
 bool g_spike = false;
@@ -747,6 +771,19 @@ private:
                     spdlog::info("animals: mirror thaw id={} while state is CutScene", id);
                 }
                 continue;
+            }
+            // The local copy is still inside a sync attack (PlaySA, +0x368) that the host's actor has finished. Its task
+            // is frozen here, so nothing calls OnEndSA: the part keeps the partner's animation pack and the next state
+            // the body script enters raises the engine's fatal "Could not forward animation" (MAP12C yeti, its opening
+            // PlaySA ran before the join; 2026-10-17 10:17:08 the client exited when the host's yeti attacked).
+            // NPCs only: on the MAP12C yeti both the virtual and the base OnEndSA fault halfway (10:20:27, 10:22:39),
+            // and a half-run end is worse than none. The yeti fight still crashes clients (EngineDll7+0x28b337): open.
+            if (m.is_npc && have_early && !host_cutscene && InSyncAttack(ent)) {
+                const bool ended = EndSyncAttack(ent);
+                spdlog::info("animals: mirror id={} ended its local sync attack (host state '{}') ok={}", id, early.state,
+                             ended);
+                m.frozen = false;  // OnEndSA unfreezes the character; freeze again below
+                m.applied_state.clear();
             }
             if (!m.frozen) {
                 const bool ok = m.is_npc ? entity::CharacterBrainFreeze(ent, true) : entity::FreezeBrain(ent, true);

@@ -152,6 +152,19 @@ void* spawn_human(const char* why) {
         uint32_t phys = 0;
         core::safe_read(reinterpret_cast<char*>(ent) + 0x118, phys);
         spdlog::info("puppets: unlinked physics -> {} (phys +0x118 now {:#x})", ok, phys);
+    } else {
+        // Keep the body (the animal attack code reads it) but stop it colliding. A solid puppet under the local
+        // hunter pushed both players up without end (each side's push raised the other side's puppet: y -2.9 to
+        // 65 in 15 s, MAP3B 2026-10-17 10:26). Same three words cObjCharacterEx::PlaySA writes so the two partners
+        // of a sync attack can overlap (CommonDll 0x27f10; re/notes/knockdown.md).
+        char* phys = nullptr;
+        if (core::safe_read(reinterpret_cast<char*>(ent) + 0x118, phys) && phys) {
+            const uint32_t seven = 7, mask = 0xfffffff8;
+            std::memcpy(phys + 0x20, &seven, sizeof seven);
+            std::memcpy(phys + 0x24, &seven, sizeof seven);
+            std::memcpy(phys + 0x28, &mask, sizeof mask);
+            spdlog::info("puppets: physics body {:#x} kept, collision off", reinterpret_cast<uintptr_t>(phys));
+        }
     }
     g_spawn_manager = mgr;
     return ent;

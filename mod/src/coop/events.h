@@ -45,7 +45,8 @@ void SetHandler(uint16_t kind, Handler onRequest, Handler onCommit);
 
 // Host only. Records the commit and sends it to the clients that have synced this map (kSyncDone sent);
 // kMapStart goes to every client. A client that is still loading gets it in its catch-up instead.
-// A repeat of the same kind/subject/key resends the stored commit and does not append another. No-op on a client.
+// A repeat of the same kind/subject/key is not appended; the stored commit goes back to `actor` only (a client whose
+// request found it already decided), and nowhere when the host itself repeats it. No-op on a client.
 void Commit(uint16_t kind, uint16_t subject, uint32_t i0, float f0, std::string_view key, uint8_t actor);
 
 // Host only. Like Commit but not journaled: momentary effects (a hit, a knockdown) that a late joiner must not replay.
