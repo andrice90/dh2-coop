@@ -48,5 +48,8 @@ NOT YET / KNOWN PROBLEMS
 - Pause menus are per player (the host pausing freezes animals for everyone).
 
 IF SOMETHING BREAKS
-Send these files from the Bin folder: dh2coop.log and debug.log (from both players).
+Send the log files from both players. They are in the game's Bin folder, or, when the game is installed
+under Program Files, in %LOCALAPPDATA%\dh2coop (paste that into the Explorer address bar):
+  dh2coop.log, debug.1.log (this run's engine log is debug.log in Bin), and after a crash and a restart also
+  dh2coop.1.log (the run before) and debug.2.log.
 
