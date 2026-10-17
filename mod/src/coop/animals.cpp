@@ -101,6 +101,31 @@ void __fastcall hk_OnHurt(void* self, void*, void* attacker, float dmg, int type
     g_onhurt_hook->unsafe_thiscall<void>(self, attacker, dmg, type, pos, dir);
 }
 
+// Story NPC health (re/notes/npc-health.md): cObjNPC / cObjGuide keep a cProfile at +0x1F8; current health is the
+// float at profile +0x54. cObjNPC::Update (GameDll 0x630a0, DecideCurentCondition 0x62ac0) copies it onto +0x19C
+// every frame; the protect-objective bar (cHUDNpcStatus) and the death check read the profile value.
+bool NpcProfileHealth(void* npc, float& hp) {
+    char* profile = nullptr;
+    return core::safe_read(static_cast<char*>(npc) + 0x1F8, profile) && profile &&
+           core::safe_read(profile + 0x54, hp);
+}
+
+void SetNpcProfileHealth(void* npc, float hp) {
+    char* profile = nullptr;
+    if (core::safe_read(static_cast<char*>(npc) + 0x1F8, profile) && profile)
+        std::memcpy(profile + 0x54, &hp, sizeof hp);
+}
+
+// Client: a mirrored NPC takes no local damage (cObjNPC::OnHurt GameDll 0x5eeb0, vt +0x14C): the host's health
+// arrives every frame. Two-PC test: Hugh's bar dropped at different rates on host and client.
+safetyhook::InlineHook* g_npc_hurt_hook = nullptr;
+bool IsMirroredNpc(void* ent);  // below (needs the module's mirror table)
+
+void __fastcall hk_NpcHurt(void* self, void*, void* attacker, float dmg, int type, const void* pos, const void* dir) {
+    if (NetIsOnline() && !NetIsHost() && IsMirroredNpc(self)) return;
+    g_npc_hurt_hook->unsafe_thiscall<void>(self, attacker, dmg, type, pos, dir);
+}
+
 // cObjCharacterEx sync attack (re/notes/knockdown.md): +0x368 is set by PlaySA and cleared by OnEndSA (vt +0x214),
 // which also restores the part's animation pack and sets every part to Idle.
 bool InSyncAttack(void* ent) {
@@ -398,6 +423,17 @@ public:
         SetPreRenderCallback(&prerender);
     }
 
+    void OnGameDllLoaded(HMODULE game) override {
+        static const uint8_t kPrologue[5] = {0x55, 0x8b, 0xec, 0x6a, 0xff};
+        void* fn = reinterpret_cast<char*>(game) + 0x5eeb0;  // cObjNPC::OnHurt
+        uint8_t got[5] = {};
+        if (!core::safe_copy(fn, got, sizeof got) || std::memcmp(got, kPrologue, sizeof got) != 0) {
+            spdlog::error("animals: cObjNPC::OnHurt at GameDll7+0x5eeb0 has unexpected bytes; not hooked");
+            return;
+        }
+        g_npc_hurt_hook = core::install_hook("cObjNPC::OnHurt (client NPC mirrors)", fn, reinterpret_cast<void*>(&hk_NpcHurt));
+    }
+
     void OnEngineReady(HMODULE engine) override {
         g_hit_diag = GetPrivateProfileIntA("Animals", "HitDiag", 1, ini_path().c_str()) != 0;
         if (HMODULE common = core::wait_for_module("CommonDll7.dll", 10000)) {
@@ -536,7 +572,8 @@ public:
             if (!core::safe_read(static_cast<char*>(npc) + kEntId, id) || id < 0) continue;
             if (!core::safe_read(static_cast<char*>(npc) + kEntPos, p)) continue;
             core::safe_read(static_cast<char*>(npc) + kEntAngle, ang);
-            core::safe_read(static_cast<char*>(npc) + kEntHealth, hp);
+            // An NPC's real health is its profile's (re/notes/npc-health.md): +0x19C is only a per-frame copy.
+            if (!NpcProfileHealth(npc, hp)) core::safe_read(static_cast<char*>(npc) + kEntHealth, hp);
             const auto uid = static_cast<uint16_t>(id);
             YawTrack& tr = yaws_[uid];
             if (!tr.have) {
@@ -673,6 +710,14 @@ public:
     void NoteDeath(uint16_t id) {
         if (hosting_ || !session_active_) return;
         if (dead_.insert(id).second) spdlog::info("animals: death event id={}", id);
+    }
+
+    bool IsMirroredNpcEntity(void* ent) {
+        if (hosting_ || !ent) return false;
+        int16_t id = -1;
+        if (!core::safe_read(static_cast<char*>(ent) + kEntId, id) || id < 0) return false;
+        const auto it = mirrors_.find(static_cast<uint16_t>(id));
+        return it != mirrors_.end() && it->second.is_npc;
     }
 
     void HoldCutscene(uint16_t id) {
@@ -849,11 +894,19 @@ private:
                              localHp, m.last_host_hp, sent);
             }
             *reinterpret_cast<float*>(static_cast<char*>(ent) + kEntHealth) = sample.health;
+            // NPCs: the host's profile health into ours (runs after the client's own Update, so it wins until the
+            // next frame). The bar and the NPC's death check read it; at 0 the NPC's own update runs its OnDie.
+            if (m.is_npc) SetNpcProfileHealth(ent, sample.health > 0.f ? sample.health : 0.f);
             m.last_host_hp = sample.health;
             m.have_hp = true;
 
             const bool parked = (sample.flags & net::animal_flag::kParked) != 0 || sample.pos[1] < -1000.f;
             const bool dead = !parked && ((sample.flags & net::animal_flag::kDead) != 0 || sample.health <= 0.f);
+            if (dead && m.is_npc) {
+                // Not the animal death presentation: the profile at 0 lets the NPC's own update die the NPC way.
+                dead_.insert(id);
+                continue;
+            }
             if (dead) {
                 dead_.insert(id);
                 *reinterpret_cast<float*>(static_cast<char*>(ent) + kEntHealth) = 0.f;
@@ -1057,6 +1110,8 @@ AnimalsModule* g_self = nullptr;
 void prerender() {
     if (g_self) g_self->Place();
 }
+
+bool IsMirroredNpc(void* ent) { return g_self && g_self->IsMirroredNpcEntity(ent); }
 
 DH2_MODULE(AnimalsModule)
 
