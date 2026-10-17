@@ -77,6 +77,9 @@ GetRecordFn g_get_record = nullptr;
 void** g_class_mgr = nullptr;  // &g_pClassManager (EngineDll7)
 bool g_in_skip = false;
 std::unordered_map<int16_t, uint32_t> g_skip_watch;  // trigger id -> GetTickCount after which we stop trying
+// Depth of trigger OnActivate calls in progress. A cutscene skip during one is the game skipping by itself (the host
+// profile's setting: two-PC test, every host skip came within 20 ms of its fire), never a player's key.
+int g_onactivate_depth = 0;
 
 // Opening cutscenes put the render camera on a scripted rail, metres from the hunter.
 // Standing play keeps it about 1.7 m above the feet. MAP12C's cScrCutScene1 only calls
@@ -269,8 +272,11 @@ void __fastcall hk_TriggerSkip(void* self, void*) {
     core::safe_read(static_cast<char*>(self) + kTriggerSkipped, before);
     g_skip_hook->unsafe_fastcall<void>(self);
     if (g_in_skip || before != 0 || !g_sync_events || !NetIsHost()) return;
-    if (!g_manual_skip) {
-        spdlog::info("story: host cutscene of '{}' skipped by the game itself; clients keep theirs", NameOf(self));
+    // The game's own skip runs inside the trigger's OnActivate. The skip-key callback alone did not tell them apart
+    // (repro 15:59:15: a skip with no key sent still came through 0x6b600).
+    if (g_onactivate_depth > 0) {
+        spdlog::info("story: host cutscene of '{}' skipped by the game itself (key callback {}); clients keep theirs",
+                     NameOf(self), g_manual_skip);
         return;
     }
     const int16_t id = IdOf(self);
@@ -321,9 +327,12 @@ bool HasFired(void* ent) {
 
 bool guarded_fire(void* ent, void* activator) {
     __try {
+        ++g_onactivate_depth;
         g_fire_hook->unsafe_thiscall<void>(ent, activator);
+        --g_onactivate_depth;
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
+        if (g_onactivate_depth > 0) --g_onactivate_depth;
         return false;
     }
 }
@@ -352,7 +361,11 @@ void OnFireRequest(const net::GameEvent& ev) {
             const int zero = 0;
             std::memcpy(static_cast<char*>(ent) + 0x1fc, &zero, sizeof zero);
         }
+        // Fire() calls the original through the trampoline, which skips hk_TriggerFire's NoteFireRan: record it
+        // here, or every repeat of the client's request ran OnActivate again (repro 15:59:27 "ran here: false").
+        g_ran_fire.insert(id);
         Fire(ent);
+        spdlog::info("story: [host] ran '{}' (id {}) for player {}", ev.key, ev.subjectId, ev.actorId);
     }
     spdlog::info("story: trigger '{}' (id {}) fired by player {} (ran here: {})", ev.key, ev.subjectId, ev.actorId,
                  g_ran_fire.count(id) != 0);
@@ -436,14 +449,18 @@ void __fastcall hk_TriggerFire(void* self, void*, void* activator) {
                      g_in_apply ? " (host commit)" : "");
     }
     if (g_in_apply || !g_sync_events || !NetIsOnline() || !activator) {
+        ++g_onactivate_depth;
         g_fire_hook->unsafe_thiscall<void>(self, activator);
+        --g_onactivate_depth;
         NoteFireRan(self);
         return;
     }
     const int16_t id = IdOf(self);
     const std::string name = NameOf(self);
     if (NetIsHost()) {
+        ++g_onactivate_depth;
         g_fire_hook->unsafe_thiscall<void>(self, activator);
+        --g_onactivate_depth;
         NoteFireRan(self);
         if (id >= 0) events::Commit(events::kTriggerFire, static_cast<uint16_t>(id), 0, 0.f, name, 0);
         return;
