@@ -144,6 +144,18 @@ RVAs: EngineDll7 unless noted (CommonDll7 = "C", GameDll7 = "G").
 - Script natives are registered in GameDll7 `0x1000ba30` (`cExportKey::ExportFnc(name, …)` + `cBaseClass::s_ExportStaticFunction(fn, …)`). Examples: `GlobalsCheckMissionStatus` `0x98f0`, `UpdateMissionStatus` `0x8390`, `CompleteTask` `0x9080`, `ActivateTrigger` `0x84a0`, `GetDistBetween2Ais` `0x9200`.
 - Hunt map scripts (`SCRIPTS\LEVELS\HUNTMAPBASE.SCR`) are plain text. Every `"hunter"` in them is the local player: spook distance, the 15 m trophy distance, predator spawn within 70 m, and the 25 m safe distance.
 
+## Story triggers and map flow (lead, runtime-verified 2026-10-16 evening; `re/notes/lead-story-coop.md`)
+- **Script trigger events (`cScrTriggerEvent trigger_N`, GameDll class `cObjTriggerEvent`, vtable GameDll7 `+0x10afa0`) have two steps.**
+  - **Arm:** `0x68eb0` (fastcall trigger). Sets `+0x1e4 = 1` and registers with the mission. Scripts call it with `trigger_N.Activate()`.
+  - **Fire:** `0x68130` (thiscall(trigger, activator)). Runs the script's `OnActivate` (function index `+0x20c`, object `+0x1b4`), sets `+0x1fc = 1`, and notifies the mission. An armed trigger fires when its `ActivateBy("hunter")` activator enters. This is the story's main branch point: it moves animals in (`MoveToPos`, `StartTask`), starts tasks and cutscenes, and arms the next triggers.
+  - Entity ids and target names (`+0x198`) of these triggers match across instances (MAP3B `cScrTask01`=39 … `cScrTask07`=45).
+  - Calling arm/fire on a client by id replays the host's branch. Verified 21:28: leopards aggroed for both players.
+- `-spmap MAP3B` (console `spmap`) starts a story map directly. Both instances ran the same map-start arming (`cScrTask01/02/06/07`).
+- `cSpServer::StartGame` (Main7 `0x1ed80`, thiscall(server, map, int)) is the common map start. Starting the map that is already loaded resets the BSP (no `cBspTree::Load`). `cSpServer::StopServer` (`0x1b060`) runs before every teardown. Main7 is not relocated (base `0x400000`); the current map name is `char*` at `0x43d590`.
+- `cModelPart::SetSyncWith(part)` (EngineDll7 `0x1e7050`; bone `+0x138` part vt `+0x38`) links two parts in a ring of `cModelPartLink`s. Each link `InternalAddRef`s the other part's owner entity (refcount `+0xb8`). `SetSyncWith(nullptr)` is the engine's `UnlinkPart`.
+- **Animals attacking an entity with no physics body crash the host** in `cAIHuntBrain_Animal::ProcessAttackStuck` (null `+0x7c`). Puppets are physics-unlinked, so they must not be in the attack-target list (`cAIHuntAnimalInterface` `0x1aea7c`) until Phase 5 handles that.
+- Damage applied with `FuncInflictDamage` does not run the death (stays hp 0 standing); the bullet path `cObjScriptedEntity::OnHurt` does (vt `+0x154` at 0). Present death explicitly after lethal remote damage.
+
 ## Runtime probe (Track E, `re/notes/renderer.md`; reviewed 2026-10-16)
 - Renderer: D3D8 only. `Direct3DCreate8` ×3 (callers EngineDll7 `+0x352a3e`, `+0x35211c`, `+0x358f9e`), one HAL device (behavior `0x84` = mixed VP + multithreaded). `Present` called from EngineDll7 `+0x354cfd`, `EndScene` from `+0x354b63` (vtable slots 15 / 35). `Direct3DCreate9` (`+0x35a43b`) creates no device — `runtime-baseline-probe.txt`.
 - Default device: 640×480 `A8R8G8B8`, fullscreen, 240 Hz, `D3DPRESENT_INTERVAL_IMMEDIATE`. A loose `game\Data\Cfg\console.cfg` makes it **windowed** 640×480 (`r_windowed` default 1); the game rewrites that file on shutdown as an `addvar` dump. `game\Data\console.cfg` (wrong path) is ignored.

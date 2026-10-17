@@ -1,6 +1,13 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-16 20:20 (America/Chicago, system clock) by the Claude lead session.
+**Last updated:** 2026-10-16 21:35 (America/Chicago, system clock) by the Claude lead session.
+
+> **Lead away (~80% of the 5-hour limit). Worker handoff: `docs/handoff-cursor-story.md`** (Cursor CLI, Grok 4.7 Medium Fast; job `re/jobs/story-s1-playtest.md`).
+> **Story S1 works on MAP3B:**
+> - host-decided trigger arming/firing (`kTriggerEvent` 5 / `kTriggerFire` 6, `mod/src/coop/story.cpp`);
+> - the user saw leopards aggro and interact with both players (21:28).
+>
+> See "PIVOT" below and `re/notes/lead-story-coop.md`.
 
 New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap (**primary goal: co-op story mode**, hunt maps first), `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail. Grok's Phase 4 write-up: `GROK_p4-session.md`.
 
@@ -60,10 +67,24 @@ User: "the real goal is singleplayer… switch to getting story mode missions to
     - The "weapons off" controls were invalid (`mod/dh2coop.ini` has no `Weapons` key), so whether puppet weapons are involved is still unknown.
     - Workaround: don't replay the same map; restart the game instead.
 
-## Next steps (in order)
-0. **Close the open test pair once the user is done**, then `.\mod\build.ps1` and run:
-   - `.\tools-src\mapflow-test.ps1`: replay, switch to HUNTMAP1, menu; the client must follow each.
-   - A P5a check: log `puppets: attack target add` on the host, then make the puma attack (HUNTMAP4 predator after a claim, or MAPARENA).
+## Next steps (in order) — story first (after the 21:20 pivot)
+**Worker (now):**
+- **S1a:** MAP3B full play-through record with the user plus a smoke test of MAP12B/MAP12C/MAP4A/MAP11B (`docs/handoff-cursor-story.md`, `re/jobs/story-s1-playtest.md`).
+
+**Lead (next session), in order:**
+1. Review the worker's `re/notes/story-s1-map3b.md`.
+2. **Player damage to clients (Phase 5 for story):**
+   - Host animals must be able to hurt client players. Puppets can't be attack targets (no physics → `ProcessAttackStuck` crash).
+   - Options: give puppets a physics body that physics doesn't pull back to spawn; or redirect damage meant for the host hunter.
+   - Plan: `re/notes/lead-combat.md`.
+3. **Cutscenes:** they run on both via fired triggers. Decide skip/timing policy; check `ExecuteScript` side effects.
+4. **Tasks/HUD:** `CompleteTask` runs on both via scripts. Check that the HUD objectives match; make completion host-only if needed.
+5. **NPCs** (guide, companions) on other maps: generalize the animal mirror.
+6. **Death policy** (user decision) and **story map transition** after a mission success (results → next map on both).
+7. The hunt-map same-map-replay teardown crash (known issue, see PIVOT).
+
+**Hunt-map leftovers (lower priority now):**
+0. Map flow beyond A→B→A and the P5a puma test are parked.
 1. **User play check (hunt map, two windows `.\run-coop-local.ps1`):**
    - Host kills a deer: does the client see it **fall**? Log: client `animals: present death id=… ok=true`. If it stays standing, try unfreezing the brain after `PresentDeath`.
    - Client walks to the corpse and presses **F** (real key): both windows should show MISSION SUCCESSFUL. Log: client `events: client claim id=…`.

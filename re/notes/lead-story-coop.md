@@ -70,6 +70,26 @@ Re-simulating the whole world on clients from snapshots (every NPC, prop, camera
   - Fallback if L2 diverges: also commit/swallow `0x68eb0` the same way.
   - Runtime check first: log L1 and L2 activations on a solo MAP3B play-through (user plays, we log) to see the real sequence.
 
+## S1 results (2026-10-16 21:18–21:30, MAP3B, two instances)
+
+- **Baseline (21:18).** Both instances load MAP3B, join, see each other's puppet, mirror its 2 animals (leopards, entity ids 47/48), and arm the same map-start trigger events.
+- **First user play (21:20), before trigger sync.**
+  - The host walked into trigger zones: `cScrTask03`/`04` were armed on the host only. The leopards came in on the host.
+  - On the client they were positioned correctly (mirror drift 0) but invisible, because the client's script branch never ran.
+  - The host then crashed when a leopard attacked the client's puppet (`ProcessAttackStuck`, puppet has no physics). Puppet attack targets are now off by default.
+  - The knife showed as a shotgun on the puppet (kind "other"). It now shows unarmed.
+- **Trigger sync (21:28, commit `a6698de`).**
+  - Arming (`0x68eb0`) and firing (`0x68130`) are host-decided. The host commits `kTriggerEvent` (5) / `kTriggerFire` (6) with the entity id and name. Clients replay them by id; a client's own arm/fire becomes a request.
+  - Log: host fires `cScrTask02` → arms `cScrTask03` → fires `cScrTask03` → arms `cScrTask04`. The client applied each within 4 ms.
+  - **User: "leopards aggroed and interacted with both players."**
+- **Not handled yet:**
+  - Cutscenes (`ExecuteScript("cScrCutScene…")` runs in fired OnActivate on both sides, so they should play on both; skip/timing not synced).
+  - `CompleteTask` / task HUD (runs on both via the same scripts; host-only completion not enforced).
+  - Player damage from host animals to client players (clients are effectively invulnerable).
+  - NPC mirror.
+  - Player death policy.
+  - Map transition after a story mission success.
+
 ## Open engineering questions (next RE, lead)
 
 1. **Trigger activation path.**
