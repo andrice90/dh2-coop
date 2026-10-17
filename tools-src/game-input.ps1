@@ -64,9 +64,19 @@ if ([Dh2InputV3]::GetForegroundWindow() -ne $h) {
     [void][Dh2InputV3]::SetForegroundWindow($h)
     Start-Sleep -Milliseconds 300
 }
+# SendInput goes to whatever window is in front. Windows often refuses SetForegroundWindow while the user works in
+# another app; the keys then landed in that app (2026-10-17: "wwww...sss" typed into the user's chat). Never send
+# unless the game is in front, and check again before every key.
+function Assert-GameInFront([string]$what) {
+    if ([Dh2InputV3]::GetForegroundWindow() -ne $h) {
+        throw "game-input: pid $ProcessId is not the foreground window; not sending $what (click the game window, or retry)"
+    }
+}
+Assert-GameInFront ($Keys -join ' ')
 foreach ($k in $Keys) {
     $name, $ms = $k.Split(':')
     if ($name -eq 'WAIT') { Start-Sleep -Milliseconds ([int]$ms); continue }
+    Assert-GameInFront $k
     if ($name -eq 'LMB' -or $name -eq 'RMB') {
         # LMB / RMB[:ms] - mouse button click (hold ms, default 60)
         $down, $up = if ($name -eq 'LMB') { 0x0002, 0x0004 } else { 0x0008, 0x0010 }
@@ -87,7 +97,11 @@ foreach ($k in $Keys) {
     if (-not $c) { throw "unknown key '$name'" }
     $hold = if ($ms) { [int]$ms } else { 60 }
     [void][Dh2InputV3]::Key([uint16]$c[0], $c[1], $false)
-    Start-Sleep -Milliseconds $hold
+    # A long hold ends early (key released) if the user brings another window to the front meanwhile.
+    for ($left = $hold; $left -gt 0; $left -= 50) {
+        Start-Sleep -Milliseconds ([Math]::Min(50, $left))
+        if ([Dh2InputV3]::GetForegroundWindow() -ne $h) { break }
+    }
     [void][Dh2InputV3]::Key([uint16]$c[0], $c[1], $true)
     Start-Sleep -Milliseconds 80
 }
