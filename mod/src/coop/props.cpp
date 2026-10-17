@@ -1,6 +1,7 @@
 // Shootable world props (bottles and stumps, cObjTarget). A client's bullet does not run OnHit.
 // The host breaks the prop, counts a bottle toward the mission, and commits kPropHit. Every client
 // plays Boom and, for a stump, increments its own profile tally. Design: re/notes/props-research.md.
+#include <map>
 #include <windows.h>
 
 #include <cstdint>
@@ -212,10 +213,8 @@ void RequestHit(void* ent) {
         spdlog::info("props: id={} already broken", id);
         return;
     }
-    if (g_pending.count(static_cast<uint16_t>(id)) != 0) {
-        spdlog::info("props: id={} request already waiting", id);
-        return;
-    }
+    // OnHit runs every frame while the bullet touches the target: one request, no log per frame.
+    if (g_pending.count(static_cast<uint16_t>(id)) != 0) return;
     g_pending.insert(static_cast<uint16_t>(id));
     const uint32_t stump = IsStump(ent) ? 1u : 0u;
     events::Request(events::kPropHit, static_cast<uint16_t>(id), stump, 0.f, "");
@@ -230,7 +229,17 @@ void __fastcall hk_OnHit(void* self, void*, void* other) {
     if (NetIsHost()) {
         const int before = ReadInt(self, kBroken);
         CallOriginal(self, other);
-        if (before == 0 && ReadInt(self, kBroken) != 0 && IsTarget(self)) {
+        const int after = ReadInt(self, kBroken);
+        // Diagnostic for the user's report (host shots not reaching the client, 2026-10-17 16:05): one line per
+        // target per state change, whatever the outcome.
+        static std::map<int, int> logged;
+        const int id = IdOf(self);
+        if (logged[id] != (before + 1) * 10 + after) {
+            logged[id] = (before + 1) * 10 + after;
+            spdlog::info("props: host OnHit id={} target={} bullet={} broken {}->{}", id, IsTarget(self),
+                         IsBullet(other), before, after);
+        }
+        if (before == 0 && after != 0 && IsTarget(self)) {
             spdlog::info("props: host hit id={} stump={} broke", IdOf(self), IsStump(self) ? 1 : 0);
             CommitHit(self, 0);
         }
