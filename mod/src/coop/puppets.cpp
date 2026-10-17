@@ -650,6 +650,11 @@ public:
             spdlog::info("puppets: unloading remote {} puppet {:#x} ref {}->{} weapon {:#x} ref {}->{}", id,
                          reinterpret_cast<uintptr_t>(p.entity), pref, wpref, reinterpret_cast<uintptr_t>(wkeep), wref,
                          wafter);
+            // DeleteAllObjects frees the entity next, and this callback runs a second time after it (StopServer is
+            // reached twice at exit): the second pass read the freed block (first-chance AVs, "ref -99" in the log).
+            p.entity = nullptr;
+            p.anim.clear();
+            p.arms_shown.clear();
         }
     }
 
