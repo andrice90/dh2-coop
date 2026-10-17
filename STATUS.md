@@ -18,6 +18,22 @@ User report at session start: a story map played with NPC + animal sync, scripte
 | **Open: MAP12C yeti fight crashes clients** | Pre-existing: client exits ~10 s after the yeti starts attacking (first-chance `EngineDll7+0x28b337`, a dynamic-array push). The client yeti stays in a sync attack that started before the join; ending it (`OnEndSA`) faults on the yeti. |
 | **NPC follow target** | Research `re/notes/npc-follow.md`. Lead built `npc_follow.cpp` (`ea6219f`): mid hook after `cAIBrain_NPC`'s player lookup. **Off** until tested (`[Story] NpcFollowNearest=1`). |
 
+### 16:30 state after the two-PC test fixes (main `be53813`, kit refreshed)
+Merged and smoke-tested (MAP1 pair, all hooks up, no errors):
+- per-window input (`a7ad257`, `[Coop] InputOnlyWhenFocused=1`);
+- shared bottles/stumps (`1691190` + diagnostics `8431527`; host real-bullet path still unverified: one retest, then park if it fails, per the user);
+- shared cobras (`be53813`);
+- NPC profile health (`72f4d42`);
+- animal attack treats living puppets as players (`8226705`; the MAP2A lion's vanish is its scripted flee: `reached flee_point`);
+- host runs client-requested fires once and records them (`8aa991d`);
+- auto-skip recognized inside OnActivate (`8aa991d`);
+- mission-end "arrived alone" (`a3dc2c6`);
+- rifle2 / handgun5 puppet models (`9f7fcd9` cherry-pick).
+
+`npc_follow` (guides/companions follow the nearest player) is built but **off** (`[Story] NpcFollowNearest=1`), not yet tested.
+
+Next user test: MAP1 (bottles: host shot → client; cutscenes on the client), MAP2A (Hugh's bar equal on both; lion), MAP3B (cobras), mission end → next map on both. Still open: the two-PC client crash at the lion (did not reproduce); the client following from its results screen (needs a clean two-window test now that input is per window); `rifle1` third-person flame.
+
 ### Two-PC user test 2026-10-17 11:34–12:07 (host = this PC; notes in the user's vault "DH2 Test.md")
 Host log: `D:\scary hunt\Activision Value\Magic Wand\DNGH2\Bin\dh2coop.log`. The client PC's logs were lost (each launch truncated them, and Program Files redirects writes).
 
