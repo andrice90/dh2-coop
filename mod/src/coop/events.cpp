@@ -623,6 +623,15 @@ bool SameMapAsHost() {
     return g_host_map == g_map;
 }
 
+uint16_t LocalMapSerial() { return g_map_serial; }
+
+bool SnapshotIsCurrent(uint16_t hostMapSerial) {
+    if (NetIsHost()) return true;
+    // Nothing announced yet (fresh join): the ids may belong to another map.
+    if (g_host_map.empty()) return false;
+    return hostMapSerial == g_host_serial && g_host_map == g_map;
+}
+
 void DebugClaim(uint16_t animalId) {
     void* animal = animals::Find(animalId);
     spdlog::info("events: coop_claim id={} animal={:#x}", animalId, reinterpret_cast<uintptr_t>(animal));

@@ -22,6 +22,7 @@ struct CoopSettings {
     std::string auto_role;          // "", "host", "join"
     std::string auto_join_addr;
     float join_retry_s = 5.f;       // [Coop] JoinRetrySeconds (0 = no retry)
+    std::string password;           // [Coop] Password: host and clients must match ("" = none)
 };
 
 const CoopSettings& Settings();
@@ -45,6 +46,7 @@ struct SessionView {
     int animals = 0;
     RemoteView remotes[4];
     int remoteCount = 0;
+    std::string notice;  // shown on screen even with the overlay hidden (e.g. why the host refused this game)
 };
 SessionView Snapshot();
 

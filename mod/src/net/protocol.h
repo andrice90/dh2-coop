@@ -1,7 +1,9 @@
 #pragma once
 
-// Protocol v1 wire types. Little-endian. No ENet types here.
+// Protocol v2 wire types. Little-endian. No ENet types here.
 // Layout and reserved ranges: docs/net-protocol.md.
+// Bump kProtocolVersion on every wire or meaning change (fields, event kinds, flag bits). Hello also carries the
+// mod build id (a hash of dh2coop.asi), so two different builds never play together even at the same version.
 
 #include <cstddef>
 #include <cstdint>
@@ -13,7 +15,9 @@
 
 namespace net {
 
-constexpr uint8_t kProtocolVersion = 1;
+// v2 (2026-10-17): Hello + modBuild/passHash, Reject + hostBuild, AnimalStates + mapSerial. v1 had grown event
+// kinds 7-16 and the NPC arms string without a bump.
+constexpr uint8_t kProtocolVersion = 2;
 constexpr uint16_t kGameBuild = 434;
 constexpr uint16_t kDefaultPort = 27420;
 constexpr int kMaxPlayers = 4;
@@ -62,15 +66,17 @@ constexpr uint8_t kReservedFutureBegin = 96;   // 96-255
 
 constexpr uint8_t kMaxAnimals = 32;
 constexpr uint8_t kMaxAnimalStateChars = 31;
-constexpr size_t kAnimalStatesHeaderBytes = 8;  // id + seq + tickMs + count
-constexpr size_t kAnimalStateFixedBytes = 24;   // one entry, empty name
+constexpr size_t kAnimalStatesHeaderBytes = 10;  // id + seq + tickMs + mapSerial + count
+constexpr size_t kAnimalStateFixedBytes = 25;   // one entry, empty state and arms (24 before the arms string)
 constexpr size_t kAnimalHitBytes = 20;
 constexpr size_t kGameEventHeaderBytes = 18;  // id through key length, empty key
 constexpr uint8_t kMaxGameEventKeyChars = 31;
 
-constexpr size_t kHelloBytes = 36;
+constexpr size_t kHelloBytes = 44;
+constexpr size_t kHelloV1Bytes = 36;  // still decoded, so an old kit gets a VersionMismatch instead of BadHello
 constexpr size_t kWelcomeBytes = 7;
-constexpr size_t kRejectBytes = 2;
+constexpr size_t kRejectBytes = 6;
+constexpr size_t kRejectV1Bytes = 2;
 constexpr size_t kPlayerJoinedBytes = 34;
 constexpr size_t kPlayerLeftBytes = 2;
 constexpr size_t kPlayerStateBytes = 44;
@@ -90,12 +96,16 @@ enum class RejectReason : uint8_t {
     VersionMismatch = 1,
     LobbyFull = 2,
     BadHello = 3,
+    BuildMismatch = 4,  // same protocol, different dh2coop.asi
+    BadPassword = 5,    // [Coop] Password differs
 };
 
 struct Hello {
     uint8_t protoVersion = kProtocolVersion;
     uint16_t gameBuild = kGameBuild;
     char name[kNameBytes] = {};
+    uint32_t modBuild = 0;  // v2. 0 from a v1 Hello
+    uint32_t passHash = 0;  // v2. 0 = no password
 };
 
 struct Welcome {
@@ -106,6 +116,7 @@ struct Welcome {
 
 struct Reject {
     RejectReason reason = RejectReason::None;
+    uint32_t hostBuild = 0;  // v2: the host's mod build id, so the client can say which kit the host runs
 };
 
 struct PlayerJoined {
@@ -183,6 +194,7 @@ struct AnimalState {
 struct AnimalStates {
     uint16_t seq = 0;
     uint32_t tickMs = 0;
+    uint16_t mapSerial = 0;  // the host's kMapStart serial: a client drops snapshots of a map it is not on
     std::vector<AnimalState> animals;
 };
 

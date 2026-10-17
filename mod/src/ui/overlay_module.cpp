@@ -383,6 +383,16 @@ void on_present(void* device, const RECT* src, const RECT* dst, HWND window, con
     const dh2::coop::SessionView view = dh2::coop::Snapshot();
     if (g_ov.visible) draw_overlay(view);
     if (g_ov.markers) draw_markers(view, io.DisplaySize);
+    if (!view.notice.empty()) {
+        ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, 40.0f), ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+        ImGui::SetNextWindowBgAlpha(0.75f);
+        ImGui::Begin("##coop_notice", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs |
+                         ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
+                         ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::TextUnformatted(view.notice.c_str());
+        ImGui::End();
+    }
     ImGui::Render();
 
     ImDrawData* dd = ImGui::GetDrawData();

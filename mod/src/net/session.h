@@ -36,6 +36,7 @@ struct Event {
     RejectReason reason = RejectReason::None;
     uint8_t protoVersion = 0;
     uint16_t gameBuild = 0;
+    uint32_t modBuild = 0;  // Hello: the peer's build. Reject on a client: the host's build
     uint8_t maxPlayers = 0;
     uint32_t hostTick = 0;
     uint32_t token = 0;
@@ -61,6 +62,8 @@ public:
         std::string name = "Hunter";
         uint8_t protoVersion = kProtocolVersion;
         uint16_t gameBuild = kGameBuild;
+        uint32_t modBuild = 0;  // hash of dh2coop.asi; host and client must match
+        uint32_t passHash = 0;  // 0 = no password
     };
 
     using Handler = std::function<void(const Event&)>;

@@ -190,6 +190,8 @@ void TestCodec(Tally& t) {
     Hello hello;
     hello.protoVersion = 1;
     hello.gameBuild = 434;
+    hello.modBuild = 0x12345678u;
+    hello.passHash = 0x9ABCDEF0u;
     SetName(hello.name, "Hunter-123456789012345678901234567890EXTRA");
     auto hb = Encode(hello);
     t.Check(hb.size() == kHelloBytes, "hello size");
@@ -198,7 +200,8 @@ void TestCodec(Tally& t) {
     if (hd && std::holds_alternative<Hello>(*hd)) {
         const auto& m = std::get<Hello>(*hd);
         const std::string name = NameOf(m.name);
-        t.Check(m.protoVersion == 1 && m.gameBuild == 434, "hello fields");
+        t.Check(m.protoVersion == 1 && m.gameBuild == 434 && m.modBuild == 0x12345678u && m.passHash == 0x9ABCDEF0u,
+                "hello fields");
         t.Check(name.size() == 31 && m.name[31] == '\0', "name truncated to 31 and nul terminated");
         t.Check(name == "Hunter-123456789012345678901234", "name keeps the first 31 bytes");
         t.Check(SameBytes(Encode(m), hb), "hello canonical");
@@ -213,11 +216,40 @@ void TestCodec(Tally& t) {
             "welcome round trip");
 
     for (RejectReason reason : {RejectReason::None, RejectReason::VersionMismatch, RejectReason::LobbyFull,
-                                 RejectReason::BadHello}) {
-        auto b = Encode(Reject{reason});
+                                 RejectReason::BadHello, RejectReason::BuildMismatch, RejectReason::BadPassword}) {
+        auto b = Encode(Reject{reason, 0xA1B2C3D4u});
         auto d = Decode(b.data(), b.size());
-        t.Check(b.size() == kRejectBytes && d && std::holds_alternative<Reject>(*d) && std::get<Reject>(*d).reason == reason,
+        t.Check(b.size() == kRejectBytes && d && std::holds_alternative<Reject>(*d) && std::get<Reject>(*d).reason == reason &&
+                    std::get<Reject>(*d).hostBuild == 0xA1B2C3D4u,
                 std::string("reject ") + ToString(reason));
+    }
+    {
+        // v1 Reject (2 bytes) from an old host still decodes.
+        const uint8_t v1[] = {static_cast<uint8_t>(MsgId::Reject), static_cast<uint8_t>(RejectReason::BadHello)};
+        auto d = Decode(v1, sizeof v1);
+        t.Check(d && std::holds_alternative<Reject>(*d) && std::get<Reject>(*d).reason == RejectReason::BadHello &&
+                    std::get<Reject>(*d).hostBuild == 0,
+                "v1 reject decodes");
+        // v1 Hello (36 bytes) from an old client decodes, so the host can answer VersionMismatch.
+        Hello old;
+        old.protoVersion = 1;
+        SetName(old.name, "Old");
+        auto ob = Encode(old);
+        ob.resize(kHelloV1Bytes);
+        auto od = Decode(ob.data(), ob.size());
+        t.Check(od && std::holds_alternative<Hello>(*od) && std::get<Hello>(*od).protoVersion == 1 &&
+                    std::get<Hello>(*od).modBuild == 0 && NameOf(std::get<Hello>(*od).name) == "Old",
+                "v1 hello decodes");
+        ob.push_back(0);
+        t.Check(!Decode(ob.data(), ob.size()).has_value(), "37-byte hello rejected");
+    }
+    {
+        AnimalStates s;
+        s.mapSerial = 0xBEEF;
+        auto b = Encode(s);
+        auto d = Decode(b.data(), b.size());
+        t.Check(d && std::holds_alternative<AnimalStates>(*d) && std::get<AnimalStates>(*d).mapSerial == 0xBEEF,
+                "animal states map serial round trip");
     }
 
     PlayerJoined joined;
@@ -282,7 +314,7 @@ void TestCodec(Tally& t) {
     auto emptyBytes = Encode(emptyAnimals);
     auto emptyDec = Decode(emptyBytes.data(), emptyBytes.size());
     t.Check(emptyBytes.size() == kAnimalStatesHeaderBytes && emptyBytes[0] == static_cast<uint8_t>(MsgId::AnimalStates) &&
-                emptyBytes[7] == 0,
+                emptyBytes[kAnimalStatesHeaderBytes - 1] == 0,
             "empty animal list size");
     t.Check(emptyDec && std::holds_alternative<AnimalStates>(*emptyDec) && SameAnimals(std::get<AnimalStates>(*emptyDec), emptyAnimals),
             "empty animal list round trip");
@@ -300,7 +332,7 @@ void TestCodec(Tally& t) {
     auto herdBytes = Encode(herd);
     auto herdDec = Decode(herdBytes.data(), herdBytes.size());
     t.Check(herdBytes.size() > kAnimalStatesHeaderBytes && herdBytes[0] == static_cast<uint8_t>(MsgId::AnimalStates) &&
-                herdBytes[7] == 32,
+                herdBytes[kAnimalStatesHeaderBytes - 1] == 32,
             "32-entry count byte");
     t.Check(herdDec && std::holds_alternative<AnimalStates>(*herdDec), "32-entry type");
     if (herdDec && std::holds_alternative<AnimalStates>(*herdDec)) {
@@ -446,6 +478,9 @@ void TestTruncation(Tally& t) {
     for (const auto& buf : good) {
         t.Check(Decode(buf.data(), buf.size()).has_value(), "full buffer decodes");
         for (size_t n = 0; n < buf.size(); ++n) {
+            // A v2 Hello / Reject cut to the v1 length is a valid v1 message.
+            if (buf[0] == static_cast<uint8_t>(MsgId::Hello) && n == kHelloV1Bytes) continue;
+            if (buf[0] == static_cast<uint8_t>(MsgId::Reject) && n == kRejectV1Bytes) continue;
             t.Check(!Decode(buf.data(), n).has_value(), "truncated does not decode");
         }
         auto extra = buf;
@@ -494,12 +529,12 @@ void TestTruncation(Tally& t) {
 
     std::vector<uint8_t> shortBody(kAnimalStatesHeaderBytes + 3, 0);
     shortBody[0] = static_cast<uint8_t>(MsgId::AnimalStates);
-    shortBody[7] = 8;
+    shortBody[kAnimalStatesHeaderBytes - 1] = 8;
     t.Check(!Decode(shortBody.data(), shortBody.size()).has_value(), "count larger than remaining payload");
 
     std::vector<uint8_t> tooMany(kAnimalStatesHeaderBytes + 33, 0);
     tooMany[0] = static_cast<uint8_t>(MsgId::AnimalStates);
-    tooMany[7] = 33;
+    tooMany[kAnimalStatesHeaderBytes - 1] = 33;
     t.Check(!Decode(tooMany.data(), tooMany.size()).has_value(), "count 33 rejected");
 
     AnimalState named;
@@ -508,9 +543,9 @@ void TestTruncation(Tally& t) {
     AnimalStates oneNamed;
     oneNamed.animals.push_back(named);
     auto nameBytes = Encode(oneNamed);
-    t.Check(nameBytes.size() == kAnimalStatesHeaderBytes + kAnimalStateFixedBytes + 31 && nameBytes[31] == 31,
+    t.Check(nameBytes.size() == kAnimalStatesHeaderBytes + kAnimalStateFixedBytes + 31 && nameBytes[kAnimalStatesHeaderBytes + 23] == 31,
             "name length sits at the end of the fixed entry");
-    nameBytes[31] = 32;
+    nameBytes[kAnimalStatesHeaderBytes + 23] = 32;
     nameBytes.push_back('b');
     t.Check(!Decode(nameBytes.data(), nameBytes.size()).has_value(), "name length 32 rejected");
 }

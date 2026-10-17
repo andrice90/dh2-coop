@@ -60,8 +60,14 @@ struct Remote {
     bool waitHello = false;
     uint64_t bytesIn = 0;
     uint64_t bytesOut = 0;
+    uint32_t malformed = 0;  // logged at 1-5, then every 200th (a mismatched build sends 20 per second)
     std::chrono::steady_clock::time_point helloDeadline{};
 };
+
+// ENet's defaults (5 s minimum, 30 s maximum) drop a friend whose game stalls a few seconds (a window drag, a
+// system dialog). Map loads take well under a second.
+constexpr enet_uint32 kPeerTimeoutMinMs = 10000;
+constexpr enet_uint32 kPeerTimeoutMaxMs = 45000;
 
 }  // namespace
 
@@ -195,7 +201,9 @@ struct Session::Impl {
 
     bool Send(Remote* remote, const std::vector<uint8_t>& bytes, uint8_t channel, bool reliable) {
         if (!remote || !remote->peer || !host) return false;
-        const enet_uint32 flags = reliable ? ENET_PACKET_FLAG_RELIABLE : 0;
+        // Without UNRELIABLE_FRAGMENT, ENet sends an unreliable packet larger than one fragment as reliable
+        // fragments, which would queue snapshots behind retransmits.
+        const enet_uint32 flags = reliable ? ENET_PACKET_FLAG_RELIABLE : ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT;
         ENetPacket* pkt = enet_packet_create(bytes.data(), bytes.size(), flags);
         if (!pkt) {
             spdlog::error("net: packet alloc failed");
@@ -214,12 +222,15 @@ struct Session::Impl {
         hello.protoVersion = identity.protoVersion;
         hello.gameBuild = identity.gameBuild;
         SetName(hello.name, identity.name);
+        hello.modBuild = identity.modBuild;
+        hello.passHash = identity.passHash;
         Send(remote, Encode(hello), kChannelControl, true);
     }
 
     void RejectPeer(Remote& remote, RejectReason reason) {
         Reject msg;
         msg.reason = reason;
+        msg.hostBuild = identity.modBuild;
         Send(&remote, Encode(msg), kChannelControl, true);
         remote.localClose = true;
         remote.waitHello = false;
@@ -285,12 +296,26 @@ struct Session::Impl {
         ev.type = EventType::Hello;
         ev.protoVersion = hello.protoVersion;
         ev.gameBuild = hello.gameBuild;
+        ev.modBuild = hello.modBuild;
         ev.name = NameOf(hello.name);
         Push(ev);
 
         if (!hosting || remote.localClose || remote.active) return;
         if (hello.protoVersion != kProtocolVersion || hello.gameBuild != kGameBuild) {
+            spdlog::info("net: '{}' runs protocol {} (game build {}), this host {} ({})", ev.name,
+                         static_cast<int>(hello.protoVersion), hello.gameBuild, static_cast<int>(kProtocolVersion),
+                         kGameBuild);
             RejectPeer(remote, RejectReason::VersionMismatch);
+            return;
+        }
+        if (hello.modBuild != identity.modBuild) {
+            spdlog::info("net: '{}' runs mod build {:08x}, this host {:08x}", ev.name, hello.modBuild, identity.modBuild);
+            RejectPeer(remote, RejectReason::BuildMismatch);
+            return;
+        }
+        if (hello.passHash != identity.passHash) {
+            spdlog::info("net: '{}' sent a different password", ev.name);
+            RejectPeer(remote, RejectReason::BadPassword);
             return;
         }
         if (ActiveCount() >= maxClients) {
@@ -332,9 +357,11 @@ struct Session::Impl {
         Event ev;
         ev.type = EventType::Reject;
         ev.reason = reject.reason;
+        ev.modBuild = reject.hostBuild;
         ev.playerId = localId;
         Push(ev);
-        spdlog::info("net: server rejected ({})", ToString(reject.reason));
+        spdlog::info("net: server rejected ({}); host build {:08x}, ours {:08x}", ToString(reject.reason),
+                     reject.hostBuild, identity.modBuild);
     }
 
     void On(Remote& remote, const PlayerJoined& joined) {
@@ -450,6 +477,7 @@ struct Session::Impl {
             existing = remote.get();
             remotes.push_back(std::move(remote));
         }
+        enet_peer_timeout(peer, 0, kPeerTimeoutMinMs, kPeerTimeoutMaxMs);
         spdlog::info("net: link up");
         if (!hosting) SendHello(existing);
     }
@@ -519,7 +547,12 @@ struct Session::Impl {
         const auto* bytes = reinterpret_cast<const uint8_t*>(guard.pkt->data);
         auto msg = Decode(bytes, guard.pkt->dataLength);
         if (!msg) {
-            spdlog::warn("net: drop malformed packet ({} bytes)", guard.pkt->dataLength);
+            ++remote->malformed;
+            if (remote->malformed <= 5 || remote->malformed % 200 == 0) {
+                spdlog::warn("net: drop malformed packet ({} bytes, id {}, {} so far from this peer)",
+                             guard.pkt->dataLength, guard.pkt->dataLength ? static_cast<int>(bytes[0]) : -1,
+                             remote->malformed);
+            }
             if (hosting && !remote->active && !remote->localClose) RejectPeer(*remote, RejectReason::BadHello);
             return;
         }

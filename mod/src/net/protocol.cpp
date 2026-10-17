@@ -28,6 +28,8 @@ const char* ToString(RejectReason reason) {
     case RejectReason::VersionMismatch: return "version";
     case RejectReason::LobbyFull: return "full";
     case RejectReason::BadHello: return "bad-hello";
+    case RejectReason::BuildMismatch: return "different mod build";
+    case RejectReason::BadPassword: return "wrong password";
     }
     return "unknown";
 }
@@ -132,6 +134,7 @@ std::optional<AnimalStates> ParseAnimalStates(const uint8_t* data, size_t len) {
     AnimalStates msg;
     msg.seq = r.U16();
     msg.tickMs = r.U32();
+    msg.mapSerial = r.U16();
     const uint8_t count = r.U8();
     if (!r.ok() || count > kMaxAnimals || static_cast<size_t>(count) > r.remaining()) return std::nullopt;
     msg.animals.reserve(count);
@@ -191,6 +194,8 @@ std::vector<uint8_t> Encode(const Hello& msg) {
     w.U8(msg.protoVersion);
     w.U16(msg.gameBuild);
     w.Name(msg.name);
+    w.U32(msg.modBuild);
+    w.U32(msg.passHash);
     return w.Take();
 }
 
@@ -207,6 +212,7 @@ std::vector<uint8_t> Encode(const Reject& msg) {
     ByteWriter w;
     w.U8(static_cast<uint8_t>(MsgId::Reject));
     w.U8(static_cast<uint8_t>(msg.reason));
+    w.U32(msg.hostBuild);
     return w.Take();
 }
 
@@ -264,6 +270,7 @@ std::vector<uint8_t> Encode(const AnimalStates& msg) {
     w.U8(static_cast<uint8_t>(MsgId::AnimalStates));
     w.U16(msg.seq);
     w.U32(msg.tickMs);
+    w.U16(msg.mapSerial);
     const size_t count = msg.animals.size() > kMaxAnimals ? kMaxAnimals : msg.animals.size();
     w.U8(static_cast<uint8_t>(count));
     for (size_t i = 0; i < count; ++i) {
@@ -321,11 +328,16 @@ std::optional<Message> Decode(const uint8_t* data, size_t len) {
     if (data == nullptr || len == 0) return std::nullopt;
     switch (static_cast<MsgId>(data[0])) {
     case MsgId::Hello: {
-        auto m = ParseExact<Hello>(data, len, kHelloBytes, MsgId::Hello, [](ByteReader& r, Hello& o) {
-            o.protoVersion = r.U8();
-            o.gameBuild = r.U16();
-            r.Name(o.name);
-        });
+        const bool v1 = len == kHelloV1Bytes;
+        auto m = ParseExact<Hello>(data, len, v1 ? kHelloV1Bytes : kHelloBytes, MsgId::Hello,
+                                   [v1](ByteReader& r, Hello& o) {
+                                       o.protoVersion = r.U8();
+                                       o.gameBuild = r.U16();
+                                       r.Name(o.name);
+                                       if (v1) return;
+                                       o.modBuild = r.U32();
+                                       o.passHash = r.U32();
+                                   });
         if (!m) return std::nullopt;
         return Message{std::move(*m)};
     }
@@ -339,9 +351,12 @@ std::optional<Message> Decode(const uint8_t* data, size_t len) {
         return Message{std::move(*m)};
     }
     case MsgId::Reject: {
-        auto m = ParseExact<Reject>(data, len, kRejectBytes, MsgId::Reject, [](ByteReader& r, Reject& o) {
-            o.reason = static_cast<RejectReason>(r.U8());
-        });
+        const bool v1 = len == kRejectV1Bytes;
+        auto m = ParseExact<Reject>(data, len, v1 ? kRejectV1Bytes : kRejectBytes, MsgId::Reject,
+                                    [v1](ByteReader& r, Reject& o) {
+                                        o.reason = static_cast<RejectReason>(r.U8());
+                                        if (!v1) o.hostBuild = r.U32();
+                                    });
         if (!m) return std::nullopt;
         return Message{std::move(*m)};
     }

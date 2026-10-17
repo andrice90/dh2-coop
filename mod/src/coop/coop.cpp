@@ -25,6 +25,7 @@ namespace dh2::coop::story {
 void DebugActivate(const char* name);  // story.cpp
 }
 #include "core/exports.h"
+#include "core/hook.h"
 #include "core/log.h"
 #include "core/module.h"
 #include "core/safe_mem.h"
@@ -55,9 +56,35 @@ std::map<uint8_t, RemotePlayer> g_remotes;
 
 int* g_allow_background = nullptr;  // &cApplication::m_bAllowBackground (EngineDll7 static)
 
+// Hello identity: two friends may only play when their dh2coop.asi files are identical (and passwords match).
+uint32_t g_mod_build = 0;
+uint32_t g_pass_hash = 0;
+std::string g_notice;  // on-screen line (Snapshot().notice) until g_notice_until
+uint32_t g_notice_until = 0;
+
 uint32_t now_ms() {
     using namespace std::chrono;
     return static_cast<uint32_t>(duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
+}
+
+uint32_t fnv1a(const void* data, size_t n, uint32_t h = 2166136261u) {
+    const auto* p = static_cast<const unsigned char*>(data);
+    for (size_t i = 0; i < n; ++i) h = (h ^ p[i]) * 16777619u;
+    return h;
+}
+
+uint32_t hash_own_asi() {
+    std::ifstream in(core::self_path(), std::ios::binary);
+    if (!in) return 0;
+    uint32_t h = 2166136261u;
+    char buf[64 * 1024];
+    while (in.read(buf, sizeof buf) || in.gcount() > 0) h = fnv1a(buf, static_cast<size_t>(in.gcount()), h);
+    return h ? h : 1;
+}
+
+void show_notice(std::string text, uint32_t ms) {
+    g_notice = std::move(text);
+    g_notice_until = now_ms() + ms;
 }
 
 // "host[:port]" -> host, port (default kept when absent or invalid).
@@ -90,6 +117,13 @@ void load_settings() {
     GetPrivateProfileStringA("Coop", "JoinAddress", "127.0.0.1", buf, sizeof buf, ini.c_str());
     if (g_settings.auto_role == "join") g_settings.auto_join_addr = buf;
     g_settings.join_retry_s = static_cast<float>(GetPrivateProfileIntA("Coop", "JoinRetrySeconds", 5, ini.c_str()));
+    GetPrivateProfileStringA("Coop", "Password", "", buf, sizeof buf, ini.c_str());
+    g_settings.password = buf;
+    static const char kSalt[] = "dh2coop-password";
+    g_pass_hash = g_settings.password.empty()
+                      ? 0
+                      : fnv1a(g_settings.password.data(), g_settings.password.size(), fnv1a(kSalt, sizeof kSalt - 1));
+    g_mod_build = hash_own_asi();
 
     // Command line switches for automated tests (run-coop-local.ps1). The engine ignores unknown switches.
     const char* cmd = GetCommandLineA();
@@ -104,9 +138,12 @@ void load_settings() {
         g_settings.auto_role = "join";
         g_settings.auto_join_addr = addr.empty() ? "127.0.0.1" : addr;
     }
-    spdlog::info("coop: settings background={} disable_slowmo={} port={} name='{}' auto_role='{}' auto_join='{}'",
-                 g_settings.allow_background, g_settings.disable_slowmo, g_settings.port, g_settings.player_name,
-                 g_settings.auto_role, g_settings.auto_join_addr);
+    spdlog::info(
+        "coop: settings background={} disable_slowmo={} port={} name='{}' auto_role='{}' auto_join='{}' build={:08x} "
+        "password={} protocol={}",
+        g_settings.allow_background, g_settings.disable_slowmo, g_settings.port, g_settings.player_name,
+        g_settings.auto_role, g_settings.auto_join_addr, g_mod_build, g_pass_hash ? "set" : "none",
+        static_cast<int>(net::kProtocolVersion));
 }
 
 // ---- console command handlers (__cdecl, called by cConsoleFunc::CallFunction on the game thread) ----
@@ -317,12 +354,20 @@ void PollCommandFile() {
     }
 }
 
+class CoopModule;
+CoopModule* g_coop = nullptr;
+// Our frame work runs from IDirect3DDevice8::Present. cRenderDX::Flip skips Present while the device is lost
+// (fullscreen alt-tab, minimized), so without this pump nothing serviced ENet and peers timed out (review H2).
+safetyhook::InlineHook* g_flip_hook = nullptr;
+int __fastcall hk_Flip(void* self, void*);
+
 class CoopModule : public dh2::Module {
 public:
     const char* Name() const override { return "coop"; }
     int Priority() const override { return 40; }
 
     void OnInit() override {
+        g_coop = this;
         load_settings();
         g_cmd_epoch = std::filesystem::file_time_type::clock::now();
     }
@@ -331,6 +376,10 @@ public:
         console_cmds::Bind(engine);
         g_allow_background = core::find_export_as<int*>(engine, "?m_bAllowBackground@cApplication@@2HA");
         AssertBackground("engine ready");
+        if (void* flip = core::find_export(engine, "?Flip@cRenderDX@@UAEHXZ")) {
+            g_flip_hook = core::install_hook("cRenderDX::Flip (net pump while no frame is presented)", flip,
+                                             reinterpret_cast<void*>(&hk_Flip));
+        }
     }
 
     void OnMapLoaded(const char* bspName) override {
@@ -378,14 +427,13 @@ public:
 
         RetryAutoJoin(dt);
         ApplyPending();
-        g_session.Service();
-        const bool hosting = g_session.IsHost();
-        const bool animals_active = hosting ? !g_session.Peers().empty() : g_session.IsConnected();
-        animals::SetSessionActive(animals_active, hosting);
-        for (const net::Event& ev : g_session.DrainEvents()) HandleEvent(ev);
-        SendLocalState(dt);
-        if (animals_active && hosting) animals::HostTick(now_ms());
-        events::Pump();
+        g_frame_thread = GetCurrentThreadId();
+        g_last_frame_ms = now_ms();
+        if (g_flip_pumping) {
+            g_flip_pumping = false;
+            spdlog::info("coop: frames are presented again; network back on the frame hook");
+        }
+        NetStep(dt);
 
         log_accum_ += dt;
         if (log_accum_ >= 1.f) {
@@ -397,6 +445,22 @@ public:
 
     // No OnShutdown: it runs on the lifecycle thread and would race Service() on the game thread.
     // At process exit peers see a timeout instead of a graceful disconnect; `coop_leave` is graceful.
+
+    // The network half of a frame. Also run from cRenderDX::Flip while no frame is presented (hk_Flip).
+    void NetStep(float dt) {
+        g_session.Service();
+        const bool hosting = g_session.IsHost();
+        const bool animals_active = hosting ? !g_session.Peers().empty() : g_session.IsConnected();
+        animals::SetSessionActive(animals_active, hosting);
+        for (const net::Event& ev : g_session.DrainEvents()) HandleEvent(ev);
+        SendLocalState(dt);
+        if (animals_active && hosting) animals::HostTick(now_ms());
+        events::Pump();
+    }
+
+    static inline DWORD g_frame_thread = 0;
+    static inline uint32_t g_last_frame_ms = 0;
+    static inline bool g_flip_pumping = false;
 
 private:
     // AutoRole=join: the host may start later than the friend, or restart. Re-join while offline.
@@ -433,6 +497,8 @@ private:
         g_pending = {};
         net::Session::Identity id;
         id.name = g_settings.player_name;
+        id.modBuild = g_mod_build;
+        id.passHash = g_pass_hash;
         if (p.kind == Pending::Kind::Host) spdlog::info("coop: host start port={}", p.port);
         else if (p.kind == Pending::Kind::Join) spdlog::info("coop: join start {}:{}", p.host, p.port);
         if (p.kind != Pending::Kind::None) {
@@ -485,6 +551,9 @@ private:
                 spdlog::info("coop: welcomed as player {} (max {})", ev.playerId, ev.maxPlayers);
                 return;
             case net::EventType::AnimalStates:
+                // Snapshots and kMapStart travel on different channels: after a host map change the first
+                // new-map snapshot can arrive while this client is still on the old map with the same ids.
+                if (!events::SnapshotIsCurrent(ev.animalStates.mapSerial)) return;
                 animals::OnAnimalStates(ev.animalStates, now_ms());
                 return;
             case net::EventType::AnimalHit:
@@ -493,9 +562,31 @@ private:
             case net::EventType::GameEvent:
                 events::OnNet(ev.gameEvent);
                 return;
-            case net::EventType::Reject:
+            case net::EventType::Reject: {
                 spdlog::warn("coop: rejected ({})", net::ToString(ev.reason));
+                if (g_session.IsHost()) return;
+                std::string why;
+                switch (ev.reason) {
+                    case net::RejectReason::BuildMismatch:
+                        why = fmt::format("The host runs a different co-op kit (host {:08x}, you {:08x}). Install "
+                                          "the same kit as the host.",
+                                          ev.modBuild, g_mod_build);
+                        break;
+                    case net::RejectReason::VersionMismatch:
+                        why = "The host runs a different co-op kit version. Install the same kit as the host.";
+                        break;
+                    case net::RejectReason::BadHello:
+                        why = "The host runs an older co-op kit. Install the same kit as the host.";
+                        break;
+                    case net::RejectReason::BadPassword:
+                        why = "Wrong co-op password: [Coop] Password in dh2coop.ini must match the host's.";
+                        break;
+                    case net::RejectReason::LobbyFull: why = "The host's game is full (4 players)."; break;
+                    default: why = fmt::format("The host refused this game ({}).", net::ToString(ev.reason)); break;
+                }
+                show_notice(why, 30000);
                 return;
+            }
             case net::EventType::Disconnected:
             case net::EventType::TimedOut:
                 spdlog::info("coop: {} player {}", ev.type == net::EventType::TimedOut ? "timeout" : "disconnect",
@@ -680,6 +771,39 @@ private:
 
 DH2_MODULE(CoopModule)
 
+void flip_net_step(float dt) { g_coop->NetStep(dt); }
+
+bool guarded_flip_net_step(float dt) {
+    __try {
+        flip_net_step(dt);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+int __fastcall hk_Flip(void* self, void*) {
+    const int r = g_flip_hook->unsafe_thiscall<int>(self);
+    // Only on the game thread, and only while OnFrame has not run for a while (Present skipped).
+    if (!g_coop || CoopModule::g_frame_thread == 0 || GetCurrentThreadId() != CoopModule::g_frame_thread) return r;
+    static uint32_t last = 0;
+    static bool fault_logged = false;
+    const uint32_t now = now_ms();
+    if (now - CoopModule::g_last_frame_ms < 250 || now - last < 15) return r;
+    const float dt = (last != 0 && now - last < 250) ? static_cast<float>(now - last) / 1000.f : 0.016f;
+    last = now;
+    if (!CoopModule::g_flip_pumping) {
+        CoopModule::g_flip_pumping = true;
+        spdlog::info("coop: no frame presented for {} ms (device lost / minimized); network from cRenderDX::Flip",
+                     now - CoopModule::g_last_frame_ms);
+    }
+    if (!guarded_flip_net_step(dt) && !fault_logged) {
+        fault_logged = true;
+        spdlog::warn("coop: fault in the Flip network pump");
+    }
+    return r;
+}
+
 }  // namespace
 
 const CoopSettings& Settings() { return g_settings; }
@@ -730,10 +854,15 @@ SessionView Snapshot() {
         auto it = rtt.find(id);
         rv.rttMs = it != rtt.end() ? it->second : (rtt.empty() ? 0 : rtt.begin()->second);
     }
+    if (!g_notice.empty() && static_cast<int32_t>(g_notice_until - now_ms()) > 0) v.notice = g_notice;
     return v;
 }
 
-bool BroadcastAnimalStates(const net::AnimalStates& states) { return g_session.SendAnimalStates(states); }
+bool BroadcastAnimalStates(const net::AnimalStates& states) {
+    net::AnimalStates stamped = states;
+    stamped.mapSerial = events::LocalMapSerial();
+    return g_session.SendAnimalStates(stamped);
+}
 
 bool ReportAnimalHit(const net::AnimalHit& hit) { return g_session.SendAnimalHit(hit); }
 

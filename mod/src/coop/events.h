@@ -77,5 +77,10 @@ const std::string& CurrentMap();
 // Client: true when the host's last announced map is the map this process is in (or none announced yet).
 // Entity-id based sync (animals) must not run across different maps.
 bool SameMapAsHost();
+// This process's map serial (the kMapStart subject the host announces); stamped into AnimalStates.
+uint16_t LocalMapSerial();
+// Client: a snapshot stamped with this host map serial belongs to the map this process is on now. False before
+// the host announced any map. Always true on the host.
+bool SnapshotIsCurrent(uint16_t hostMapSerial);
 
 }  // namespace dh2::coop::events
