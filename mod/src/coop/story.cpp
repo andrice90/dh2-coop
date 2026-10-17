@@ -532,7 +532,7 @@ void OnPropAnimCommit(const net::GameEvent& ev) {
 void NotePlaySA(void* self, const char* anim, const char* partner) {
     if (g_in_prop || !g_sync_events || !NetIsOnline() || !NetIsHost() || !anim || !anim[0]) return;
     const int16_t id = IdOf(self);
-    if (id < 0) return;
+    if (id < 0 || EntityById(id) != self) return;  // same guard as hk_SetAnim
     std::string key = anim;
     if (partner && partner[0]) {
         key.push_back('|');
@@ -583,7 +583,14 @@ void __fastcall hk_SetAnim(void* self, void*, const char* anim) {
     if (g_in_prop || !g_sync_events || !NetIsOnline() || !NetIsHost() || !anim || !anim[0]) return;
     if (IsMirroredActor(self)) return;
     const int16_t id = IdOf(self);
-    if (id < 0) return;
+    // Cutscene camera objects (csNNcamNN) also come through here without an entity layout: +0x04 is not an id
+    // (28477, 4394) and the name read faults. A client could match such a number to an unrelated entity, so only
+    // forward calls on an entity of the manager (log sweep 2026-10-17).
+    if (id < 0 || EntityById(id) != self) {
+        static std::unordered_set<std::string> logged;
+        if (logged.insert(anim).second) spdlog::info("story: not forwarding SetAnim '{}' (not a map entity, +4={})", anim, id);
+        return;
+    }
     const auto it = g_prop_anim.find(id);
     if (it != g_prop_anim.end() && it->second == anim) return;
     g_prop_anim[id] = anim;

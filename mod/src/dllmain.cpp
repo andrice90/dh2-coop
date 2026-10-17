@@ -32,6 +32,7 @@ BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID) {
     if (reason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(self);
         dh2::core::set_self_module(self);
+        dh2::core::keep_engine_log();
         dh2::core::install_mutex_hook();
         // Before this DllMain returns, EngineDll7 has not called DirectInput8Create yet.
         dh2::dinput::TryInstall();

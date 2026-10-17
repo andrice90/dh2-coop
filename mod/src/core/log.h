@@ -21,5 +21,8 @@ std::filesystem::path log_dir();
 // dh2coop.1.log / dh2coop.2.log, and the engine's debug.log of the previous run as debug.1.log / debug.2.log.
 // Every message is flushed immediately so the log survives a crash.
 void log_init(const std::string& level);
+// Copies the engine's debug.log of the previous run to <log_dir>\debug.1.log (debug.1 -> debug.2). Called from
+// DllMain, before the engine truncates the file.
+void keep_engine_log();
 
 }  // namespace dh2::core

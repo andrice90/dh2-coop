@@ -62,23 +62,24 @@ std::filesystem::path log_dir() {
     return dir;
 }
 
+void keep_engine_log() {
+    // The engine truncates its debug.log next to Main7.exe early in startup; keep the previous run's copy beside ours
+    // (copy, never move: the engine's own file stays where it is). Done from init_thread this raced the engine and
+    // kept only the new run's first five lines (log sweep 2026-10-17), so DllMain calls this. Plain file calls only.
+    const auto dir = log_dir();
+    const auto engine_log = self_dir() / L"debug.log";
+    if (GetFileAttributesW(engine_log.c_str()) == INVALID_FILE_ATTRIBUTES) return;
+    const auto one = dir / L"debug.1.log";
+    const auto two = dir / L"debug.2.log";
+    DeleteFileW(two.c_str());
+    MoveFileW(one.c_str(), two.c_str());
+    CopyFileW(engine_log.c_str(), one.c_str(), FALSE);
+}
+
 void log_init(const std::string& level) {
     try {
         const auto dir = log_dir();
         rotate(dir, "dh2coop", false);
-        // The engine truncates its debug.log next to Main7.exe; keep the previous run's copy beside ours (copy, never
-        // move: the engine's own file stays where it is).
-        {
-            std::error_code ec;
-            const auto engine_log = self_dir() / "debug.log";
-            if (std::filesystem::exists(engine_log, ec)) {
-                std::filesystem::remove(dir / "debug.2.log", ec);
-                if (std::filesystem::exists(dir / "debug.1.log", ec))
-                    std::filesystem::rename(dir / "debug.1.log", dir / "debug.2.log", ec);
-                std::filesystem::copy_file(engine_log, dir / "debug.1.log",
-                                           std::filesystem::copy_options::overwrite_existing, ec);
-            }
-        }
         auto path = dir / "dh2coop.log";
         auto logger = spdlog::basic_logger_mt("dh2coop", path.string(), /*truncate=*/true);
         logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [t%t] %v");
