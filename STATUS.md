@@ -1,6 +1,27 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-17 11:20 (America/Chicago) by the lead (Opus). Session 2026-10-17 is the next section. The Cursor worker's night log follows.
+**Last updated:** 2026-10-17 evening (America/Chicago) by the lead (Opus). Fan-out section first, then the earlier 2026-10-17 session, then the Cursor worker's night log.
+
+## Fan-out 2026-10-17 evening: rest of the game + re-opened items (user moved to Claude Max)
+User: extend the MAP1/MAP2 fixes to every other map, all weapon models; Grok/cursor workers replaced by Claude subagents (Opus 5.5 / Sonnet 5.5 / Haiku 5.5); "fan out", "go in depth", "re-open any old closed items". Shared brief: `re/jobs/_claude-rules.md`; lessons list: `re/notes/coop-checklist.md`. Tooling made parallel-safe (`f45f1a3`): `run-coop-local.ps1 -Port`, `build.ps1` and the launcher only look at their own checkout's games.
+
+| Job | Agent | Where (port / Ghidra slot) | Deliverable |
+|---|---|---|---|
+| Map audit MAP2B–4B | Opus, research | main (– / A) | `re/notes/audit-maps-a.md` |
+| Map audit MAP5–10 | Opus, research | main (– / B) | `re/notes/audit-maps-b.md` |
+| Map audit MAP11A–12C + bonus | Opus, research | main (– / C) | `re/notes/audit-maps-c.md` |
+| Full code review (crashes, threads, netcode, kit) | Opus, research | main (– / E) | `re/notes/review-2026-10-17.md` |
+| Log sweep (every log on the PC) | Haiku, research | main | `re/notes/log-sweep.md` |
+| Smoke + trigger walk on every map, exit destinations, 3P late join | Sonnet | `dh2coop-smoke` `smoke-pass` (27430 / G) | `re/notes/smoke-all-maps.md` |
+| All weapon models on puppets, rifle1 flame | Sonnet | `dh2coop-weapons` `weapons` (27440 / F) | `re/notes/weapons.md` |
+| Same-map replay crash (`cSndDrvDS::WaveRelease`) — re-opened | Opus | `dh2coop-replay` `replay-crash` (27450 / V) | `re/notes/replay-crash.md` |
+| MAP12C yeti + all bosses / sync-attack animals on clients | Opus | `dh2coop-yeti` `yeti` (27460 / W) | `re/notes/yeti-bosses.md` |
+| NPC mirror arms, gun, firing, death — re-opened | Opus | `dh2coop-npcarms` `npc-arms` (27480 / X) | `re/notes/npc-arms.md` |
+| Results screen follows host, chapter ends, pause, follow race, fail paths — re-opened | Opus | `dh2coop-flow` `mission-flow` (27490 / D) | `re/notes/mission-flow.md` |
+| Drop-out AV, drop-in damage, puppet pitch / feet / crouch / hands / weapon sounds — re-opened | Sonnet | `dh2coop-polish` `puppet-polish` (27500 / H) | `re/notes/puppet-polish.md` |
+| `"hunter"` = nearest player on the host (spook, claim, chases, guides, `NpcFollowNearest`) — re-opened | Opus | `dh2coop-hunter` `hunter-nearest` (27470 / M) | `re/notes/hunter-nearest.md` |
+
+Lead: review each deliverable, cherry-pick into `main`, integration-test, then a second wave from the audit gap lists (vehicles, mines, helicopter, traps, pickups, timers…). Still for the user: bottle host real-bullet retest; two-PC run after merges.
 
 ## Lead session 2026-10-17 (user goals: untested objective types, 4 players, drop-in/drop-out, player markers; stretch: knock other players over)
 User report at session start: a story map played with NPC + animal sync, scripted events and objectives on both, client death + F9 revive, host death = game over, and map-to-map progression in unison.
@@ -208,7 +229,7 @@ Handoff for the next agent: `docs/handoff-story-resume.md`.
 - **P2b overlay** (F8), **Phase 2 core**, **Phase 1** (Route E), **Phase 0**: see MEMORY.md / PLAN.md.
 
 ## Blockers / risks
-- Claude usage limits: keep Claude on expert work and review. Delegate defined jobs to Grok 4.7 via `tools-src\cursorjob.ps1`. When the 5-hour window nears 90%, write a handoff doc for the worker.
+- Delegation (user, 2026-10-17 evening, Claude Max): workers are Claude subagents (Opus 5.5 expert, Sonnet 5.5 defined jobs, Haiku 5.5 mechanical). Grok / `tools-src\cursorjob.ps1` retired. Parallel game runs need a distinct `-Port` and Ghidra slot per worktree.
 
 ## Resume protocol (new session)
 1. Open the session in `D:\scary hunt\dh2coop` (loads `CLAUDE.md`; the REA MCP is registered for this folder only). Ghidra headless also works through `re\scripts\ghrun.ps1` / `decomp.ps1` (slot L = lead).
