@@ -65,7 +65,7 @@ Every multi-byte integer is little-endian. Floats are IEEE-754 binary32, written
 | 20 | f32 | yaw, degrees |
 | 24 | f32 | pitch, degrees |
 | 28 | f32[3] | velocity, world units per second |
-| 40 | u16 | flags |
+| 40 | u16 | flags. Bit 0 crouched, 1 reloading, 2 firing, 4 dead (hunter `+0x6CC`), 5 knocked down (hunter `+0x368`, inside a sync attack), bits 8-11 shot counter. |
 | 42 | u8 | weaponId |
 | 43 | u8 | health |
 
@@ -113,7 +113,7 @@ An entry with an empty name is 24 bytes. Flag bits: bit 0 dead, bit 1 parked/ina
 | 1 | u8 | flags. Bit 0 = commit (host → clients). Clear = request (client → host). |
 | 2 | u8 | actorId. On a request the host overwrites this with the sending peer's player id. |
 | 3 | u16 | seq. The host assigns it on a commit. |
-| 5 | u16 | kind. Game-layer registry. `1` AnimalDied, `2` MissionEnd (i0 = message code 5/6, key = text), `3` TrophyClaim. Other values are legal on the wire. |
+| 5 | u16 | kind. Game-layer registry, full list in `mod/src/coop/events.h`. `1` AnimalDied, `2` MissionEnd (i0 = message code 5/6, key = text), `3` TrophyClaim, `4` MapStart, `5` TriggerEvent, `6` TriggerFire, `7` PropAnim, `8` PlaySA, `9` SyncRequest, `10` SyncDone, `11` CutsceneSkip, `12` PlayerHurt, `13` PlayerKnock, `14` PlayerKnockEnd, `15` KnockRequest. Other values are legal on the wire. |
 | 7 | u16 | subjectId. Entity id, or 0 when the subject is the map or an objective. |
 | 9 | u32 | i0. Kind-specific integer. |
 | 13 | f32 | f0. Kind-specific float. |
@@ -121,6 +121,13 @@ An entry with an empty name is 24 bytes. Flag bits: bit 0 dead, bit 1 parked/ina
 | 18 | bytes | key. A short name (objective, item class). Not a C string. |
 
 An empty key is 18 bytes. Encode keeps the first 31 bytes of a longer key. A key length that does not consume the rest of the packet is malformed. The host does not relay a request. A client cannot send a commit (`SendGameEvent` returns false). A commit from a client is dropped if it is somehow received. The host does not apply its own commit; it already ran the outcome.
+
+**Who gets a commit (2026-10-17, `re/notes/lead-dropin.md`).** The host keeps the current map's commits in a journal.
+- A client sends `SyncRequest` (key = its map) once its map is loaded and its hunter exists. The host answers that client only (`Session::SendGameEventTo`):
+  - its `MapStart`;
+  - if the maps match, the journal in order (a replayed `TriggerFire` carries its age in seconds in f0), then `SyncDone`.
+- Live commits go only to clients that got `SyncDone` for the host's current map. `MapStart` goes to every client.
+- `PlayerHurt` / `PlayerKnock` / `PlayerKnockEnd` are sent the same way but are not journaled, so a late joiner never replays a hit.
 
 `Reject.reason`: 0 none, 1 `VersionMismatch`, 2 `LobbyFull`, 3 `BadHello`.
 

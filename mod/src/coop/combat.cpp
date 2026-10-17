@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <string>
@@ -25,6 +26,7 @@
 #include "core/log.h"
 #include "core/module.h"
 #include "core/safe_mem.h"
+#include "engine/console_cmds.h"
 
 namespace dh2::coop::combat {
 namespace {
@@ -385,6 +387,18 @@ uint8_t PickVictim(bool melee) {
     return best;
 }
 
+// Test: coop_knock <player id> knocks that player over as if this process had hit them (no aim needed).
+void __cdecl cmd_knock(const char* arg) {
+    const int victim = std::atoi(core::safe_cstr(arg, 16).c_str());
+    if (victim < 0 || victim >= net::kMaxPlayers) {
+        spdlog::warn("coop_knock: usage coop_knock <player id 0-3>");
+        return;
+    }
+    spdlog::info("coop_knock: player {}", victim);
+    if (NetIsHost()) RouteKnock(NetLocalId(), static_cast<uint8_t>(victim), 2);
+    else events::Request(events::kKnockRequest, static_cast<uint16_t>(victim), 2, 0.f, "");
+}
+
 void TryKnock(bool melee) {
     const uint8_t victim = PickVictim(melee);
     if (victim == net::kInvalidPlayerId) return;
@@ -435,6 +449,7 @@ public:
     }
 
     void OnFrame(float) override {
+        if (!cmd_registered_ && console_cmds::Ready()) cmd_registered_ = console_cmds::AddCommandStr("coop_knock", &cmd_knock);
         const uint32_t now = GetTickCount();
         if (g_knocked && g_knock_end_ms && static_cast<int32_t>(now - g_knock_end_ms) >= 0) EndKnock("player knock done");
         if (g_knocked && now - g_knock_ms > kKnockTimeoutMs) EndKnock("timeout");
@@ -453,6 +468,7 @@ public:
     }
 
 private:
+    bool cmd_registered_ = false;
     bool have_counts_ = false;
     uint8_t shots_ = 0;
     uint32_t melees_ = 0;
