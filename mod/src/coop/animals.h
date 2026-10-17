@@ -10,7 +10,8 @@ namespace dh2::coop::animals {
 void HostTick(uint32_t nowMs);
 // Client: append one snapshot. localMs is this process's steady clock at arrival.
 void OnAnimalStates(const net::AnimalStates& states, uint32_t localMs);
-// Host: apply a client's hit with FuncInflictDamage.
+// Host: apply a client's hit. cScrAnimal subtracts health (FuncInflictDamage). A cobra takes the
+// bullet OnHit path instead: body state Death and +0x738 = 50, and its own Update counts the kill once.
 void OnAnimalHit(const net::AnimalHit& hit);
 // Client: a host AnimalDied commit. Presents death once, then stops driving that animal.
 void OnAnimalDied(uint16_t id);
@@ -26,7 +27,8 @@ void SetSessionActive(bool active, bool hosting);
 void* Find(uint16_t id);
 // Entity id of an animal pointer, or -1.
 int IdOf(void* animal);
-// Test hook (console coop_kill <id>, host or solo): FuncInflictDamage with `damage`.
+// Test hook (console coop_kill <id>). cScrAnimal: FuncInflictDamage. A host cobra starts the death
+// timer; a client cobra only drops local health so the mirror can report AnimalHit.
 bool DebugDamage(uint16_t id, float damage);
 
 }  // namespace dh2::coop::animals

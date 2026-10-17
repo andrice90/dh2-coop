@@ -50,7 +50,8 @@ const LocalPlayerSample& LocalPlayer();
 bool SampleLocalNow(LocalPlayerSample& out);
 // Number of animals seen in the last scan.
 int AnimalCount();
-// Animal entities (cScrAnimal, GameDll7 vtable +0xff470) from the last 1 s scan, in manager index order.
+// Animal entities from the last 1 s scan, in manager index order: cScrAnimal (GameDll7 +0xff470)
+// and mission cobras cObjCobra (+0x10e920). Ambient cObjSnake (+0x10e470) is not included.
 const std::vector<void*>& Animals();
 // World NPCs whose model path contains "/npc/" (Uncle Hugh, guides). Includes puppet models until the caller filters them.
 const std::vector<void*>& Npcs();

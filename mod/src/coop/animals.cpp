@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <map>
 #include <set>
@@ -47,6 +48,12 @@ constexpr uintptr_t kEntPos = 0xE8;
 constexpr uintptr_t kEntAngle = 0xF4;
 constexpr uintptr_t kEntWorldBox = 0xC4;
 constexpr uintptr_t kEntHealth = 0x19C;
+// cObjCobra (re/notes/snake.md). +0x728 null makes Update return before the bite and the death timer.
+// +0x738 = 50.0f (bytes 0x42480000 in FUN_10080440) is the bullet OnHit timer; Update calls vt +0x154 once it crosses 0.
+constexpr uintptr_t kVtCobraRva = 0x10e920;
+constexpr uintptr_t kCobraBite = 0x728;
+constexpr uintptr_t kCobraTimer = 0x738;
+constexpr float kCobraDeathTimer = 50.f;
 constexpr float kYawMoveM = 0.05f;
 constexpr uint32_t kInterpDelayMs = 100;
 constexpr uint32_t kInterpHistoryMs = 1000;
@@ -155,6 +162,7 @@ bool g_sync_log = true;
 bool g_spike = false;
 bool g_spike_unlink = true;
 bool g_unfreeze_dead = true;  // [Animals] UnfreezeDead=1: release a client animal's brain after PresentDeath
+bool g_cobra_bites = false;   // [Animals] CobraBitesNearest=1: host points +0x728 at the nearest living player
 float g_spike_y = 0.7f;
 
 std::string ini_path() { return (core::self_dir() / "dh2coop.ini").string(); }
@@ -271,6 +279,7 @@ struct Mirror {
     float last_yaw = 0.f;
     bool have_target = false;
     bool death_presented = false;
+    bool cobra_cleared = false;
     bool is_npc = false;
     bool hold_pose = false;
     std::string pose_at_play;
@@ -360,6 +369,61 @@ std::string NpcWeaponState(int16_t npcId) {
     return best;
 }
 
+bool IsCobra(void* ent) {
+    uintptr_t vt = 0;
+    HMODULE game = GetModuleHandleA("GameDll7.dll");
+    return ent && game && core::safe_read(ent, vt) && vt == reinterpret_cast<uintptr_t>(game) + kVtCobraRva;
+}
+
+bool CobraMirrorState(const std::string& name) {
+    return name == "Rise" || name == "Idle" || name == "Attack" || name == "TurnLeft" || name == "TurnRight" ||
+           name == "Death";
+}
+
+// FUN_10012cc0 (GameDll7 0x12cc0): the call OnHit uses for "Death". It resets every part's state machine
+// and then sets the name. SetBodyState alone lost to the clip that was already playing (MAP3B id 49
+// returned to Idle before the timer fired).
+bool CobraBodyHelper(void* ent, const char* name) {
+    using Fn = void(__thiscall*)(void*, const char*);
+    static Fn fn = nullptr;
+    static bool ready = false;
+    if (!ready) {
+        ready = true;
+        if (HMODULE game = GetModuleHandleA("GameDll7.dll")) {
+            auto* p = reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(game) + 0x12cc0);
+            uint8_t got[5] = {};
+            static const uint8_t kPrologue[5] = {0x55, 0x8b, 0xec, 0x6a, 0xff};
+            if (core::safe_copy(p, got, sizeof got) && std::memcmp(got, kPrologue, sizeof got) == 0) fn = reinterpret_cast<Fn>(p);
+            else spdlog::error("animals: GameDll7+0x12cc0 prologue mismatch; cobra body helper skipped");
+        }
+    }
+    if (!fn || !ent || !name) return false;
+    __try {
+        fn(ent, name);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+// Bullet OnHit (FUN_10080440): body state Death and +0x738 = 50. Does not subtract health and does not call +0x154.
+// The host Update calls that slot once when the timer crosses 0. A second call can fail the mission.
+void StartCobraDeath(void* ent, const char* why) {
+    float hp = 0.f;
+    core::safe_read(static_cast<char*>(ent) + kEntHealth, hp);
+    int16_t id = -1;
+    core::safe_read(static_cast<char*>(ent) + kEntId, id);
+    if (hp <= 0.f) {
+        spdlog::info("animals: cobra id={} {} skipped (hp {:.1f}, kill already counted)", id, why, hp);
+        return;
+    }
+    const bool helper = CobraBodyHelper(ent, "Death");
+    if (!helper) entity::SetBodyState(ent, "Death", true);
+    std::memcpy(static_cast<char*>(ent) + kCobraTimer, &kCobraDeathTimer, sizeof kCobraDeathTimer);
+    spdlog::info("animals: cobra id={} {} -> Death helper={} state='{}' timer=50", id, why, helper,
+                 entity::BodyStateName(ent));
+}
+
 void* FindAnimal(uint16_t id) {
     auto match = [&](void* a) {
         int16_t eid = -1;
@@ -404,6 +468,41 @@ void PlaceEntity(void* ent, const entity::Vec3& pos, float yawDeg, const float r
     entity::BspUpdate(ent);
 }
 
+// Host only, and only when [Animals] CobraBitesNearest=1. Keeps +0x728 non-null so Update can still
+// run the death timer. Default off: the spawn pointer is this process's "hunter".
+void AimCobras() {
+    const LocalPlayerSample& hunter = LocalPlayer();
+    for (void* ent : Animals()) {
+        if (!IsCobra(ent)) continue;
+        float hp = 0.f;
+        if (!core::safe_read(static_cast<char*>(ent) + kEntHealth, hp) || hp <= 0.f) continue;
+        float pos[3] = {};
+        if (!core::safe_copy(static_cast<char*>(ent) + kEntPos, pos, sizeof pos)) continue;
+        float best = 1.0e12f;
+        void* target = puppets::NearestLivingPuppet(pos, best);
+        if (hunter.valid && hunter.entity) {
+            const float dx = pos[0] - hunter.pos.x;
+            const float dy = pos[1] - hunter.pos.y;
+            const float dz = pos[2] - hunter.pos.z;
+            const float d = dx * dx + dy * dy + dz * dz;
+            if (!target || d < best) {
+                target = hunter.entity;
+                best = d;
+            }
+        }
+        if (!target) continue;
+        void* cur = nullptr;
+        core::safe_read(static_cast<char*>(ent) + kCobraBite, cur);
+        if (cur == target) continue;
+        std::memcpy(static_cast<char*>(ent) + kCobraBite, &target, sizeof target);
+        int16_t id = -1;
+        core::safe_read(static_cast<char*>(ent) + kEntId, id);
+        const bool host_hunter = target == hunter.entity;
+        spdlog::info("animals: cobra id={} bite target -> {} (player {}, {:.1f} m)", id, host_hunter ? "hunter" : "puppet",
+                     host_hunter ? 0 : puppets::PlayerOf(target), std::sqrt(best));
+    }
+}
+
 class AnimalsModule : public dh2::Module {
 public:
     const char* Name() const override { return "animals"; }
@@ -415,6 +514,8 @@ public:
         g_spike = GetPrivateProfileIntA("Animals", "Spike", 0, ini_path().c_str()) != 0;
         g_spike_unlink = GetPrivateProfileIntA("Animals", "SpikeUnlink", 1, ini_path().c_str()) != 0;
         g_unfreeze_dead = GetPrivateProfileIntA("Animals", "UnfreezeDead", 1, ini_path().c_str()) != 0;
+        g_cobra_bites = GetPrivateProfileIntA("Animals", "CobraBitesNearest", 0, ini_path().c_str()) != 0;
+        spdlog::info("animals: cobra bites nearest={}", g_cobra_bites);
         char y[32] = {};
         GetPrivateProfileStringA("Animals", "SpikeYOffset", "0.7", y, sizeof y, ini_path().c_str());
         g_spike_y = static_cast<float>(std::atof(y));
@@ -513,6 +614,7 @@ public:
 
     void HostTick(uint32_t nowMs) {
         if (!session_active_ || !hosting_) return;
+        if (g_cobra_bites) AimCobras();
         if (send_started_ && nowMs - last_send_ms_ < net::kStateIntervalMs) return;
         send_started_ = true;
         last_send_ms_ = nowMs;
@@ -667,6 +769,14 @@ public:
         core::safe_read(static_cast<char*>(ent) + kEntHealth, before);
         if (before <= 0.f) {
             spdlog::info("animals: AnimalHit id={} shooter={} dmg={:.2f} ignored (already dead)", hit.animalId,
+                         hit.shooterId, hit.damage);
+            return;
+        }
+        // A cobra bullet never subtracts +0x19C. OnHit sets Death and the 50 timer; Update calls +0x154 once.
+        // InflictDamage plus PresentDeath would count immediately, and the timer would count again.
+        if (IsCobra(ent)) {
+            StartCobraDeath(ent, "AnimalHit");
+            spdlog::info("animals: AnimalHit cobra id={} shooter={} dmg={:.2f} (no health subtract)", hit.animalId,
                          hit.shooterId, hit.damage);
             return;
         }
@@ -859,11 +969,30 @@ private:
                     spdlog::info("animals: mirror freeze id={} ok={} npc={} state='{}'", id, ok, m.is_npc,
                                  entity::BodyStateName(ent));
                 }
-                if (!ok && !m.is_npc) continue;
+                // cObjCobra's +0x200 is not a cAIHuntBrain_Animal: FreezeBrain faults (MAP3B ids 49–51,
+                // ok=false). Clearing +0x728 is what stops Update. Do not retry the faulting call.
+                if (!ok && !m.is_npc && !IsCobra(ent)) continue;
                 if (ok) {
                     m.frozen = true;
                     m.have_rel = CaptureRel(ent, m.rel);
                     if (!m.have_rel) spdlog::warn("animals: mirror id={} world box unreadable", id);
+                } else if (IsCobra(ent)) {
+                    m.frozen = true;
+                    m.have_rel = CaptureRel(ent, m.rel);
+                    if (!m.have_rel) spdlog::warn("animals: mirror id={} world box unreadable", id);
+                }
+            }
+            if (IsCobra(ent)) {
+                void* bite = nullptr;
+                core::safe_read(static_cast<char*>(ent) + kCobraBite, bite);
+                if (bite) {
+                    void* zero = nullptr;
+                    std::memcpy(static_cast<char*>(ent) + kCobraBite, &zero, sizeof zero);
+                }
+                if (!m.cobra_cleared) {
+                    m.cobra_cleared = true;
+                    spdlog::info("animals: cobra id={} bite target cleared (was {:#x})", id,
+                                 reinterpret_cast<uintptr_t>(bite));
                 }
             }
             AnimalSample sample;
@@ -960,6 +1089,18 @@ private:
                 // The handgun's own body script SetAnims clips like handgun3/normaltoalert onto its legs
                 // part and the engine raises a fatal dialog (client 23:32). Leave the gun alone.
             } else if (!sample.state.empty() && entity::BodyStateName(ent) != sample.state) {
+                if (IsCobra(ent) && !CobraMirrorState(sample.state)) {
+                    if (sample.state != m.warned_state) {
+                        m.warned_state = sample.state;
+                        spdlog::info("animals: cobra id={} skip body state '{}'", id, sample.state);
+                    }
+                    continue;
+                }
+                // Rise does not yield to SetBodyState. The game's own helper resets the state machine first.
+                if (IsCobra(ent) && CobraBodyHelper(ent, sample.state.c_str())) {
+                    m.applied_state = sample.state;
+                    continue;
+                }
                 const int r = entity::SetBodyState(ent, sample.state.c_str(), false);
                 if (r == 1) {
                     m.applied_state = sample.state;
@@ -981,9 +1122,15 @@ private:
         m.last_target = pos;
         m.last_yaw = sample.yaw;
         m.have_target = true;
+        // Cobra slot +0x154 (FUN_10080320) counts the kill and does not set a body state. The fall is "Death",
+        // never the cScrAnimal name "Dead". Leave the brain frozen: Update only runs the timer while +0x728 is set,
+        // and that pointer is cleared on the client, so an unfreeze does not play the fall.
+        const bool cobra = IsCobra(ent);
+        if (cobra && entity::BodyStateName(ent) != "Death" && !CobraBodyHelper(ent, "Death"))
+            entity::SetBodyState(ent, "Death", true);
         m.death_presented = entity::PresentDeath(ent);
         bool unfrozen = false;
-        if (g_unfreeze_dead && m.frozen) {
+        if (g_unfreeze_dead && m.frozen && !cobra) {
             unfrozen = entity::FreezeBrain(ent, false);
             if (unfrozen) m.frozen = false;
         }
@@ -1155,6 +1302,20 @@ bool DebugDamage(uint16_t id, float damage) {
     if (!ent) {
         spdlog::warn("animals: coop_kill id={} no entity", id);
         return false;
+    }
+    if (IsCobra(ent)) {
+        if (g_self && g_self->IsClientMirror()) {
+            // A health drop is what the mirror turns into AnimalHit. The host starts the death timer.
+            float before = 0.f, after = 0.f;
+            core::safe_read(static_cast<char*>(ent) + kEntHealth, before);
+            const bool ok = entity::InflictDamage(ent, damage);
+            core::safe_read(static_cast<char*>(ent) + kEntHealth, after);
+            spdlog::info("animals: coop_kill cobra id={} dmg={:.1f} hp {:.1f}->{:.1f} ok={} (client reports the hit)",
+                         id, damage, before, after, ok);
+            return ok;
+        }
+        StartCobraDeath(ent, "coop_kill");
+        return true;
     }
     float before = 0.f, after = 0.f;
     core::safe_read(static_cast<char*>(ent) + kEntHealth, before);

@@ -52,6 +52,7 @@ void DumpClassesOnce(void* mgr) {
 // GameDll7 vtable RVAs (Track B)
 constexpr uintptr_t kVtHunterRva = 0x106ff0;  // cScr_ModHunter
 constexpr uintptr_t kVtAnimalRva = 0xff470;   // cScrAnimal
+constexpr uintptr_t kVtCobraRva = 0x10e920;   // cObjCobra (mission cobras). Not cObjSnake +0x10e470.
 
 // SetLoadSaveObjManager(cObjManager*) (EngineDll7 export, RVA 0xbf6a0) stores Main7's live manager in an
 // unexported global (RVA 0x5826ec). Its body has `A3 <imm32>` (mov [global], eax) at +0x1A; we verify that
@@ -252,6 +253,7 @@ public:
         g_animal_list.clear();
         g_npc_list.clear();
         g_animals = 0;
+        cobra_ids_logged_.clear();
     }
 
     void OnMapLoaded(const char* bspName) override {
@@ -262,6 +264,7 @@ public:
         g_animal_list.clear();
         g_npc_list.clear();
         g_animals = 0;
+        cobra_ids_logged_.clear();
         g_hunter_model.clear();
         histogram_logged_ = false;
         animal_log_seconds_ = 0;
@@ -307,6 +310,7 @@ private:
 
         const uintptr_t vtHunter = game + kVtHunterRva;
         const uintptr_t vtAnimal = game + kVtAnimalRva;
+        const uintptr_t vtCobra = game + kVtCobraRva;
         std::map<uintptr_t, int> hist;
         std::vector<void*> animals;
         std::vector<void*> npcs;
@@ -322,7 +326,7 @@ private:
             if (vt == vtHunter && !hunter) hunter = ent;
             children.push_back(ent);
             if (diff_hunter_) DiffEntityAngle(i, ent, vt);
-            if (vt == vtAnimal) animals.push_back(ent);
+            if (vt == vtAnimal || vt == vtCobra) animals.push_back(ent);
             char* model = nullptr;
             if (core::safe_read(reinterpret_cast<char*>(ent) + kEntModelName, model) && model) {
                 std::string path = core::safe_cstr(model, 160);
@@ -333,6 +337,20 @@ private:
         g_animals = static_cast<int>(animals.size());
         g_animal_list = animals;
         g_npc_list = npcs;
+
+        std::string cobra_ids;
+        for (void* a : animals) {
+            uintptr_t vt = 0;
+            if (!core::safe_read(a, vt) || vt != vtCobra) continue;
+            int16_t id = -1;
+            core::safe_read(reinterpret_cast<char*>(a) + kEntId, id);
+            if (!cobra_ids.empty()) cobra_ids += ',';
+            cobra_ids += std::to_string(id);
+        }
+        if (!cobra_ids.empty() && cobra_ids != cobra_ids_logged_) {
+            cobra_ids_logged_ = cobra_ids;
+            spdlog::info("tracker: cobras at map load ids={}", cobra_ids);
+        }
 
         if (!histogram_logged_) {
             histogram_logged_ = true;
@@ -507,6 +525,7 @@ private:
     bool missing_logged_ = false;
     bool histogram_logged_ = false;
     int animal_log_seconds_ = 0;
+    std::string cobra_ids_logged_;
     float since_scan_ = 0.f;
 };
 
