@@ -760,6 +760,15 @@ void* NearestLivingPuppet(const float pos[3], float& best_sq) {
     return best;
 }
 
+bool IsLivingPuppet(void* ent) {
+    if (!ent) return false;
+    for (const auto& [id, p] : g_puppets) {
+        (void)id;
+        if (p.entity == ent) return !p.dead;
+    }
+    return false;
+}
+
 void* EntityOf(uint8_t playerId) {
     const auto it = g_puppets.find(playerId);
     return it != g_puppets.end() ? it->second.entity : nullptr;

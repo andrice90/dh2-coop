@@ -518,6 +518,64 @@ void RetargetToNearestPlayer() {
     }
 }
 
+// ---- host: an attacking animal treats a living puppet as a player ----
+// re/notes/animal-park.md (Cursor worker, 2026-10-17). The attack code asks its target "are you the player" (entity
+// vt +0xFC: 1 on cScr_ModHunter, 0 on a puppet). For a puppet, cAIHuntBrain_Animal::ProcessAttackState fell through
+// to DoDesperateAttack / DoDesorient, which ends in the flee-point callback that parks the animal at -10000 (the
+// MAP2A lion vanished on the host mid-attack on the client; the client's mirror followed it there mid-pounce and
+// the client crashed). After each of the three calls, a mid hook turns a 0 into 1 when the target is a living
+// puppet, before the existing `cmp eax, 1`. CommonDll7 v1.0, bytes checked before hooking.
+struct PlayerTestSite {
+    uintptr_t verify_rva;  // first byte of the checked run (mov ...; mov ecx, target; call [vt+0xFC]; cmp eax,1; jcc)
+    uint8_t bytes[15];
+    uintptr_t cmp_rva;     // the `cmp eax, 1` after the call: the hook site
+    bool target_in_esi;    // else EBX
+    const char* label;
+};
+constexpr PlayerTestSite kPlayerTests[] = {
+    {0x9278e, {0x8b, 0x06, 0x8b, 0xce, 0xff, 0x90, 0xfc, 0x00, 0x00, 0x00, 0x83, 0xf8, 0x01, 0x74, 0x1a}, 0x92798, true,
+     "ProcessAttackState player test"},
+    {0xcaec3, {0x8b, 0x13, 0x8b, 0xcb, 0xff, 0x92, 0xfc, 0x00, 0x00, 0x00, 0x83, 0xf8, 0x01, 0x0f, 0x84}, 0xcaecd, false,
+     "sync-attack player wait"},
+    {0xcb14f, {0x8b, 0x03, 0x8b, 0xcb, 0xff, 0x90, 0xfc, 0x00, 0x00, 0x00, 0x83, 0xf8, 0x01, 0x75, 0x06}, 0xcb159, false,
+     "sync-attack timer reset"},
+};
+safetyhook::MidHook g_player_test_hooks[3];
+uint32_t g_player_test_logs = 0;
+
+void puppet_counts_as_player(uintptr_t target, uintptr_t& eax) {
+    if (eax == 1 || !PuppetsAreTargets()) return;
+    if (!puppets::IsLivingPuppet(reinterpret_cast<void*>(target))) return;
+    eax = 1;
+    if (g_player_test_logs++ < 5)
+        spdlog::info("combat: animal attack treats player {} as a player", puppets::PlayerOf(reinterpret_cast<void*>(target)));
+}
+
+void on_player_test_esi(safetyhook::Context& ctx) { puppet_counts_as_player(ctx.esi, ctx.eax); }
+void on_player_test_ebx(safetyhook::Context& ctx) { puppet_counts_as_player(ctx.ebx, ctx.eax); }
+
+void InstallPlayerTests(HMODULE common) {
+    const uintptr_t base = reinterpret_cast<uintptr_t>(common);
+    for (size_t i = 0; i < std::size(kPlayerTests); ++i) {
+        const PlayerTestSite& s = kPlayerTests[i];
+        uint8_t got[15] = {};
+        if (!core::safe_copy(reinterpret_cast<void*>(base + s.verify_rva), got, sizeof got) ||
+            std::memcmp(got, s.bytes, sizeof got) != 0) {
+            spdlog::error("combat: {} at CommonDll7+{:#x} has unexpected bytes; not hooked", s.label, s.verify_rva);
+            continue;
+        }
+        auto created = safetyhook::MidHook::create(reinterpret_cast<void*>(base + s.cmp_rva),
+                                                   s.target_in_esi ? &on_player_test_esi : &on_player_test_ebx);
+        if (!created) {
+            spdlog::error("combat: {} mid hook failed (safetyhook error {})", s.label,
+                          static_cast<int>(created.error().type));
+            continue;
+        }
+        g_player_test_hooks[i] = std::move(*created);
+        spdlog::info("combat: hooked {} (CommonDll7+{:#x})", s.label, s.cmp_rva);
+    }
+}
+
 }  // namespace
 
 // Host, from animals.cpp after a client's AnimalHit is applied: the animal's brain hears that the client's puppet
@@ -563,6 +621,7 @@ public:
         g_endsa_hook = core::install_hook("cObjCharacterEx::OnEndSA (combat)",
                                           core::find_export(common, "?OnEndSA@cObjCharacterEx@@UAEXXZ"),
                                           reinterpret_cast<void*>(&hk_OnEndSA));
+        InstallPlayerTests(common);
         g_stuck_hook = core::install_hook("cAIHuntBrain_Animal::ProcessAttackStuck (combat)",
                                           core::find_export(common, "?ProcessAttackStuck@cAIHuntBrain_Animal@@MAEXXZ"),
                                           reinterpret_cast<void*>(&hk_ProcessAttackStuck));
