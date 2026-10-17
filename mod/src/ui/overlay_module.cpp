@@ -1,7 +1,9 @@
 // Read-only co-op status overlay. Drawn from the D3D8 Present callback on the game thread.
 #include "core/module.h"
 #include "core/log.h"
+#include "core/safe_mem.h"
 #include "coop/coop.h"
+#include "coop/player_tracker.h"
 #include "engine/d3d8_hooks.h"
 #include "ui/imgui_impl_dx8.h"
 
@@ -10,7 +12,9 @@
 
 #include <spdlog/spdlog.h>
 
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <string>
 
 namespace {
@@ -18,8 +22,11 @@ namespace {
 struct OverlayState {
     bool inited = false;
     bool visible = true;
+    bool markers = true;
+    bool marker_test = false;
     bool keys_ready = false;
     bool f8_down = false;
+    bool f7_down = false;
     bool logged_begin_fail = false;
     LARGE_INTEGER qpc_freq{};
     LARGE_INTEGER qpc_last{};
@@ -140,6 +147,174 @@ void draw_overlay(const dh2::coop::SessionView& view) {
     ImGui::PopStyleColor(3);
 }
 
+// fov at +0xD0 is degrees and horizontal: EngineDll7 UpdatePerspectiveProjectionFrustum
+// multiplies it by pi/360 and the X screen scale is (width/2) / tan(half). Same scale on Y
+// because SetAspect stores height/width, which cancels in the Y multiplier.
+float marker_scale(float fov_deg, float width) {
+    float tan_half = std::tan(fov_deg * 0.008726646f);  // pi/360
+    if (tan_half < 0.01f) tan_half = 0.01f;
+    return (width * 0.5f) / tan_half;
+}
+
+float dot3(const dh2::coop::Vec3& a, const dh2::coop::Vec3& b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+ImU32 marker_color(int id, int alpha) {
+    static const int rgb[4][3] = {{255, 200, 60}, {90, 170, 255}, {110, 220, 110}, {255, 110, 100}};
+    const int* c = rgb[(id < 0 ? 0 : id) & 3];
+    return IM_COL32(c[0], c[1], c[2], alpha);
+}
+
+// Alpha stays at or above 50%. Full at the camera, half by ~80 m.
+int marker_alpha(float dist_m) {
+    float t = 1.f - dist_m / 160.f;
+    if (t < 0.5f) t = 0.5f;
+    if (t > 1.f) t = 1.f;
+    return static_cast<int>(t * 255.f);
+}
+
+void draw_diamond(ImDrawList* dl, ImVec2 c, ImU32 col, ImU32 outline) {
+    const float r = 5.f;  // 10 px tip to tip
+    const ImVec2 p[4] = {ImVec2(c.x, c.y - r), ImVec2(c.x + r, c.y), ImVec2(c.x, c.y + r), ImVec2(c.x - r, c.y)};
+    dl->AddQuadFilled(p[0], p[1], p[2], p[3], col);
+    dl->AddQuad(p[0], p[1], p[2], p[3], outline, 1.5f);
+}
+
+void draw_arrow(ImDrawList* dl, ImVec2 at, float dx, float dy, ImU32 col, ImU32 outline) {
+    const float len = std::sqrt(dx * dx + dy * dy);
+    float nx = 0.f, ny = 1.f;
+    if (len > 0.001f) {
+        nx = dx / len;
+        ny = dy / len;
+    }
+    const float px = -ny, py = nx;
+    const ImVec2 tip(at.x + nx * 7.f, at.y + ny * 7.f);
+    const ImVec2 a(at.x - nx * 7.f + px * 5.f, at.y - ny * 7.f + py * 5.f);
+    const ImVec2 b(at.x - nx * 7.f - px * 5.f, at.y - ny * 7.f - py * 5.f);
+    dl->AddTriangleFilled(tip, a, b, col);
+    dl->AddTriangle(tip, a, b, outline, 1.5f);
+}
+
+// Ray from the screen centre hits the inset rectangle. dir is screen space, +y down.
+ImVec2 edge_point(ImVec2 disp, float dx, float dy) {
+    const float inset = 24.f;
+    const float hx = disp.x * 0.5f - inset;
+    const float hy = disp.y * 0.5f - inset;
+    float len = std::sqrt(dx * dx + dy * dy);
+    if (len < 0.001f) {
+        dx = 0.f;
+        dy = 1.f;  // straight behind, no sideways offset: bottom edge
+        len = 1.f;
+    }
+    dx /= len;
+    dy /= len;
+    float t = 1.0e9f;
+    if (std::fabs(dx) > 1.0e-5f) {
+        const float tx = (dx > 0.f ? hx : -hx) / dx;
+        if (tx > 0.f) t = tx;
+    }
+    if (std::fabs(dy) > 1.0e-5f) {
+        const float ty = (dy > 0.f ? hy : -hy) / dy;
+        if (ty > 0.f && ty < t) t = ty;
+    }
+    return ImVec2(disp.x * 0.5f + dx * t, disp.y * 0.5f + dy * t);
+}
+
+void draw_one_marker(ImDrawList* dl, const dh2::coop::ViewCamera& cam, float scale, ImVec2 disp,
+                     const dh2::coop::Vec3& world, const char* label, int metres, int alpha, ImU32 col) {
+    const dh2::coop::Vec3 d{world.x - cam.pos.x, world.y - cam.pos.y, world.z - cam.pos.z};
+    const float cx = dot3(d, cam.x);
+    const float cy = dot3(d, cam.y);
+    const float cz = dot3(d, cam.z);
+    const bool behind = cz <= 0.1f;
+    float sx = 0.f, sy = 0.f;
+    bool on_screen = false;
+    if (!behind) {
+        sx = disp.x * 0.5f + (cx / cz) * scale;
+        sy = disp.y * 0.5f - (cy / cz) * scale;
+        on_screen = sx >= 0.f && sy >= 0.f && sx <= disp.x && sy <= disp.y;
+    }
+    const ImU32 outline = IM_COL32(20, 20, 20, alpha);
+    char text[80];
+    if (metres >= 0)
+        std::snprintf(text, sizeof(text), "%s  %dm", label, metres);
+    else
+        std::snprintf(text, sizeof(text), "%s", label);
+    const ImVec2 ts = ImGui::CalcTextSize(text);
+    if (on_screen) {
+        draw_diamond(dl, ImVec2(sx, sy), col, outline);
+        dl->AddText(ImVec2(sx - ts.x * 0.5f, sy + 8.f), col, text);
+        return;
+    }
+    // Behind: flip both axes so the arrow stays on the side the player actually is,
+    // then screen Y flips again (-cy -> +cy). Straight behind and slightly above lands on the bottom.
+    const float vx = behind ? -cx : cx;
+    const float vy = behind ? -cy : cy;
+    const float dirx = vx;
+    const float diry = -vy;
+    const ImVec2 at = edge_point(disp, dirx, diry);
+    float ndx = dirx, ndy = diry;
+    const float nlen = std::sqrt(ndx * ndx + ndy * ndy);
+    if (nlen > 0.001f) {
+        ndx /= nlen;
+        ndy /= nlen;
+    } else {
+        ndx = 0.f;
+        ndy = 1.f;
+    }
+    draw_arrow(dl, at, ndx, ndy, col, outline);
+    // Name sits just inside the arrow so it stays on the back buffer.
+    float tx = at.x - ndx * (ts.x * 0.5f + 12.f) - ts.x * 0.5f;
+    float ty = at.y - ndy * 16.f - ts.y * 0.5f;
+    if (tx < 4.f) tx = 4.f;
+    if (ty < 4.f) ty = 4.f;
+    if (tx + ts.x > disp.x - 4.f) tx = disp.x - 4.f - ts.x;
+    if (ty + ts.y > disp.y - 4.f) ty = disp.y - 4.f - ts.y;
+    dl->AddText(ImVec2(tx, ty), col, text);
+}
+
+void draw_markers(const dh2::coop::SessionView& view, ImVec2 disp) {
+    const dh2::coop::ViewCamera cam = dh2::coop::LastViewCamera();
+    if (!cam.valid || cam.proj != 0) return;
+    const float scale = marker_scale(cam.fov, disp.x);
+    ImDrawList* dl = ImGui::GetBackgroundDrawList();
+    const dh2::coop::Vec3 hunter{view.hunterPos[0], view.hunterPos[1], view.hunterPos[2]};
+    for (int i = 0; i < view.remoteCount && i < 4; ++i) {
+        const dh2::coop::RemoteView& r = view.remotes[i];
+        if (r.packets == 0) continue;
+        const dh2::coop::Vec3 feet{r.pos[0], r.pos[1], r.pos[2]};
+        const dh2::coop::Vec3 head{feet.x, feet.y + 2.f, feet.z};
+        float dist = 0.f;
+        if (view.hunterFound) {
+            const float dx = feet.x - hunter.x, dy = feet.y - hunter.y, dz = feet.z - hunter.z;
+            dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+        }
+        const int metres = static_cast<int>(dist + 0.5f);
+        const int alpha = marker_alpha(dist);
+        draw_one_marker(dl, cam, scale, disp, head, r.name.c_str(), metres, alpha, marker_color(r.id, alpha));
+    }
+    if (!g_ov.marker_test) return;
+    const auto& animals = dh2::coop::Animals();
+    for (int i = 0; i < static_cast<int>(animals.size()); ++i) {
+        dh2::coop::Vec3 feet{};
+        if (!dh2::core::safe_read(static_cast<char*>(animals[i]) + 0xE8, feet)) continue;
+        // Parked animals sit at the sentinel (-10000,-10000,-10000). A marker there is not a deer.
+        if (feet.x < -5000.f && feet.z < -5000.f) continue;
+        const dh2::coop::Vec3 head{feet.x, feet.y + 2.f, feet.z};
+        float dist = 0.f;
+        if (view.hunterFound) {
+            const float dx = feet.x - hunter.x, dy = feet.y - hunter.y, dz = feet.z - hunter.z;
+            dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+        }
+        char label[32];
+        std::snprintf(label, sizeof(label), "animal %d", i);
+        const int alpha = marker_alpha(dist);
+        draw_one_marker(dl, cam, scale, disp, head, label, static_cast<int>(dist + 0.5f), alpha,
+                        IM_COL32(180, 180, 180, alpha));
+    }
+}
+
 bool ensure_imgui(IDirect3DDevice8* dev) {
     if (g_ov.inited) return true;
     IMGUI_CHECKVERSION();
@@ -167,18 +342,28 @@ void on_present(void* device, const RECT* src, const RECT* dst, HWND window, con
     if (!dev || !ensure_imgui(dev)) return;
 
     const HWND hwnd = game_window(dev, window);
-    const bool down = (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
+    const bool f8 = (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
+    const bool f7 = (GetAsyncKeyState(VK_F7) & 0x8000) != 0;
     if (!g_ov.keys_ready) {
-        g_ov.f8_down = down;
+        g_ov.f8_down = f8;
+        g_ov.f7_down = f7;
         g_ov.keys_ready = true;
-    } else {
-        if (is_foreground(hwnd) && down && !g_ov.f8_down) {
+    } else if (is_foreground(hwnd)) {
+        if (f8 && !g_ov.f8_down) {
             g_ov.visible = !g_ov.visible;
             spdlog::info("overlay: visible={}", g_ov.visible ? 1 : 0);
         }
-        g_ov.f8_down = down;
+        if (f7 && !g_ov.f7_down) {
+            g_ov.markers = !g_ov.markers;
+            spdlog::info("overlay: markers={}", g_ov.markers ? 1 : 0);
+        }
     }
-    if (!g_ov.visible) return;
+    if (g_ov.keys_ready) {
+        g_ov.f8_down = f8;
+        g_ov.f7_down = f7;
+    }
+    // F8 hides the status panel only. Skip the whole ImGui frame when that panel and the markers are both off.
+    if (!g_ov.visible && !g_ov.markers) return;
 
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = display_size(dev, hwnd);
@@ -195,7 +380,9 @@ void on_present(void* device, const RECT* src, const RECT* dst, HWND window, con
 
     ImGui_ImplDX8_NewFrame();
     ImGui::NewFrame();
-    draw_overlay(dh2::coop::Snapshot());
+    const dh2::coop::SessionView view = dh2::coop::Snapshot();
+    if (g_ov.visible) draw_overlay(view);
+    if (g_ov.markers) draw_markers(view, io.DisplaySize);
     ImGui::Render();
 
     ImDrawData* dd = ImGui::GetDrawData();
@@ -237,7 +424,10 @@ public:
     void OnInit() override {
         const std::string ini = (dh2::core::self_dir() / "dh2coop.ini").string();
         g_ov.visible = GetPrivateProfileIntA("Overlay", "Enabled", 1, ini.c_str()) != 0;
-        spdlog::info("overlay: ini Enabled={}", g_ov.visible ? 1 : 0);
+        g_ov.markers = GetPrivateProfileIntA("Overlay", "Markers", 1, ini.c_str()) != 0;
+        g_ov.marker_test = GetPrivateProfileIntA("Overlay", "MarkerTest", 0, ini.c_str()) != 0;
+        spdlog::info("overlay: ini Enabled={} Markers={} MarkerTest={}", g_ov.visible ? 1 : 0, g_ov.markers ? 1 : 0,
+                     g_ov.marker_test ? 1 : 0);
         dh2::d3d8::AddPresentCallback(&on_present);
         dh2::d3d8::AddResetCallback(&on_reset);
     }

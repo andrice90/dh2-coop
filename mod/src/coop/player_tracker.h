@@ -10,6 +10,16 @@ struct Vec3 {
     float x = 0.f, y = 0.f, z = 0.f;
 };
 
+// World camera of the last completed frame (first cRender::SetCamera of that frame).
+// y is derived (z × x), not read from the camera. fov is degrees, horizontal (see re/notes/player-markers.md).
+struct ViewCamera {
+    Vec3 pos, x, y, z;
+    float fov = 0.f;
+    int proj = -1;
+    bool valid = false;
+};
+ViewCamera LastViewCamera();
+
 struct LocalPlayerSample {
     bool valid = false;
     void* entity = nullptr;

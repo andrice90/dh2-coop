@@ -88,6 +88,18 @@ void __fastcall hk_SetCamera(void* self, void* /*edx*/, const char* cam) {
             core::safe_read(cam + 0xC4, c.proj) && core::safe_read(cam + 0xD0, c.fov)) {
             g_frame_cam = c;
             g_frame_cam_taken = true;
+            // One line: stored Y (+0x94) vs y derived as z × x, so a mirrored basis shows up in the log.
+            static bool y_checked = false;
+            if (!y_checked) {
+                y_checked = true;
+                Vec3 stored{};
+                core::safe_read(cam + 0x94, stored);
+                const Vec3 derived{c.z.y * c.x.z - c.z.z * c.x.y, c.z.z * c.x.x - c.z.x * c.x.z,
+                                   c.z.x * c.x.y - c.z.y * c.x.x};
+                spdlog::info(
+                    "tracker: view y stored=({:.3f},{:.3f},{:.3f}) cross(z,x)=({:.3f},{:.3f},{:.3f}) fov={:.3f} proj={}",
+                    stored.x, stored.y, stored.z, derived.x, derived.y, derived.z, c.fov, c.proj);
+            }
         }
     }
     if (g_setcam_log > 0 && cam) {
@@ -526,6 +538,22 @@ bool SampleLocalNow(LocalPlayerSample& out) {
     out = s;
     return true;
 }
+ViewCamera LastViewCamera() {
+    ViewCamera v;
+    if (!g_view_cam_valid) return v;
+    v.valid = true;
+    v.pos = g_view_cam.pos;
+    v.x = g_view_cam.x;
+    v.z = g_view_cam.z;
+    v.fov = g_view_cam.fov;
+    v.proj = g_view_cam.proj;
+    // x × y = z with x right and z forward, so y = z × x (matches cRenderCamera Y at +0x94; see the one-shot log).
+    v.y.x = v.z.y * v.x.z - v.z.z * v.x.y;
+    v.y.y = v.z.z * v.x.x - v.z.x * v.x.z;
+    v.y.z = v.z.x * v.x.y - v.z.y * v.x.x;
+    return v;
+}
+
 int AnimalCount() { return g_animals; }
 const std::vector<void*>& Animals() { return g_animal_list; }
 const std::vector<void*>& Npcs() { return g_npc_list; }
