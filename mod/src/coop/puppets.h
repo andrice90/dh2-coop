@@ -16,5 +16,7 @@ void RemoveAll();
 int Count();
 // True for a puppet or weapon entity this module spawned. Those use /npc/ models and must not be mirrored as world NPCs.
 bool Owns(void* ent);
+// The remote player this puppet body stands for, or net::kInvalidPlayerId (weapons and other entities too).
+uint8_t PlayerOf(void* ent);
 
 }  // namespace dh2::coop::puppets

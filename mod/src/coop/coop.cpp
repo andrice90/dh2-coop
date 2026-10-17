@@ -518,8 +518,15 @@ private:
         prev_ = s.pos;
         prev_tick_ = st.tickMs;
         have_prev_ = true;
+        // Hunter +0x6CC: cObjHunter::OnDie. +0x368: inside a sync attack (an animal knocked this hunter down).
+        int dead = 0, in_sa = 0;
+        if (s.entity) {
+            core::safe_read(static_cast<char*>(s.entity) + 0x6CC, dead);
+            core::safe_read(static_cast<char*>(s.entity) + 0x368, in_sa);
+        }
         st.flags = static_cast<uint16_t>((s.crouched ? net::kFlagCrouched : 0) | (s.reloading ? net::kFlagReloading : 0) |
-                                         (s.firing ? net::kFlagFiring : 0) |
+                                         (s.firing ? net::kFlagFiring : 0) | (dead ? net::kFlagDead : 0) |
+                                         (in_sa ? net::kFlagKnocked : 0) |
                                          ((s.shots << net::kShotCounterShift) & net::kShotCounterMask));
         st.weaponId = s.weapon;
         st.health = 100;
@@ -747,6 +754,8 @@ float DistanceToHost() {
 bool NetIsHost() { return g_session.IsHost(); }
 
 bool NetIsOnline() { return g_session.IsHost() || g_session.IsConnected(); }
+
+uint8_t NetLocalId() { return g_session.LocalPlayerId(); }
 
 std::string StatusLine() {
     const char* role = g_session.IsHost() ? "host" : (g_session.IsConnected() ? "client" : "offline");

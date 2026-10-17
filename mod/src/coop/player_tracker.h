@@ -31,6 +31,7 @@ struct LocalPlayerSample {
     bool firing = false;
     bool reloading = false;
     uint8_t shots = 0;       // increments on every transition into "Fire"
+    uint32_t melees = 0;     // increments on every transition into "SecFire" (kick / butt swing)
 };
 
 // Latest sample of the local hunter (game thread only). valid=false until found.

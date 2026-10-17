@@ -532,6 +532,19 @@ void Commit(uint16_t kind, uint16_t subject, uint32_t i0, float f0, std::string_
                  actor, i0, trimmed, ev.seq, sent, g_journal.size());
 }
 
+void Send(uint16_t kind, uint16_t subject, uint32_t i0, float f0, std::string_view key, uint8_t actor) {
+    if (!NetIsHost()) return;
+    net::GameEvent ev;
+    ev.flags = net::game_event_flag::kCommit;
+    ev.actorId = actor;
+    ev.kind = kind;
+    ev.subjectId = subject;
+    ev.i0 = i0;
+    ev.f0 = f0;
+    ev.key.assign(key.data(), key.size() > net::kMaxGameEventKeyChars ? net::kMaxGameEventKeyChars : key.size());
+    for (uint8_t id : g_synced) SendGameEventTo(id, ev);
+}
+
 void Request(uint16_t kind, uint16_t subject, uint32_t i0, float f0, std::string_view key) {
     if (NetIsHost() || !NetIsOnline()) return;
     net::GameEvent ev;

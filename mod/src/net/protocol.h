@@ -135,6 +135,8 @@ struct PlayerState {
 constexpr uint16_t kFlagCrouched = 1u << 0;
 constexpr uint16_t kFlagReloading = 1u << 1;
 constexpr uint16_t kFlagFiring = 1u << 2;
+constexpr uint16_t kFlagDead = 1u << 4;     // hunter +0x6CC set (OnDie); the host stops animals targeting the puppet
+constexpr uint16_t kFlagKnocked = 1u << 5;  // hunter inside a sync attack (+0x368): puppets show the knocked-down pose
 constexpr int kShotCounterShift = 8;
 constexpr uint16_t kShotCounterMask = 0x0F00;
 // PlayerState.weaponId values.

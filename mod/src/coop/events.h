@@ -31,6 +31,13 @@ constexpr uint16_t kSyncRequest = 9;  // request. key = the client's map, subjec
                                       // kMapStart, then (same map) every journal commit and kSyncDone.
 constexpr uint16_t kSyncDone = 10;    // commit, to one client. i0 = commits replayed, key = map. Live commits follow.
 constexpr uint16_t kCutsceneSkip = 11;  // commit. subject/key = the cObjTriggerEvent whose cutscene the host skipped.
+// Phase 5 (combat.cpp). Sent with Send, not journaled: a late joiner must not replay a hit.
+constexpr uint16_t kPlayerHurt = 12;     // commit. subject = player id, f0 = damage, i0 = attacker entity id | type << 16.
+constexpr uint16_t kPlayerKnock = 13;    // commit. subject = player id, key = sync-attack clip, f0 = facing yaw (deg).
+constexpr uint16_t kPlayerKnockEnd = 14; // commit. subject = player id: the sync attack finished, stand up.
+                                         // kPlayerKnock with an empty key is a player's hit: i0 = attacker player id,
+                                         // the victim picks its map's clip and stands up on its own timer.
+constexpr uint16_t kKnockRequest = 15;   // request. subject = victim player id, i0 = 1 shot / 2 melee.
 
 // onRequest runs on the host. onCommit runs on a client. Either may be null.
 using Handler = void (*)(const net::GameEvent&);
@@ -40,6 +47,9 @@ void SetHandler(uint16_t kind, Handler onRequest, Handler onCommit);
 // kMapStart goes to every client. A client that is still loading gets it in its catch-up instead.
 // A repeat of the same kind/subject/key resends the stored commit and does not append another. No-op on a client.
 void Commit(uint16_t kind, uint16_t subject, uint32_t i0, float f0, std::string_view key, uint8_t actor);
+
+// Host only. Like Commit but not journaled: momentary effects (a hit, a knockdown) that a late joiner must not replay.
+void Send(uint16_t kind, uint16_t subject, uint32_t i0, float f0, std::string_view key, uint8_t actor);
 
 // Client only. Reliable request. The host stamps actorId. No-op on the host.
 void Request(uint16_t kind, uint16_t subject, uint32_t i0, float f0, std::string_view key);

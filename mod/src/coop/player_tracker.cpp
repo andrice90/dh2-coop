@@ -124,6 +124,8 @@ struct ActionState {
     bool firing = false;
     bool reloading = false;
     uint8_t shots = 0;
+    bool meleeing = false;
+    uint32_t melees = 0;
 };
 ActionState g_act;
 
@@ -143,6 +145,7 @@ void read_camera(LocalPlayerSample& s) {
     s.firing = g_act.firing;
     s.reloading = g_act.reloading;
     s.shots = g_act.shots;
+    s.melees = g_act.melees;
     if (g_view_cam_valid) {
         const Vec3& z = g_view_cam.z;
         s.viewValid = true;
@@ -455,6 +458,10 @@ private:
             const bool firing = state == "Fire";
             if (firing && !g_act.firing) g_act.shots = static_cast<uint8_t>((g_act.shots + 1) & 0x0F);
             g_act.firing = firing;
+            // WEAPON.SCR SecFire: the kick / butt swing (re/notes/knockdown.md section 4).
+            const bool melee = state == "SecFire";
+            if (melee && !g_act.meleeing) ++g_act.melees;
+            g_act.meleeing = melee;
             g_act.reloading = state.rfind("Reload", 0) == 0;
             if (kind != g_act.weapon) {
                 spdlog::info("tracker: action weapon kind {} model='{}'", kind, model ? core::safe_cstr(model, 160) : "");

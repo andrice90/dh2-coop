@@ -32,6 +32,7 @@ namespace {
 constexpr const char* kDefaultClass = "obj_humanEx";
 constexpr float kWalkSpeed = 0.6f;  // m/s: below = idle
 constexpr float kRunSpeed = 5.5f;   // m/s: above = run (hunter walks ≈ 5 m/s)
+bool g_physics = false;         // [Puppets] Physics=0: drop the puppet's physics body (see spawn_human)
 
 struct Puppet {
     net::SnapshotBuffer buffer;
@@ -48,6 +49,8 @@ struct Puppet {
     std::string arms_shown;
     std::string gun_shown;
     bool attack_target = false;  // host: registered in the animals' attack-target list (Phase 5)
+    bool was_knocked = false;    // last sample had kFlagKnocked: play the get-up when it clears
+    uint32_t getup_until = 0;
 };
 
 constexpr uintptr_t kEntWorldBox = 0xC4;  // float[6] min xyz, max xyz — used by cBspTree::UpdateEntity
@@ -68,6 +71,13 @@ void capture_rel_box(Puppet& p) {
 // Moves the puppet: engine SetPos/SetAngle, then refresh the world AABB from the spawn-relative box and
 // relink into the BSP so the renderer's leaf culling sees it (runtime spawns are otherwise never drawn).
 void place(Puppet& p, const entity::Vec3& pos, float yawDeg) {
+    if (g_physics) {
+        // With a physics body ([Puppets] Physics=1, needed for animal attacks) the physics step copies the body's
+        // position back onto the entity. The "position" key moves the body as well (as for the F9 revive).
+        char buf[64];
+        std::snprintf(buf, sizeof buf, "%.2f %.2f %.2f", pos.x * 100.f, pos.y * 100.f, pos.z * 100.f);
+        entity::HandleKey(p.entity, "position", buf);
+    }
     entity::SetPos(p.entity, pos);
     entity::SetAngle(p.entity, {0.f, yawDeg, 0.f});
     float box[6] = {p.rel_box[0] + pos.x, p.rel_box[1] + pos.y, p.rel_box[2] + pos.z,
@@ -97,7 +107,6 @@ std::string g_class = kDefaultClass;
 bool g_enabled = true;
 bool g_spike = false;           // [Puppets] Spike=1: one local test puppet circling in front of the hunter
 bool g_anim_enabled = true;     // [Puppets] Animate=1
-bool g_physics = false;         // [Puppets] Physics=0: drop the puppet's physics body (see spawn_human)
 float g_y_offset = 0.f;         // [Puppets] YOffset (metres) added to the networked hunter y
 std::string g_crouch_clip = "coveridle";  // [Puppets] CrouchClip: NPC packs have no crouch-walk clip
 bool g_weapons = true;          // [Puppets] Weapons=1: attach a third-person weapon model to the puppet's hand
@@ -166,6 +175,19 @@ ClipSet choose_clips(Puppet& p, const net::InterpSample& s, uint32_t now) {
     const int shots = (s.flags & net::kShotCounterMask) >> net::kShotCounterShift;
     if (p.last_shots >= 0 && shots != p.last_shots && armed) p.fire_until = now + 400;
     p.last_shots = shots;
+
+    // Whole-body poses from the guide pack (GUIDELEGS.SCR StayDown / Getup / FinalLiedead), on every part so the
+    // arms do not keep an idle clip over a body lying on the ground. re/notes/knockdown.md section 5.
+    if (s.flags & net::kFlagDead) return ClipSet{"liedead", "liedead", nullptr};
+    if (s.flags & net::kFlagKnocked) {
+        p.was_knocked = true;
+        return ClipSet{"deadfrontup", "deadfrontup", nullptr};
+    }
+    if (p.was_knocked) {
+        p.was_knocked = false;
+        p.getup_until = now + 1800;
+    }
+    if (now < p.getup_until) return ClipSet{"syncguidegetup", "syncguidegetup", nullptr};
 
     ClipSet c{"idlenormalneutral", nullptr, "idlealertneutral"};
     if (armed && now < p.fire_until) {
@@ -442,7 +464,9 @@ public:
                 if (p.entity) capture_rel_box(p);
             }
             if (!p.entity) continue;
-            register_target(p);
+            // A dead player is not prey: animals drop list entries only through RemoveAttackTarget.
+            if (s.flags & net::kFlagDead) unregister_target(p);
+            else register_target(p);
             place(p, {s.pos[0], s.pos[1] + g_y_offset, s.pos[2]}, s.yaw);
             sync_weapon(p, s.weaponId);
             place_weapon(p);
@@ -583,6 +607,14 @@ int Count() {
     int n = 0;
     for (auto& [id, p] : g_puppets) n += p.entity ? 1 : 0;
     return n;
+}
+
+uint8_t PlayerOf(void* ent) {
+    if (!ent) return net::kInvalidPlayerId;
+    for (const auto& [id, p] : g_puppets) {
+        if (p.entity == ent) return id;
+    }
+    return net::kInvalidPlayerId;
 }
 
 bool Owns(void* ent) {

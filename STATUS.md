@@ -1,6 +1,20 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-17 00:03 (America/Chicago) by the Cursor worker (Grok). User confirmed puppet arms and gun at 23:00. Lead's 21:35 handoff is below.
+**Last updated:** 2026-10-17 10:05 (America/Chicago) by the lead (Opus). Session 2026-10-17 morning is the next section. The Cursor worker's night log follows.
+
+## Lead session 2026-10-17 (user goals: untested objective types, 4 players, drop-in/drop-out, player markers; stretch: knock other players over)
+User report at session start: a story map played with NPC + animal sync, scripted events and objectives on both, client death + F9 revive, host death = game over, and map-to-map progression in unison.
+
+| Track | Owner | State |
+|---|---|---|
+| Drop-in join (`kSyncRequest`/`kSyncDone`, per-client replay, catch-up cutscene skip, teleport to host) | lead | `437c7bd`, compiled, **not runtime-tested**. Design: `re/notes/lead-dropin.md` |
+| Phase 5 combat: puppets as attack targets with physics, animal hurt / sync-attack knockdown forwarded to the player's own hunter (`combat.cpp`, `kPlayerHurt`/`kPlayerKnock`/`kPlayerKnockEnd`) | lead | compiled, **not runtime-tested**; needs `[Puppets] AttackTarget=1 Physics=1` |
+| 4-player launcher (`-Players`, `-LateJoin`, `-AddClient`) | Cursor `coop4-launcher` | running |
+| Player markers (F7, `[Overlay] Markers`) | Cursor `player-markers`, worktree `D:\scary hunt\dh2coop-markers` branch `markers` | running |
+| Objective mechanics + test checklist | Cursor `story-objectives` | done: `re/notes/story-objectives.md` |
+| Knockdown engine path | Cursor `knockdown-re` | done: `re/notes/knockdown.md` |
+
+Found while reading the code: with 3+ players, every join re-sent the host's journal to *all* clients, so the existing clients `spmap`ed their current map (the replay crash) and replayed `PlaySA`/mission end. Fixed by the per-client sync.
 
 ## Cursor worker log (lead away)
 - **21:35** Previous MAP3B pair had already shut down cleanly. That session killed both leopards and never logged a mission end.
