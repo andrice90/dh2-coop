@@ -16,6 +16,7 @@
 #include <spdlog/spdlog.h>
 
 #include "coop/coop.h"
+#include "coop/hunter_nearest.h"
 #include "coop/player_tracker.h"
 #include "coop/puppet_models.h"
 #include "core/hook.h"
@@ -64,6 +65,8 @@ struct Puppet {
     uint32_t getup_until = 0;
     float body_half = 0.f;       // Physics=1: physics body half height (cPhysicsObject +0x78)
     bool dead = false;           // last sample had kFlagDead
+    int posture = 1;             // 0 crouched, 1 standing, 2 walking, 3 running (hunter_nearest stimuli)
+    int shots = 0;               // last sample's shot counter
     Vec3 placed;                 // Physics=1 diagnostics: where place() last put the entity
     bool have_placed = false;
     uint32_t drift_log_ms = 0;
@@ -612,6 +615,7 @@ void unregister_target(Puppet& p) {
 void park_puppet(Puppet& p, const char* why) {
     if (!p.entity) return;
     unregister_target(p);
+    hunter_nearest::OnPuppetRemoving(p.entity);  // stimuli and NPC commands that point at this body
     drop_weapon(p);
     set_collision(p, true);  // a rider's body has its collision words and gravity zeroed
     place(p, {0.f, -10000.f, 0.f}, 0.f);
@@ -726,6 +730,7 @@ public:
             if (p.weapon) core::safe_read(static_cast<char*>(p.weapon) + 0xb8, wref);
             void* wkeep = p.weapon;
             unregister_target(p);
+            if (p.entity) hunter_nearest::OnPuppetRemoving(p.entity);
             // Break the hand/weapon sync ring (mutual references) and detach, but leave the deletion to
             // DeleteAllObjects: a RemoveEntity right before it destroyed the weapon twice (20:59:58 crash, refs 2->0).
             if (p.weapon && p.entity) {
@@ -792,11 +797,17 @@ public:
                     p.spawn_failed = p.entity == nullptr;
                     if (p.entity) capture_rel_box(p);
                 }
+                if (p.entity) hunter_nearest::NamePuppet(p.entity, id);
             }
             if (!p.entity) continue;
             // A dead player is not prey: animals drop list entries only through RemoveAttackTarget.
             p.dead = (s.flags & net::kFlagDead) != 0;
             const bool riding = (s.flags & net::kFlagRiding) != 0;
+            p.shots = (s.flags & net::kShotCounterMask) >> net::kShotCounterShift;
+            {
+                const float speed = std::sqrt(s.velocity[0] * s.velocity[0] + s.velocity[2] * s.velocity[2]);
+                p.posture = (s.flags & net::kFlagCrouched) ? 0 : speed >= kRunSpeed ? 3 : speed >= kWalkSpeed ? 2 : 1;
+            }
             // A rider is not prey either: a lion's sync attack on a puppet we keep moving back into the truck bed
             // left the lion waiting on its partner and threw the puppet off the truck (MAP4A host, 2026-10-18).
             // Lions on a ride go for the host's own hunter; riders still shoot.
@@ -1026,6 +1037,20 @@ void* NearestLivingPuppet(const float pos[3], float& best_sq) {
         }
     }
     return best;
+}
+
+int List(SenseInfo* out, int max) {
+    int n = 0;
+    for (const auto& [id, p] : g_puppets) {
+        if (!p.entity || n >= max) continue;
+        SenseInfo& i = out[n++];
+        i.entity = p.entity;
+        i.id = id;
+        i.dead = p.dead;
+        i.posture = p.posture;
+        i.shots = p.shots;
+    }
+    return n;
 }
 
 bool IsLivingPuppet(void* ent) {

@@ -1,11 +1,15 @@
 // Story NPCs (guides, companions) treat the nearest living player as "the player" on the host.
-// Research: re/notes/npc-follow.md (Cursor worker, 2026-10-17). cAIBrain_NPC (GameDll7 vtable 0x112d30) asks for the
-// player once per update in its slot +0x7c (FUN_100ad050): `call 0x6ae0` at 0xad093 returns the host hunter, and the
-// function only uses that entity's position (+0xE8). A mid hook on the next instruction (0xad098, mov ebx,eax)
-// swaps the result for the closest of the host hunter and the living puppets. Every other "hunter" lookup (mission,
-// weapons, stealth, script FindEntScrObject) stays the host's. Client NPC brains are frozen mirrors and never run this.
+// Research: re/notes/npc-follow.md (Cursor worker, 2026-10-17), re/notes/hunter-nearest.md. cAIBrain_NPC (GameDll7
+// vtable 0x112d30) asks for the player once per update in its slot +0x7c (FUN_100ad050): `call 0x6ae0` at 0xad093
+// returns the host hunter, and the function only uses that entity's position (+0xE8). A mid hook on the next
+// instruction (0xad098, mov ebx,eax) swaps the result for the closest of the host hunter and the living puppets.
+// Every other "hunter" lookup (mission, weapons, stealth, script FindEntScrObject) stays the host's. Client NPC
+// brains are frozen mirrors and never run this.
 // The companion's far-target field (NPC +0xb68, read only in that same function) is kept on the same entity, and
 // only while it points at a player, so a removed puppet never stays there.
+// The brain copies the picked pointer into the command it queues (FUN_100aae00, command +0x1c), and a queued
+// command lives until its task ends. Before a puppet is destroyed, Forget() clears the queue of every NPC whose
+// last pick was that puppet (cAIBrain_NPC::ClearAllInfoTask 0xac4e0, what the script StopAllTask calls).
 #include <windows.h>
 
 #include <cmath>
@@ -18,6 +22,7 @@
 #include <spdlog/spdlog.h>
 
 #include "coop/coop.h"
+#include "coop/hunter_nearest.h"
 #include "coop/player_tracker.h"
 #include "coop/puppets.h"
 #include "core/log.h"
@@ -31,21 +36,31 @@ constexpr uintptr_t kRvaCall = 0xad093;      // E8 rel32 -> 0x6ae0 (player gette
 constexpr uintptr_t kRvaAfter = 0xad098;     // 8B D8 8B CE 89 5D E4 (mov ebx,eax / mov ecx,esi / mov [ebp-1c],ebx)
 constexpr uintptr_t kRvaPlayerGetter = 0x6ae0;
 constexpr uintptr_t kRvaBrainVt = 0x112d30;  // cAIBrain_NPC
+constexpr uintptr_t kRvaClearAllInfoTask = 0xac4e0;  // fastcall(cAIBrain_NPC*)
 constexpr uintptr_t kBrainNpc = 0x190;       // brain -> NPC entity
+constexpr uintptr_t kNpcBrain = 0xc48;       // NPC -> cAIBrain_NPC
 constexpr uintptr_t kNpcAiFlags = 0xb60;     // bit 0 companion
 constexpr uintptr_t kNpcFarTarget = 0xb68;   // companion's stored target
 constexpr uintptr_t kEntPos = 0xE8;
 
-bool g_enabled = false;  // [Story] NpcFollowNearest (default off until tested)
+bool g_enabled = false;  // [Story] NpcFollowNearest (default: the [Story] HunterNearest value)
 uintptr_t g_base = 0;
 safetyhook::MidHook g_hook;
-std::unordered_map<void*, void*> g_written;  // NPC -> the far target we last wrote
+std::unordered_map<void*, void*> g_written;    // NPC -> the far target we last wrote
+std::unordered_map<void*, void*> g_last_pick;  // NPC -> the puppet it was last pointed at
+bool g_clear_ok = false;                       // ClearAllInfoTask prologue checked
 int g_bad_brain_logs = 0;
 uint32_t g_switch_logs = 0;
 
-float dist_sq(const float a[3], const float b[3]) {
-    const float dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
-    return dx * dx + dy * dy + dz * dz;
+using ClearFn = void(__fastcall*)(void* brain);
+
+bool guarded_clear(void* brain) {
+    __try {
+        reinterpret_cast<ClearFn>(g_base + kRvaClearAllInfoTask)(brain);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
 }
 
 void on_player_lookup(safetyhook::Context& ctx) {
@@ -60,22 +75,21 @@ void on_player_lookup(safetyhook::Context& ctx) {
         return;
     }
     char* npc = nullptr;
-    float np[3] = {}, hp[3] = {};
+    float np[3] = {};
     if (!core::safe_read(static_cast<char*>(brain) + kBrainNpc, npc) || !npc ||
         !core::safe_copy(npc + kEntPos, np, sizeof np))
         return;
-    float best = std::numeric_limits<float>::max();
-    int dead = 0;
-    core::safe_read(static_cast<char*>(hunter) + 0x6CC, dead);
-    if (!dead && core::safe_copy(static_cast<char*>(hunter) + kEntPos, hp, sizeof hp)) best = dist_sq(np, hp);
-    void* puppet = puppets::NearestLivingPuppet(np, best);
-    void* pick = puppet ? puppet : hunter;
-    if (puppet) {
-        ctx.eax = reinterpret_cast<uintptr_t>(puppet);
+    float best = 0.f;
+    void* pick = hunter_nearest::NearestLivingPlayer(np, &best);
+    if (!pick) pick = hunter;
+    const bool is_puppet = puppets::PlayerOf(pick) != net::kInvalidPlayerId;
+    if (pick != hunter) {
+        ctx.eax = reinterpret_cast<uintptr_t>(pick);
+        if (is_puppet) NoteTarget(npc, pick);
         if ((g_switch_logs++ % 600) == 0) {
             int16_t id = -1;
             core::safe_read(npc + 0x04, id);
-            spdlog::info("npc_follow: NPC id {} follows player {} ({:.1f} m)", id, puppets::PlayerOf(puppet),
+            spdlog::info("npc_follow: NPC id {} follows player {} ({:.1f} m)", id, puppets::PlayerOf(pick),
                          std::sqrt(best));
         }
     }
@@ -99,14 +113,16 @@ public:
 
     void OnInit() override {
         const std::string ini = (core::self_dir() / "dh2coop.ini").string();
-        g_enabled = GetPrivateProfileIntA("Story", "NpcFollowNearest", 0, ini.c_str()) != 0;
+        const int def = GetPrivateProfileIntA("Story", "HunterNearest", 0, ini.c_str());
+        g_enabled = GetPrivateProfileIntA("Story", "NpcFollowNearest", def, ini.c_str()) != 0;
     }
 
     void OnGameDllLoaded(HMODULE game) override {
         g_base = reinterpret_cast<uintptr_t>(game);
         if (!g_enabled) return;
-        uint8_t call[5] = {}, after[7] = {};
+        uint8_t call[5] = {}, after[7] = {}, clear[5] = {};
         static const uint8_t kAfter[7] = {0x8b, 0xd8, 0x8b, 0xce, 0x89, 0x5d, 0xe4};
+        static const uint8_t kPrologue[5] = {0x55, 0x8b, 0xec, 0x6a, 0xff};
         int32_t rel = 0;
         const bool ok = core::safe_copy(reinterpret_cast<void*>(g_base + kRvaCall), call, sizeof call) &&
                         core::safe_copy(reinterpret_cast<void*>(g_base + kRvaAfter), after, sizeof after);
@@ -116,6 +132,9 @@ public:
                           kRvaCall);
             return;
         }
+        g_clear_ok = core::safe_copy(reinterpret_cast<void*>(g_base + kRvaClearAllInfoTask), clear, sizeof clear) &&
+                     std::memcmp(clear, kPrologue, sizeof clear) == 0;
+        if (!g_clear_ok) spdlog::warn("npc_follow: ClearAllInfoTask at GameDll7+{:#x} has unexpected bytes", kRvaClearAllInfoTask);
         auto created = safetyhook::MidHook::create(reinterpret_cast<void*>(g_base + kRvaAfter), &on_player_lookup);
         if (!created) {
             spdlog::error("npc_follow: mid hook failed (safetyhook error {})", static_cast<int>(created.error().type));
@@ -125,10 +144,46 @@ public:
         spdlog::info("npc_follow: NPC brains follow the nearest player (GameDll7+{:#x})", kRvaAfter);
     }
 
-    void OnMapUnloading() override { g_written.clear(); }
+    void OnMapUnloading() override {
+        g_written.clear();
+        g_last_pick.clear();
+    }
 };
 
 DH2_MODULE(NpcFollowModule)
 
 }  // namespace
+
+void NoteTarget(void* npc, void* target) {
+    if (npc && target) g_last_pick[npc] = target;
+}
+
+void Forget(void* ent) {
+    if (!ent) return;
+    void* hunter = LocalPlayer().entity;
+    for (auto it = g_last_pick.begin(); it != g_last_pick.end();) {
+        if (it->second != ent) {
+            ++it;
+            continue;
+        }
+        char* npc = static_cast<char*>(it->first);
+        void* brain = nullptr;
+        uintptr_t vt = 0;
+        bool cleared = false;
+        if (g_clear_ok && core::safe_read(npc + kNpcBrain, brain) && brain && core::safe_read(brain, vt) &&
+            vt == g_base + kRvaBrainVt)
+            cleared = guarded_clear(brain);
+        void* held = nullptr;
+        if (core::safe_read(npc + kNpcFarTarget, held) && held == ent) std::memcpy(npc + kNpcFarTarget, &hunter, sizeof hunter);
+        int16_t id = -1;
+        core::safe_read(npc + 0x04, id);
+        spdlog::info("npc_follow: NPC id {} dropped its commands for a removed player (cleared={})", id, cleared);
+        it = g_last_pick.erase(it);
+    }
+    for (auto it = g_written.begin(); it != g_written.end();) {
+        if (it->second == ent) it = g_written.erase(it);
+        else ++it;
+    }
+}
+
 }  // namespace dh2::coop::npc_follow

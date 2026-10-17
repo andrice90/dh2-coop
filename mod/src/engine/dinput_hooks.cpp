@@ -3,7 +3,9 @@
 #include <windows.h>
 
 #include <atomic>
+#include <cstdint>
 #include <cstring>
+#include <deque>
 #include <mutex>
 #include <string>
 
@@ -186,11 +188,41 @@ HRESULT __stdcall hk_GetDeviceState(void* self, DWORD cb, void* data) {
     return fns->state(self, cb, data);
 }
 
+// Synthetic keys (console coop_key, tests only): buffered keyboard events appended to this process's own
+// GetDeviceData, so a test can press keys in a window that is not in front without sending OS input.
+struct Injected {
+    uint8_t scan;
+    bool down;
+    uint32_t due;
+};
+std::mutex g_inj_mu;
+std::deque<Injected> g_inj;
+DWORD g_inj_seq = 0x40000000;
+
+void append_injected(void* self, DWORD cb, void* items, DWORD* count, DWORD capacity) {
+    const int slot = find_dev(self);
+    if (!items || !count || (cb != 16 && cb != 20) || slot < 0 || g_dev_kind[slot].load() != kKeyboard) return;
+    std::lock_guard lock(g_inj_mu);
+    const uint32_t now = GetTickCount();
+    while (!g_inj.empty() && *count < capacity && static_cast<int32_t>(now - g_inj.front().due) >= 0) {
+        uint8_t* e = static_cast<uint8_t*>(items) + static_cast<size_t>(*count) * cb;
+        std::memset(e, 0, cb);
+        const DWORD ofs = g_inj.front().scan, data = g_inj.front().down ? 0x80 : 0, seq = ++g_inj_seq;
+        std::memcpy(e, &ofs, 4);       // dwOfs (DIK scan code)
+        std::memcpy(e + 4, &data, 4);  // dwData
+        std::memcpy(e + 8, &now, 4);   // dwTimeStamp
+        std::memcpy(e + 12, &seq, 4);  // dwSequence
+        ++*count;
+        g_inj.pop_front();
+    }
+}
+
 HRESULT __stdcall hk_GetDeviceData(void* self, DWORD cb, void* items, DWORD* count, DWORD flags) {
     void** vt = nullptr;
     if (!core::safe_read(self, vt)) return static_cast<HRESULT>(0x80070057);
     const VtFns* fns = find_vt(vt);
     if (!fns || !fns->data) return static_cast<HRESULT>(0x80004001);
+    const DWORD capacity = count ? *count : 0;
     if (watched(self)) {
         log_api_once(g_logged_data, "GetDeviceData", cb, _ReturnAddress());
         if (block_input()) {
@@ -201,10 +233,13 @@ HRESULT __stdcall hk_GetDeviceData(void* self, DWORD cb, void* items, DWORD* cou
                 fns->data(self, cb, sink, &n, 0);
             }
             if (count) *count = 0;
+            if (flags == 0) append_injected(self, cb, items, count, capacity);
             return S_OK;
         }
     }
-    return fns->data(self, cb, items, count, flags);
+    const HRESULT hr = fns->data(self, cb, items, count, flags);
+    if (SUCCEEDED(hr) && flags == 0 && watched(self)) append_injected(self, cb, items, count, capacity);
+    return hr;
 }
 
 HRESULT __stdcall hk_SetCooperativeLevel(void* self, HWND hwnd, DWORD flags) {
@@ -356,6 +391,17 @@ void PollFocus() {
 
 void SetUiCapture(bool captured) {
     if (g_ui_capture.exchange(captured) != captured) spdlog::info("dinput: lobby {} game input", captured ? "holds" : "released");
+}
+
+void QueueKeys(const uint8_t* scans, int n, uint32_t holdMs, uint32_t gapMs) {
+    std::lock_guard lock(g_inj_mu);
+    uint32_t t = GetTickCount();
+    if (!g_inj.empty() && static_cast<int32_t>(g_inj.back().due - t) > 0) t = g_inj.back().due + gapMs;
+    for (int i = 0; i < n; ++i) {
+        g_inj.push_back({scans[i], true, t});
+        g_inj.push_back({scans[i], false, t + holdMs});
+        t += holdMs + gapMs;
+    }
 }
 
 void TryInstall() {

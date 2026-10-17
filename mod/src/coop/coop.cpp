@@ -16,6 +16,7 @@
 #include <fstream>
 #include <map>
 #include <optional>
+#include <sstream>
 #include <vector>
 
 #include <spdlog/spdlog.h>
@@ -40,6 +41,7 @@ void DebugActivate(const char* name);  // story.cpp
 #include "engine/entity_api.h"
 #include "engine/console.h"
 #include "engine/console_cmds.h"
+#include "engine/dinput_hooks.h"
 #include "net/session.h"
 
 namespace dh2::coop {
@@ -398,6 +400,38 @@ void __cdecl cmd_tp(const char* arg) {
     spdlog::info("coop_tp: hunter to ({:.1f},{:.1f},{:.1f})", pos.x, pos.y, pos.z);
 }
 
+// Test: coop_key <key>[:<key>...] presses keys on this process's own keyboard device (dinput_hooks QueueKeys),
+// window in front or not. Keys are DIK scan codes in hex (1c) or enter, left, right, up, down, esc, space.
+// The free-hunt CHOOSE ITEM menu closes with coop_key enter:left:enter.
+void __cdecl cmd_key(const char* arg) {
+    std::string a = core::safe_cstr(arg, 128);
+    for (char& c : a) {
+        if (c == ':' || c == ',') c = ' ';
+    }
+    static const struct {
+        const char* name;
+        uint8_t scan;
+    } kNames[] = {{"enter", 0x1c}, {"left", 0xcb}, {"right", 0xcd}, {"up", 0xc8},
+                  {"down", 0xd0},  {"esc", 0x01},  {"space", 0x39}};
+    std::vector<uint8_t> scans;
+    std::istringstream in(a);
+    std::string tok;
+    while (in >> tok) {
+        uint8_t scan = 0;
+        for (const auto& k : kNames) {
+            if (_stricmp(tok.c_str(), k.name) == 0) scan = k.scan;
+        }
+        if (!scan) scan = static_cast<uint8_t>(std::strtoul(tok.c_str(), nullptr, 16));
+        if (scan) scans.push_back(scan);
+    }
+    if (scans.empty()) {
+        spdlog::warn("coop_key: usage coop_key <key>[:<key>...] (hex DIK codes or enter/left/right/up/down/esc/space)");
+        return;
+    }
+    dinput::QueueKeys(scans.data(), static_cast<int>(scans.size()));
+    spdlog::info("coop_key: queued {} key(s) '{}'", scans.size(), a);
+}
+
 void __cdecl cmd_trigger(const char* arg) {
     const std::string name = core::safe_cstr(arg, 64);
     if (name.empty()) {
@@ -573,6 +607,7 @@ public:
             console_cmds::AddCommandStr("coop_lobby", &cmd_lobby);
             console_cmds::AddCommandStr("coop_puppetmodel", &cmd_puppetmodel);
             console_cmds::AddCommandStr("coop_level", &cmd_level);
+            console_cmds::AddCommandStr("coop_key", &cmd_key);
         }
         cmd_poll_ += dt;
         if (commands_registered_ && cmd_poll_ >= 0.5f) {
