@@ -299,7 +299,14 @@ rows=204
 
 ## Smoke test
 
-Not run yet. The MAP3B pair is still open (client stuck on LOADING, host in MAP2A).
+30 seconds after each pair's windows were up. The stuck MAP3B/MAP2A pair was closed first. Logs for MAP12B, MAP12C and MAP4A were overwritten by the next launch; the lines below are the ones kept. `applied host trigger` was not in that keep-list, so a post-join arm is marked UNVERIFIED except on MAP11B, whose log was still on disk.
+
+| Map | Client joined | Animals the client received | Triggers armed | Exception | Screenshots |
+|---|---|---|---|---|---|
+| MAP12B | yes, player 1 | 1 | Both sides, while solo: `cScrTask01` id 51. Host also armed `cScrTask02` id 52 at 21:52:52, before the client had loaded. Client apply of task 02: UNVERIFIED. | none in the kept lines | `story-s1-map12b-host.png`, `story-s1-map12b-client.png` |
+| MAP12C | yes, player 1 | 1 | Both sides, while solo: `cScrTask01` id 22. Host armed `cScrTask02` id 23 at 21:53:39. Client apply: UNVERIFIED. | Client process was gone before the screenshot. At 21:53:53 `EngineDll7.dll+0x28b337` inside `cObjNPC::Update`. Debug text: `cModelPart::SetAnim` `ModelPart.cpp` line 435, `Could not create scripted body state machine with class cBodyShotgun1npc`, then `cStateStack::Push` … `cObjNPC::Update`. Host stayed up: `SetSyncWith` access violation on `objects/npc/mountainguide/mountainguide.skin` anim `blink`. | `story-s1-map12c-host.png` only |
+| MAP4A | yes, player 1 | 6 | Both sides, while solo: `cScrTask01` id 69. Host later armed `cScrTask02` id 70, `cScrTask10` id 78 (21:54:32) and `cScrTask03` id 71 (21:54:51). Client apply of those three: UNVERIFIED. | none in the kept lines | `story-s1-map4a-host.png`, `story-s1-map4a-client.png` |
+| MAP11B | yes, player 1 | 8 (host snapshot 8, vt `+0xff470` ×8) | Both sides, while solo: `cScrTask01` id 80. Host armed `cScrTask02` id 70 at 21:55:10. Client `story: applied host trigger 'cScrTask02' (id 70)` at the same timestamp. | none | `story-s1-map11b-host.png`, `story-s1-map11b-client.png` |
 
 ## Proposed MEMORY facts
 
@@ -307,3 +314,4 @@ Not run yet. The MAP3B pair is still open (client stuck on LOADING, host in MAP2
 - A failed MAP3B does call it. Evidence: 21:37:58 `events: host mission message code=6 text='Mission failed` / `Your hunt has ended!'`, client `applied host mission end code=6`.
 - The animal mirror on MAP3B followed 2 `cScrAnimal` entities (vt `GAMEDLL7.DLL+0xff470`, ids 47 and 48). Their `kAnimalDied` commits were applied on the client. No other animal id was snapshotted.
 - After `spmap MAP3B` while MAP3B was loaded, the next `spmap MAP2A` on the client crashed in `cSndDrvDS::WaveRelease` inside `cSpServer::StopServer` (`EngineDll7.dll+0x3882e7`). Same stack the known same-map-replay bug names.
+- MAP12C client, about 11 s after join: access violation at `EngineDll7.dll+0x28b337` in `cObjNPC::Update`. The engine log names `cModelPart::SetAnim` (`Core\Src\Model\ModelPart.cpp` line 435) and `Could not create scripted body state machine with class cBodyShotgun1npc`. The host's guide model is `objects/npc/mountainguide/mountainguide.skin`.

@@ -1,6 +1,6 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-16 21:50 (America/Chicago) by the Cursor worker (Grok). Lead's 21:35 handoff is below.
+**Last updated:** 2026-10-16 21:56 (America/Chicago) by the Cursor worker (Grok). Lead's 21:35 handoff is below.
 
 ## Cursor worker log (lead away)
 - **21:35** Previous MAP3B pair had already shut down cleanly. That session killed both leopards and never logged a mission end.
@@ -11,6 +11,7 @@
   - Second attempt: triggers followed through `cScrTask05`. No `CompleteTask` line and no mission-success message. Host loaded `map2a.bsp` itself and committed `kMapStart`. Client ran `spmap MAP2A` and crashed in `cSndDrvDS::WaveRelease` (the known post-replay teardown). Client window stuck on LOADING. Host is in the forest, overlay `animals 7`, `no remotes`.
   - Snakes were not in the 2-animal `cScrAnimal` mirror.
   - In-game pause menus are not synced. Not a small fix; user accepts the desync. See Next steps.
+- **21:56** Closed that pair and smoke-tested MAP12B, MAP12C, MAP4A, MAP11B (30 s each). All four clients were welcomed. Animals received: 1, 1, 6, 8. MAP11B's post-join `cScrTask02` arm was applied on the client. MAP12C's client crashed in `cObjNPC::Update` (guide model `mountainguide.skin`, missing `cBodyShotgun1npc`); no client screenshot. The other three had no exception in the kept lines. Shots in `re/notes/coop-local/story-s1-map*.png`.
 
 > **Lead away (~80% of the 5-hour limit). Worker handoff: `docs/handoff-cursor-story.md`** (Cursor CLI, Grok 4.7 Medium Fast; job `re/jobs/story-s1-playtest.md`).
 > **Story S1 works on MAP3B:**
@@ -79,23 +80,23 @@ User: "the real goal is singleplayer… switch to getting story mode missions to
 
 ## Next steps (in order) — story first (after the 21:20 pivot)
 **Worker (now):**
-- **S1a play-through:** done (`re/notes/story-s1-map3b.md`).
-- **S1a smoke:** MAP12B, MAP12C, MAP4A, MAP11B still to run. Close the stuck MAP3B/MAP2A pair first (user finished; client is on LOADING).
+- **S1a:** done. Play-through and the four-map smoke table are in `re/notes/story-s1-map3b.md`. MAP12C's client crashed in `cObjNPC::Update` (mountain guide); the other three joined.
 
 **Lead (next session), in order:**
 1. Review `re/notes/story-s1-map3b.md`.
 2. **Story map transition (observed 21:43).** MAP3B's successful ending did not call the mission message. The host loaded `Bsp\map2a.bsp` on its own, then committed `kMapStart` `MAP2A`. The client applied that map's `cScrTask01` arm *before* `spmap` finished (`story: trigger commit id=117 'cScrTask01': no such trigger here`), then crashed in `cSndDrvDS::WaveRelease` during `StopServer`. That crash matches the known same-map-replay teardown: the attempt before this one was `Mission failed` plus `spmap MAP3B` while MAP3B was already loaded. Question: which call loads the next story map, and can `kMapStart` be committed only after the client has loaded it?
 3. **Snakes.** User: "I killed them as the client and the host and saw one per game instance, not synced across both." MAP3B's mirror tracked exactly 2 `cScrAnimal` entities (vt `GAMEDLL7.DLL+0xff470`, ids 47 and 48, the leopards). Their deaths did sync. `cObjSnake` / `cObjCobra` are separate classes. Question: which vtable are the MAP3B snakes, and should the mirror include them?
 4. **In-game pause / overlays.** User: a pause overlay does not pause in-game events; when the host pauses, client animals stop animating; they want a host pause to pause every client, and a client pause to pause nobody else. They accept the desync if it is not a small fix. It is not: the mod has no pause message. A host modal blocks the host sim, so animal snapshots freeze (that part already matches what they saw). A client modal does not block the host, so events keep arriving. Sending "host paused" requires detecting menu-open, and the game thread is inside the modal so the usual frame hook is not running. `cHUDSlowMotion::Enable` is already a no-op in co-op; this is the game's own menu, not slow-mo. Leave it for a later design.
-5. **Player damage to clients (Phase 5 for story):**
+5. **MAP12C smoke (21:53).** The client joined and received 1 animal, then crashed about 11 s later in `cObjNPC::Update` (`EngineDll7.dll+0x28b337`). Debug: `cModelPart::SetAnim` (`ModelPart.cpp` line 435) and `Could not create scripted body state machine with class cBodyShotgun1npc`. The host logged a `SetSyncWith` access violation on `mountainguide.skin` anim `blink` and stayed up. Question: is the guide's body-state machine failing because a puppet or a mirrored part is attached, or does this map do that in solo too?
+6. **Player damage to clients (Phase 5 for story):**
    - Host animals must be able to hurt client players. Puppets can't be attack targets (no physics → `ProcessAttackStuck` crash).
    - Options: give puppets a physics body that physics doesn't pull back to spawn; or redirect damage meant for the host hunter.
    - Plan: `re/notes/lead-combat.md`.
-6. **Cutscenes:** they run on both via fired triggers. Decide skip/timing policy; check `ExecuteScript` side effects. The user did reach the next-mission cutscene on the second MAP3B attempt.
-7. **Tasks/HUD:** `CompleteTask` never logged during the whole MAP3B play-through (the hook was installed). Either this map does not call it, or the success path uses something else. Check the HUD objectives against that.
-8. **NPCs** (guide, companions) on other maps: generalize the animal mirror. Same question as the snakes above.
-9. **Death policy** (user decision). The first attempt ended in `Mission failed` / `Your hunt has ended!` (code 6), and that message did sync.
-10. The hunt-map same-map-replay teardown crash. Reproduced here: MAP3B replay, then the MAP2A load killed the client in `cSndDrvDS::WaveRelease`.
+7. **Cutscenes:** they run on both via fired triggers. Decide skip/timing policy; check `ExecuteScript` side effects. The user did reach the next-mission cutscene on the second MAP3B attempt.
+8. **Tasks/HUD:** `CompleteTask` never logged during the whole MAP3B play-through (the hook was installed). Either this map does not call it, or the success path uses something else. Check the HUD objectives against that.
+9. **NPCs** (guide, companions) on other maps: generalize the animal mirror. Same question as the snakes above.
+10. **Death policy** (user decision). The first attempt ended in `Mission failed` / `Your hunt has ended!` (code 6), and that message did sync.
+11. The hunt-map same-map-replay teardown crash. Reproduced here: MAP3B replay, then the MAP2A load killed the client in `cSndDrvDS::WaveRelease`.
 
 **Hunt-map leftovers (lower priority now):**
 0. Map flow beyond A→B→A and the P5a puma test are parked.
