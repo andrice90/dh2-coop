@@ -60,6 +60,7 @@ struct Puppet {
     bool was_knocked = false;    // last sample had kFlagKnocked: play the get-up when it clears
     uint32_t getup_until = 0;
     float body_half = 0.f;       // Physics=1: physics body half height (cPhysicsObject +0x78)
+    bool dead = false;           // last sample had kFlagDead
     Vec3 placed;                 // Physics=1 diagnostics: where place() last put the entity
     bool have_placed = false;
     uint32_t drift_log_ms = 0;
@@ -536,7 +537,8 @@ public:
             }
             if (!p.entity) continue;
             // A dead player is not prey: animals drop list entries only through RemoveAttackTarget.
-            if (s.flags & net::kFlagDead) unregister_target(p);
+            p.dead = (s.flags & net::kFlagDead) != 0;
+            if (p.dead) unregister_target(p);
             else register_target(p);
             place(p, {s.pos[0], s.pos[1] + g_y_offset, s.pos[2]}, s.yaw);
             sync_weapon(p, s.weaponId);
@@ -685,6 +687,23 @@ int Count() {
     int n = 0;
     for (auto& [id, p] : g_puppets) n += p.entity ? 1 : 0;
     return n;
+}
+
+void* NearestLivingPuppet(const float pos[3], float& best_sq) {
+    void* best = nullptr;
+    for (const auto& [id, p] : g_puppets) {
+        (void)id;
+        if (!p.entity || p.dead) continue;
+        float q[3] = {};
+        if (!core::safe_copy(static_cast<char*>(p.entity) + 0xE8, q, sizeof q)) continue;
+        const float dx = q[0] - pos[0], dy = q[1] - pos[1], dz = q[2] - pos[2];
+        const float d = dx * dx + dy * dy + dz * dz;
+        if (d < best_sq) {
+            best_sq = d;
+            best = p.entity;
+        }
+    }
+    return best;
 }
 
 void* EntityOf(uint8_t playerId) {

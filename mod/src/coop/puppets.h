@@ -20,5 +20,8 @@ bool Owns(void* ent);
 uint8_t PlayerOf(void* ent);
 // That player's puppet entity, or null.
 void* EntityOf(uint8_t playerId);
+// The living puppet nearest to `pos` (world metres) and its squared distance, or null when none is closer than
+// `best_sq` on entry. Dead players (kFlagDead) are skipped.
+void* NearestLivingPuppet(const float pos[3], float& best_sq);
 
 }  // namespace dh2::coop::puppets
