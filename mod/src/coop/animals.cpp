@@ -36,6 +36,7 @@
 
 namespace dh2::coop::combat {
 void OnClientHitAnimal(void* animal, uint8_t shooter);  // combat.cpp
+bool ForwardPuppetHurt(void* self, void* attacker, float dmg, int type);  // combat.cpp: true = it was a puppet
 }
 
 namespace dh2::coop::animals {
@@ -81,8 +82,13 @@ void __cdecl hk_FuncInflictDamage(void* animal, float dmg) {
     }
 }
 
+bool g_hit_diag = true;  // [Animals] HitDiag: log the first 40 hits
+
 void __fastcall hk_OnHurt(void* self, void*, void* attacker, float dmg, int type, const void* pos, const void* dir) {
-    if (g_hit_diag_left.fetch_sub(1) > 0) {
+    // An animal's attack on a puppet lands here (target vt +0x14C on obj_humanEx is this base, not
+    // cObjCharacter::OnHurt; 2026-10-17 11:11 the puppet's own hp went 100 -> 84). It belongs to that player.
+    if (combat::ForwardPuppetHurt(self, attacker, dmg, type)) return;
+    if (g_hit_diag && g_hit_diag_left.fetch_sub(1) > 0) {
         int16_t id = -1;
         uint8_t kind = 0;
         float hp = 0.f;
@@ -392,17 +398,19 @@ public:
     }
 
     void OnEngineReady(HMODULE engine) override {
-        if (GetPrivateProfileIntA("Animals", "HitDiag", 1, ini_path().c_str()) != 0) {
-            if (HMODULE common = core::wait_for_module("CommonDll7.dll", 10000)) {
+        g_hit_diag = GetPrivateProfileIntA("Animals", "HitDiag", 1, ini_path().c_str()) != 0;
+        if (HMODULE common = core::wait_for_module("CommonDll7.dll", 10000)) {
+            if (g_hit_diag) {
                 g_inflict_hook = core::install_hook(
                     "FuncInflictDamage (hit diag)",
                     core::find_export(common, "?FuncInflictDamage@cAIHuntAnimalInterface@@KAXPAXM@Z"),
                     reinterpret_cast<void*>(&hk_FuncInflictDamage));
-                g_onhurt_hook = core::install_hook(
-                    "cObjScriptedEntity::OnHurt (hit diag)",
-                    core::find_export(common, "?OnHurt@cObjScriptedEntity@@UAEXPAV1@MHABUtVect3@@1@Z"),
-                    reinterpret_cast<void*>(&hk_OnHurt));
             }
+            // Always: animal hits on puppets are forwarded from here (combat.cpp). Logging is HitDiag only.
+            g_onhurt_hook = core::install_hook(
+                "cObjScriptedEntity::OnHurt (puppet hits, hit diag)",
+                core::find_export(common, "?OnHurt@cObjScriptedEntity@@UAEXPAV1@MHABUtVect3@@1@Z"),
+                reinterpret_cast<void*>(&hk_OnHurt));
         }
         if (g_spike) {
             void* draw = core::find_export(engine, "?Draw@cObjEntity@@UAEXXZ");

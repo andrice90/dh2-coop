@@ -79,17 +79,29 @@ void __fastcall hk_ProcessAttackStuck(void* brain, void*) {
 }
 
 void __fastcall hk_CharacterHurt(void* self, void*, void* attacker, float dmg, int type, const void* pos,
+                                 const void* dir);
+
+}  // namespace
+
+// Host: a hit on a puppet goes to that player's own hunter (kPlayerHurt) and the puppet takes nothing. Called from
+// both hurt entries: cObjScriptedEntity::OnHurt (animals.cpp hook; the one a leopard's attack reaches, 11:11) and
+// cObjCharacter::OnHurt (below). True when `self` was a puppet.
+bool ForwardPuppetHurt(void* self, void* attacker, float dmg, int type) {
+    if (g_in_apply || !NetIsHost()) return false;
+    const uint8_t who = puppets::PlayerOf(self);
+    if (who == net::kInvalidPlayerId) return false;
+    const int16_t aid = IdOf(attacker);
+    const uint32_t packed = static_cast<uint16_t>(aid) | (static_cast<uint32_t>(type & 0xFF) << 16);
+    spdlog::info("combat: animal id {} hurt player {} for {:.1f} (type {})", aid, who, dmg, type);
+    events::Send(events::kPlayerHurt, who, packed, dmg, "", 0);
+    return true;
+}
+
+namespace {
+
+void __fastcall hk_CharacterHurt(void* self, void*, void* attacker, float dmg, int type, const void* pos,
                                  const void* dir) {
-    if (!g_in_apply && NetIsHost()) {
-        const uint8_t who = puppets::PlayerOf(self);
-        if (who != net::kInvalidPlayerId) {
-            const int16_t aid = IdOf(attacker);
-            const uint32_t packed = static_cast<uint16_t>(aid) | (static_cast<uint32_t>(type & 0xFF) << 16);
-            spdlog::info("combat: animal id {} hurt player {} for {:.1f} (type {})", aid, who, dmg, type);
-            events::Send(events::kPlayerHurt, who, packed, dmg, "", 0);
-            return;
-        }
-    }
+    if (ForwardPuppetHurt(self, attacker, dmg, type)) return;
     g_hurt_hook->unsafe_thiscall<void>(self, attacker, dmg, type, pos, dir);
 }
 
