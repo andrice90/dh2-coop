@@ -426,6 +426,159 @@ const char* guarded_part_state(void* ent, int index, int* count) {
     }
 }
 
+// ---- sync rings (entity_api.h "sync attacks"; re/notes/yeti-bosses.md) ----
+constexpr uintptr_t kPartFollowers = 0xf4;  // cModelPartLink: first part that follows this one
+constexpr uintptr_t kPartMaster = 0x100;    // cModelPartLink: the part this one follows
+constexpr uintptr_t kPartNext = 0x10c;      // cModelPartLink: next follower of the same master
+constexpr uintptr_t kVtSyncWith = 0x38;     // cModelPart::SetSyncWith(cModelPart*) (EngineDll7 0x1e7050)
+constexpr uintptr_t kVtPartSetAnimName = 0x58;  // cModelPart::SetAnim(char const*), as cObjScriptedEntity::SetAnim calls it
+constexpr int kMaxLinks = 16;
+
+using PartCountFn = unsigned short(__thiscall*)(void* model);
+using AnimIndexFn = int(__thiscall*)(void* part, const char* name);
+using GetAnimFn = void*(__thiscall*)(void* part, int index);
+using TaskActiveFn = void*(__thiscall*)(void* brain, const char* name);
+AnimIndexFn g_anim_index = nullptr;  // cModelPart::GetAnimIndex(char const*) const
+GetAnimFn g_get_anim = nullptr;      // cModelPart::GetAnim(int)
+TaskActiveFn g_task_active = nullptr;  // cAIHuntBrainEx::IsTaskActive(char const*)
+
+void bind_part_fns() {
+    if (g_anim_index && g_get_anim) return;
+    if (HMODULE engine = GetModuleHandleA("EngineDll7.dll")) {
+        g_anim_index = reinterpret_cast<AnimIndexFn>(GetProcAddress(engine, "?GetAnimIndex@cModelPart@@QBEHPBD@Z"));
+        g_get_anim = reinterpret_cast<GetAnimFn>(GetProcAddress(engine, "?GetAnim@cModelPart@@QAEPAVcModelAnim@@H@Z"));
+    }
+}
+
+int part_count(void* model) { return reinterpret_cast<PartCountFn>(slot(model, 0xf8))(model); }
+
+// cModelPartLink::operator-> (EngineDll7 0x1e51c0): the linked part, or null when the link is not valid.
+char* link_target(char* link) {
+    void* owner = *reinterpret_cast<void**>(link + 4);
+    const int index = *reinterpret_cast<int*>(link + 8);
+    if (!owner || index < 0) return nullptr;
+    void* model = *reinterpret_cast<void**>(static_cast<char*>(owner) + 0xE4);
+    if (!model || index >= part_count(model)) return nullptr;
+    return static_cast<char*>(reinterpret_cast<GetPartFn>(slot(model, 0xf0))(model, index));
+}
+
+// Another character, not one of this entity's attached children (a weapon's part is the master of the hand bone).
+bool foreign_owner(void* ent, void* owner) {
+    if (!owner || owner == ent) return false;
+    const int16_t id = *reinterpret_cast<int16_t*>(static_cast<char*>(ent) + 0x04);
+    const int16_t parent = *reinterpret_cast<int16_t*>(static_cast<char*>(owner) + 0xA4);
+    return parent != id;
+}
+
+// Parts whose SetSyncWith(nullptr) removes a foreign link: this entity's parts that follow a foreign part, and
+// foreign parts that follow one of this entity's parts.
+int guarded_foreign_links(void* ent, char** out, int cap) {
+    __try {
+        void* model = *reinterpret_cast<void**>(static_cast<char*>(ent) + 0xE4);
+        if (!model) return 0;
+        const int parts = part_count(model);
+        int n = 0;
+        for (int i = 0; i < parts && i < kMaxLinks; ++i) {
+            char* part = static_cast<char*>(reinterpret_cast<GetPartFn>(slot(model, 0xf0))(model, i));
+            if (!part) continue;
+            char* master_link = part + kPartMaster;
+            if (foreign_owner(ent, *reinterpret_cast<void**>(master_link + 4)) && link_target(master_link) && n < cap)
+                out[n++] = part;
+            char* link = part + kPartFollowers;
+            for (int guard = 0; guard < kMaxLinks; ++guard) {
+                char* follower = link_target(link);
+                if (!follower) break;
+                if (foreign_owner(ent, *reinterpret_cast<void**>(link + 4)) && n < cap) out[n++] = follower;
+                link = follower + kPartNext;
+            }
+        }
+        return n;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+
+bool guarded_sync_with_null(char* part) {
+    __try {
+        reinterpret_cast<void(__thiscall*)(void*, void*)>(slot(part, kVtSyncWith))(part, nullptr);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+const char* guarded_part_clip(void* ent, int index) {
+    __try {
+        void* model = *reinterpret_cast<void**>(static_cast<char*>(ent) + 0xE4);
+        if (!model || !g_get_anim || index < 0 || index >= part_count(model)) return nullptr;
+        char* part = static_cast<char*>(reinterpret_cast<GetPartFn>(slot(model, 0xf0))(model, index));
+        if (!part) return nullptr;
+        const short cur = *reinterpret_cast<short*>(part + 0x90);  // cModelPart::GetAnimIndex() (0x16ea50)
+        if (cur < 0) return nullptr;
+        char* anim = static_cast<char*>(g_get_anim(part, cur));
+        return anim ? *reinterpret_cast<const char**>(anim + 4) : nullptr;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
+    }
+}
+
+// play=false: count the parts that have the clip. play=true: also SetAnim it on those parts.
+int guarded_clip_parts(void* ent, const char* clip, bool play) {
+    __try {
+        void* model = *reinterpret_cast<void**>(static_cast<char*>(ent) + 0xE4);
+        if (!model || !g_anim_index) return 0;
+        const int parts = part_count(model);
+        int n = 0;
+        for (int i = 0; i < parts && i < kMaxLinks; ++i) {
+            void* part = reinterpret_cast<GetPartFn>(slot(model, 0xf0))(model, i);
+            if (!part || g_anim_index(part, clip) < 0) continue;
+            if (play) reinterpret_cast<int(__thiscall*)(void*, const char*)>(slot(part, kVtPartSetAnimName))(part, clip);
+            ++n;
+        }
+        return n;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+
+int guarded_parts_state(void* ent, const char* name, bool reset) {
+    __try {
+        void* model = *reinterpret_cast<void**>(static_cast<char*>(ent) + 0xE4);
+        if (!model) return 0;
+        const int parts = part_count(model);
+        int n = 0;
+        for (int i = 0; i < parts && i < kMaxLinks; ++i) {
+            char* part = static_cast<char*>(reinterpret_cast<GetPartFn>(slot(model, 0xf0))(model, i));
+            void* sm = part ? *reinterpret_cast<void**>(part + 0xd8) : nullptr;
+            if (!sm) continue;
+            if (reset) reinterpret_cast<void(__thiscall*)(void*)>(slot(sm, 0x60))(sm);
+            reinterpret_cast<void(__thiscall*)(void*, const char*)>(slot(sm, 0x7c))(sm, name);
+            ++n;
+        }
+        return n;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+
+void* guarded_task_active(void* brain, const char* name) {
+    __try {
+        return g_task_active(brain, name);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
+    }
+}
+
+bool guarded_stop_task(void* brain, const char* name) {
+    __try {
+        // cScrCharacterEx::StopTask (CommonDll7 0x1edd0) calls the brain's vt +0x34 with the class name.
+        reinterpret_cast<void(__thiscall*)(void*, const char*)>(slot(brain, 0x34))(brain, name);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
 }  // namespace
 
 bool Bind(HMODULE engine) {
@@ -750,6 +903,81 @@ int LinkPart(void* owner, void* child, const char* tag) {
                  reinterpret_cast<uintptr_t>(g_link_diag.hand_next_before),
                  reinterpret_cast<uintptr_t>(g_link_diag.hand_next_after), vt_of(g_link_diag.hand_next_after));
     return r;
+}
+
+int ForeignSyncCount(void* ent) {
+    if (!ent) return 0;
+    char* parts[kMaxLinks] = {};
+    return guarded_foreign_links(ent, parts, kMaxLinks);
+}
+
+int DetachForeignSync(void* ent) {
+    if (!ent) return 0;
+    char* parts[kMaxLinks] = {};
+    const int n = guarded_foreign_links(ent, parts, kMaxLinks);
+    if (n <= 0) return n;
+    int removed = 0;
+    for (int i = 0; i < n; ++i) {
+        if (guarded_sync_with_null(parts[i])) ++removed;
+        else return -1;
+    }
+    return removed;
+}
+
+std::string PartClipName(void* ent, int part) {
+    if (!ent) return {};
+    bind_part_fns();
+    const char* s = guarded_part_clip(ent, part);
+    return s ? core::safe_cstr(s, 64) : std::string();
+}
+
+bool HasClip(void* ent, const char* clip) {
+    if (!ent || !clip || !clip[0]) return false;
+    bind_part_fns();
+    return guarded_clip_parts(ent, clip, false) > 0;
+}
+
+int PlayClip(void* ent, const char* clip) {
+    if (!ent || !clip || !clip[0]) return 0;
+    bind_part_fns();
+    return guarded_clip_parts(ent, clip, true);
+}
+
+int SetPartsState(void* ent, const char* name, bool reset) {
+    return (ent && name) ? guarded_parts_state(ent, name, reset) : 0;
+}
+
+void* BrainTask(void* ent, const char* taskClass) {
+    if (!ent || !taskClass) return nullptr;
+    if (!g_task_active) {
+        if (HMODULE common = GetModuleHandleA("CommonDll7.dll"))
+            g_task_active = reinterpret_cast<TaskActiveFn>(
+                GetProcAddress(common, "?IsTaskActive@cAIHuntBrainEx@@UAEPAVcAIHuntTaskEx@@PBD@Z"));
+        if (!g_task_active) return nullptr;
+    }
+    void* brain = nullptr;
+    if (!core::safe_read(static_cast<char*>(ent) + 0x200, brain) || !brain) return nullptr;
+    return guarded_task_active(brain, taskClass);
+}
+
+bool BrainTaskActive(void* ent, const char* taskClass) { return BrainTask(ent, taskClass) != nullptr; }
+
+int TaskState(void* task) {
+    int state = -1;
+    if (!task || !core::safe_read(static_cast<char*>(task) + 4, state)) return -1;
+    return state;
+}
+
+bool StopBrainTask(void* ent, const char* taskClass) {
+    if (!BrainTaskActive(ent, taskClass)) return false;
+    void* brain = nullptr;
+    core::safe_read(static_cast<char*>(ent) + 0x200, brain);
+    return brain && guarded_stop_task(brain, taskClass);
+}
+
+bool IsCharacterBrainFrozen(void* ent) {
+    uint32_t flags = 0;
+    return ent && core::safe_read(static_cast<char*>(ent) + 0x204, flags) && (flags & 0x10) != 0;
 }
 
 int AddEntity(void* mgr, void* ent) { return (mgr && ent) ? guarded_add(mgr, ent) : -1; }

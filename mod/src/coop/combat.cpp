@@ -124,6 +124,11 @@ void __fastcall hk_PlaySA(void* self, void*, char* clip, float* basis) {
             // The puppet's pack has no pl_* clips. Mark it busy so a second animal does not start another one.
             const int one = 1;
             std::memcpy(static_cast<char*>(self) + kInSA, &one, sizeof one);
+            // TryPlaySA (CommonDll7 0xcadf0) has just made the puppet's parts follow the animal's part 0, and calls the
+            // animal's PlaySA next: its clip would be replayed on the guide body, which has no sync clips, and the
+            // engine raises "Could not forward animation" (fatal on the host). The player takes the hit at home.
+            const int unlinked = entity::DetachForeignSync(self);
+            spdlog::info("combat: puppet of player {} unlinked from the attacker ({} link(s))", who, unlinked);
             events::Send(events::kPlayerKnock, who, 0, yaw, c, 0);
             return;
         }
@@ -404,7 +409,21 @@ void OnKnockCommit(const net::GameEvent& ev) {
         KnockedByPlayer(static_cast<uint8_t>(ev.i0 & 0xFF));
         return;
     }
-    StartKnock(ev.key, ev.f0, 0, "host animal");
+    // The host passes the animal's clip name. Big animals pair with NPC clips the teen body does not have (MAP12C
+    // yeti_syncattack1..4 live only in the NPC MAP12C.AP): fall back to this map's own player knockdown.
+    std::string clip = ev.key;
+    void* hunter = LocalHunter();
+    if (hunter && !entity::HasClip(hunter, clip.c_str())) {
+        const std::string& map = events::CurrentMap();
+        for (const MapClips& r : kMapClips) {
+            if (map == r.map && r.front && entity::HasClip(hunter, r.front)) {
+                spdlog::info("combat: no clip '{}' on our hunter; knockdown uses '{}'", clip, r.front);
+                clip = r.front;
+                break;
+            }
+        }
+    }
+    StartKnock(clip, ev.f0, 0, "host animal");
 }
 
 void OnKnockEndCommit(const net::GameEvent& ev) {

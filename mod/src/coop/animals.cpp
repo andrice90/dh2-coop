@@ -366,8 +366,9 @@ bool InSyncAttack(void* ent) {
     return core::safe_read(static_cast<char*>(ent) + 0x368, in_sa) && in_sa != 0;
 }
 
-// The base class body, not the virtual: the yeti's override faults without its (frozen) attack task
-// (2026-10-17 10:20:27 ok=false); the base clears +0x368, restores physics and sets the parts to Idle.
+// The base class body (cScrAnimal has no override: GameDll7 vtable 0xff470 slot +0x214 is the CommonDll7 import).
+// It clears +0x368, restores physics and sets every part to Idle. Unlink the partner first (DetachForeignSync): the
+// MAP12C yeti's "fault halfway" (10:20:27, 10:22:39) was that Idle switch forwarding a clip to the guide's legs.
 bool EndSyncAttack(void* ent) {
     static void* fn = nullptr;
     if (!fn) {
@@ -381,6 +382,63 @@ bool EndSyncAttack(void* ent) {
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false;
     }
+}
+
+// Story cutscenes pair an animal with an NPC through this task (MAP12C yeti + guide, MAP1/MAP10 puma, MAP2A/2B/6
+// bears, MAP7 rhino, MAP12A wolf and polar bear). Its End (task vt +0x14, CommonDll7 0xcf640) unlinks the partner's
+// parts and runs OnEndSA on both; the cutscene's WaitForTask then returns.
+constexpr char kPlaySATask[] = "AIHuntTask_PlaySA";
+
+// The task's own finish (CommonDll7 0xcf950, fastcall(task)), what its Update calls once the clip has played: task
+// +4 = 2 and the brain is told. A cutscene in WaitForTask resumes next tick and StopTasks the task itself (its End).
+bool FinishPlaySATask(void* task) {
+    using Fn = void(__fastcall*)(void* task);
+    static Fn fn = nullptr;
+    static bool ready = false;
+    if (!ready) {
+        ready = true;
+        if (HMODULE common = GetModuleHandleA("CommonDll7.dll")) {
+            auto* p = reinterpret_cast<uint8_t*>(common) + 0xcf950;
+            static const uint8_t kPrologue[5] = {0x55, 0x8b, 0xec, 0x6a, 0xff};
+            static const uint8_t kSetDone[7] = {0xc7, 0x46, 0x04, 0x02, 0x00, 0x00, 0x00};  // +0x3d: mov [esi+4], 2
+            uint8_t a[5] = {}, b[7] = {};
+            if (core::safe_copy(p, a, sizeof a) && core::safe_copy(p + 0x3d, b, sizeof b) &&
+                std::memcmp(a, kPrologue, sizeof a) == 0 && std::memcmp(b, kSetDone, sizeof b) == 0)
+                fn = reinterpret_cast<Fn>(p);
+            else
+                spdlog::error("animals: CommonDll7+0xcf950 bytes differ; PlaySA task finish not available");
+        }
+    }
+    if (!fn || !task) return false;
+    __try {
+        fn(task);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+constexpr uint32_t kTaskStopGraceMs = 1500;  // a finished cutscene task the script did not StopTask by then
+
+struct LocalSaEnd {
+    bool by_task = false;
+    int detached = 0;
+    bool ended = false;
+};
+
+// An animal mirror's own sync attack (started by this process's script or brain) that the host is not playing.
+// Never left running: while it lasts every clip on the animal is replayed on the partner's parts.
+LocalSaEnd EndLocalSyncAttack(void* ent) {
+    LocalSaEnd r;
+    r.by_task = entity::StopBrainTask(ent, kPlaySATask);
+    r.detached = entity::DetachForeignSync(ent);
+    if (InSyncAttack(ent)) {
+        EndSyncAttack(ent);
+        const int more = entity::DetachForeignSync(ent);
+        if (more > 0 && r.detached >= 0) r.detached += more;
+    }
+    r.ended = !InSyncAttack(ent) && entity::ForeignSyncCount(ent) == 0;
+    return r;
 }
 
 bool g_log_states = true;
@@ -525,7 +583,17 @@ struct Mirror {
     bool npc_hit = false;       // the damage came from an NPC's bullet (a replayed cutscene), not a player's
     float unsent_dmg = 0.f;     // damage seen while the 150 ms report limit held it back
     bool local_death_logged = false;
+    // Sync attacks and body-state faults (re/notes/yeti-bosses.md).
+    std::string sa_clip;                // the host's sync-attack clip this mirror is playing
+    std::set<std::string> failed_states;  // SetBodyState names that faulted here: never retried
+    int state_faults = 0;
+    bool body_disabled = false;         // 3 faults: positions and health only, no more state writes
+    int sync_detach_logs = 0;
+    int refreeze_logs = 0;
+    uint32_t task_finished_ms = 0;      // we finished its local cutscene PlaySA task at this time (0 = not)
 };
+
+constexpr int kMaxStateFaults = 3;
 
 // Guide legs (GUIDELEGS.SCR Begin) and the NPC weapon script (RIFLENPC/HGUNNPC) are separate
 // state machines. Freezing the character brain stops the weapon machine, so the gun and arms
@@ -838,6 +906,7 @@ public:
         lives_.clear();
         reported_.clear();
         g_report_queue.clear();
+        host_sa_.clear();
     }
 
     void OnMapLoaded(const char*) override {
@@ -853,6 +922,7 @@ public:
         lives_.clear();
         reported_.clear();
         g_report_queue.clear();
+        host_sa_.clear();
         send_started_ = false;
         logged_tx_ = false;
         logged_rx_ = false;
@@ -936,6 +1006,21 @@ public:
             st.yaw = tr.yaw;
             st.health = hp;
             st.state = entity::BodyStateName(a);
+            // A sync attack (PlaySA: every part in CutScene, part 0 on the paired clip). Clients play the clip on
+            // their mirror without the partner link (re/notes/yeti-bosses.md).
+            if (InSyncAttack(a)) {
+                st.flags |= net::animal_flag::kSyncAttack;
+                st.arms = entity::PartClipName(a, 0);
+            }
+            {
+                std::string& was = host_sa_[uid];
+                const std::string now = (st.flags & net::animal_flag::kSyncAttack) ? st.arms : std::string();
+                if (now != was) {
+                    if (now.empty()) spdlog::info("animals: host sync attack id={} '{}' over", uid, was);
+                    else spdlog::info("animals: host sync attack id={} clip '{}' state='{}'", uid, now, st.state);
+                    was = now;
+                }
+            }
             if (hp <= 0.f) st.flags |= net::animal_flag::kDead;
             if (p.y < -1000.f) st.flags |= net::animal_flag::kParked;
             // Deaths, flees and revives are committed by ScanLives (every animal, not only the first kMaxAnimals).
@@ -995,6 +1080,7 @@ public:
             st.arms = NpcWeaponState(id);
             if (st.arms.empty()) st.arms = entity::UpperBodyState(npc);
             st.flags = net::animal_flag::kNpc;
+            if (InSyncAttack(npc)) st.flags |= net::animal_flag::kSyncAttack;  // a partner: its state name can stay Idle
             if (p.y < -1000.f) st.flags |= net::animal_flag::kParked;
             msg.animals.push_back(std::move(st));
             ++npc_count;
@@ -1135,6 +1221,7 @@ public:
         mirrors_.clear();
         yaws_.clear();
         dead_.clear();  // lives_ (host) and reported_ (client) stay: a rejoin on this map replays the journal
+        host_sa_.clear();
         send_started_ = false;
         logged_tx_ = false;
         logged_rx_ = false;
@@ -1502,34 +1589,74 @@ private:
             const bool host_cutscene = !have_early || early.state == "CutScene";
             // Right after a revive, a snapshot sent before it can still arrive and say dead: only commits count then.
             const bool fresh_life = m.revive_ms != 0 && t - m.revive_ms < 500;
+            const bool host_sa = have_early && (early.flags & net::animal_flag::kSyncAttack) != 0;
             const bool host_dead = dead_.count(id) != 0 ||
                                    (!fresh_life && have_early &&
                                     ((early.flags & net::animal_flag::kDead) != 0 || early.health <= 0.f));
+            const bool cobra = IsCobra(ent);
             // beasts.cpp (NoCutSceneThaw): a copy is not thawed for the host's sync attack. Its own brain would start a
             // second attack ring on a local hunter, puppet or NPC and the ring outlives the host's: "Could not forward
             // animation" (MAP8 water croc, fatal dialog; MAP7 tiger and Reginald). Water crocodiles never thaw, other
             // animals only while this client's camera is on a cutscene rail (a scripted cutscene waits on their task).
-            if (!m.is_npc && !host_dead && host_cutscene && entity::BodyStateName(ent) == "CutScene" &&
-                !beasts::NoCutSceneThaw(ent)) {
+            // The host's attack sync attacks are CutScene too (PlaySA sets every part to it): thawing for those let the
+            // local brain run the stale cutscene task, whose End then ran in a broken script VM (2026-10-17 17:05:37, the
+            // client's fatal exit). Not while this mirror plays the host's sync-attack clip (that sets CutScene here too).
+            if (!m.is_npc && !host_dead && host_cutscene && m.sa_clip.empty() && m.task_finished_ms == 0 &&
+                entity::BodyStateName(ent) == "CutScene" && !beasts::NoCutSceneThaw(ent)) {
                 if (m.frozen) {
                     entity::FreezeBrain(ent, false);
                     m.frozen = false;
-                    spdlog::info("animals: mirror thaw id={} while state is CutScene", id);
+                    spdlog::info("animals: mirror thaw id={} while state is CutScene (local cutscene camera)", id);
                 }
                 continue;
             }
-            // The local copy is still inside a sync attack (PlaySA, +0x368) that the host's actor has finished. Its task
-            // is frozen here, so nothing calls OnEndSA: the part keeps the partner's animation pack and the next state
-            // the body script enters raises the engine's fatal "Could not forward animation" (MAP12C yeti, its opening
-            // PlaySA ran before the join; 2026-10-17 10:17:08 the client exited when the host's yeti attacked).
-            // NPCs only: on the MAP12C yeti both the virtual and the base OnEndSA fault halfway (10:20:27, 10:22:39),
-            // and a half-run end is worse than none. The yeti fight still crashes clients (EngineDll7+0x28b337): open.
-            if (m.is_npc && have_early && !host_cutscene && InSyncAttack(ent)) {
+            // The local copy is inside a sync attack (PlaySA, +0x368) of its own: a cutscene task that ran here (MAP12C
+            // yeti + guide), or the brain while it was thawed. Its parts still drive the partner's (part sync), so every
+            // clip set on it is replayed on the partner, and one the partner lacks raises "Could not forward animation"
+            // through the script VM. The mirror's body-state write did that every frame (MAP12C client 17:05:13-21: 732
+            // times), each exception leaking a cVMachine cState frame (ExecuteDirect pushes, only a normal return pops)
+            // until the VM stack broke (cVMStack::Push AV EngineDll7+0x24b12e, the reported +0x28b337 is the cState
+            // stack's push) and the client died. End it the engine's way (the task's End), else unlink + base OnEndSA.
+            // A cutscene task first gets its own finish, so the script waiting on it resumes and stops it (End). Removing
+            // it (StopTask) left MAP12C's opening cutscene waiting for ever (17:27:58, camera never released).
+            if (!m.is_npc && !cobra && InSyncAttack(ent)) {
+                void* task = entity::BrainTask(ent, kPlaySATask);
+                if (task && entity::TaskState(task) == 1 && m.task_finished_ms == 0) {
+                    const bool ok = FinishPlaySATask(task);
+                    m.task_finished_ms = t ? t : 1;
+                    spdlog::info("animals: mirror id={} finished its local cutscene task (host state '{}' sa={}) ok={}", id,
+                                 have_early ? early.state : std::string("?"), host_sa, ok);
+                    continue;
+                }
+                if (task && m.task_finished_ms != 0 && t - m.task_finished_ms < kTaskStopGraceMs) continue;
+            }
+            if (!m.is_npc && !cobra && InSyncAttack(ent)) {
+                const LocalSaEnd r = EndLocalSyncAttack(ent);
+                spdlog::info("animals: mirror id={} ended its local sync attack (host state '{}' sa={}) task={} unlinked={} "
+                             "ok={} state='{}'",
+                             id, have_early ? early.state : std::string("?"), host_sa, r.by_task, r.detached, r.ended,
+                             entity::BodyStateName(ent));
+                if (!r.ended && !m.body_disabled) {
+                    m.body_disabled = true;
+                    spdlog::error("animals: mirror id={} still in a sync attack; no more body-state writes on it", id);
+                }
+                m.frozen = false;  // freeze again below (the task's End and OnEndSA touch the character's brain flags)
+                m.applied_state.clear();
+                m.sa_clip.clear();
+            }
+            // NPC partner: same rule, keyed on the host's actor (a partner's state name can stay Idle during the attack).
+            if (m.is_npc && have_early && !host_cutscene && !host_sa && InSyncAttack(ent)) {
+                const int unlinked = entity::DetachForeignSync(ent);
                 const bool ended = EndSyncAttack(ent);
-                spdlog::info("animals: mirror id={} ended its local sync attack (host state '{}') ok={}", id, early.state,
-                             ended);
+                spdlog::info("animals: mirror id={} ended its local sync attack (host state '{}') unlinked={} ok={}", id,
+                             early.state, unlinked, ended);
                 m.frozen = false;  // OnEndSA unfreezes the character; freeze again below
                 m.applied_state.clear();
+            }
+            // OnEndSA clears the character-brain freeze bit, also when the partner animal's task End runs it.
+            if (m.is_npc && m.frozen && !entity::IsCharacterBrainFrozen(ent)) {
+                const bool ok = entity::CharacterBrainFreeze(ent, true);
+                if (m.refreeze_logs++ < 5) spdlog::info("animals: mirror id={} brain was unfrozen; frozen again ok={}", id, ok);
             }
             if (!m.frozen) {
                 const bool ok = m.is_npc ? entity::CharacterBrainFreeze(ent, true) : entity::FreezeBrain(ent, true);
@@ -1660,11 +1787,22 @@ private:
                     spdlog::info("animals: cutscene done id={} state='{}'", id, sample.state);
                 }
             }
-            if (m.hold_pose) {
-                // PlaySA is posing this actor. A body-state write replaces the paired clip.
-            } else if (m.is_npc) {
-                if (!sample.state.empty() && entity::BodyStateName(ent) != sample.state)
-                    entity::SetBodyState(ent, sample.state.c_str(), true);
+            if (m.hold_pose || m.body_disabled) continue;
+            // No clip may be forwarded from a mirror to another character (see the local sync attack above): any part
+            // link left between them is dropped before a body-state or clip write.
+            if (!cobra && entity::ForeignSyncCount(ent) > 0) {
+                const int unlinked = entity::DetachForeignSync(ent);
+                if (m.sync_detach_logs++ < 5)
+                    spdlog::info("animals: mirror id={} unlinked {} part sync link(s) to another character", id, unlinked);
+                if (unlinked < 0) {
+                    m.body_disabled = true;
+                    spdlog::error("animals: mirror id={} part unlink faulted; no more body-state writes on it", id);
+                    continue;
+                }
+            }
+            if (m.is_npc) {
+                if (!sample.state.empty() && entity::BodyStateName(ent) != sample.state && !m.failed_states.count(sample.state))
+                    NoteStateResult(id, m, sample.state, entity::SetBodyState(ent, sample.state.c_str(), true));
                 if (m.applied_state != sample.state) {
                     // beasts.cpp: girl/fiancée/ranger packs lack some guide clips (a missing one stops the legs).
                     if (const char* clip = beasts::NpcLegClipFor(ent, NpcLegClip(sample.state))) entity::SetAnim(ent, clip);
@@ -1672,7 +1810,34 @@ private:
                 }
                 // The handgun's own body script SetAnims clips like handgun3/normaltoalert onto its legs
                 // part and the engine raises a fatal dialog (client 23:32). Leave the gun alone.
-            } else if (!sample.state.empty() && entity::BodyStateName(ent) != sample.state) {
+                continue;
+            }
+            // The host's animal is in a sync attack: every part in CutScene and part 0 on the paired clip (the attack
+            // half; its partner plays the other half on its own machine, a player through kPlayerKnock). Play it here
+            // by name, only when this model has it, with no partner linked.
+            if (!cobra && (sample.flags & net::animal_flag::kSyncAttack) != 0 && !sample.arms.empty()) {
+                if (m.sa_clip != sample.arms) {
+                    m.sa_clip = sample.arms;
+                    m.applied_state = "CutScene";
+                    if (!entity::HasClip(ent, sample.arms.c_str())) {
+                        spdlog::info("animals: mirror id={} has no clip '{}' for the host's sync attack; holding the pose",
+                                     id, sample.arms);
+                        continue;
+                    }
+                    const int states = entity::SetPartsState(ent, "CutScene", true);
+                    const int parts = states < 0 ? -1 : entity::PlayClip(ent, sample.arms.c_str());
+                    spdlog::info("animals: mirror id={} plays the host's sync attack '{}' states={} parts={}", id, sample.arms,
+                                 states, parts);
+                    if (states < 0 || parts < 0) NoteStateResult(id, m, "CutScene", -1);
+                }
+                continue;
+            }
+            if (!m.sa_clip.empty()) {
+                spdlog::info("animals: mirror id={} host sync attack '{}' over, state '{}'", id, m.sa_clip, sample.state);
+                m.sa_clip.clear();
+                m.applied_state.clear();
+            }
+            if (!sample.state.empty() && entity::BodyStateName(ent) != sample.state && !m.failed_states.count(sample.state)) {
                 if (IsCobra(ent) && !CobraMirrorState(sample.state)) {
                     if (sample.state != m.warned_state) {
                         m.warned_state = sample.state;
@@ -1700,6 +1865,8 @@ private:
                 if (r == 1) {
                     m.applied_state = sample.state;
                     fails = 0;
+                } else if (r < 0) {
+                    NoteStateResult(id, m, sample.state, r);  // a fault: never written again
                 } else {
                     if (++fails >= 3)
                         spdlog::warn("animals: SetBodyState id={} '{}' -> {} (copy is in '{}'); not tried again on this "
@@ -1815,6 +1982,27 @@ private:
         return dx * dx + dy * dy + dz * dz > 16.f;
     }
 
+    // A fault is an engine exception thrown through the script VM, and each one leaks VM state: that name is never
+    // written again on this mirror, and after kMaxStateFaults the mirror gets positions and health only.
+    void NoteStateResult(uint16_t id, Mirror& m, const std::string& state, int r) {
+        if (r == 1) return;
+        if (r < 0) {
+            m.failed_states.insert(state);
+            ++m.state_faults;
+            spdlog::error("animals: SetBodyState id={} '{}' faulted (engine exception); not retried ({} of {})", id, state,
+                          m.state_faults, kMaxStateFaults);
+            if (m.state_faults >= kMaxStateFaults && !m.body_disabled) {
+                m.body_disabled = true;
+                spdlog::error("animals: mirror id={} stops body-state writes", id);
+            }
+            return;
+        }
+        if (state != m.warned_state) {
+            m.warned_state = state;
+            spdlog::warn("animals: SetBodyState id={} '{}' -> {}", id, state, r);
+        }
+    }
+
     // One place at the corpse, then the death vfunc. Later frames must not HandleKey or SetBodyState: that pins
     // the standing pose. A frozen brain never runs the death itself (user 20:32: PresentDeath ok, deer stayed
     // standing, state went IdleAttack), so the brain is released afterwards to play the fall like the host's.
@@ -1831,6 +2019,13 @@ private:
         const bool cobra = IsCobra(ent);
         if (cobra && entity::BodyStateName(ent) != "Death" && !CobraBodyHelper(ent, "Death"))
             entity::SetBodyState(ent, "Death", true);
+        // The death sets body states, and the released brain would run a pending cutscene task's End over the fall.
+        if (!cobra && !m.is_npc && (InSyncAttack(ent) || entity::BrainTaskActive(ent, kPlaySATask) ||
+                                    entity::ForeignSyncCount(ent) > 0)) {
+            const LocalSaEnd r = EndLocalSyncAttack(ent);
+            spdlog::info("animals: mirror id={} sync attack ended before its death task={} unlinked={} ok={}", id, r.by_task,
+                         r.detached, r.ended);
+        }
         // hk_PresentDeath lets this one through (and keeps it out of this mission: the death commit reports instead).
         g_presenting = true;
         m.death_presented = entity::PresentDeath(ent);
@@ -1960,6 +2155,7 @@ private:
     std::map<uint16_t, Life> lives_;  // host / solo
     std::set<uint32_t> reported_;     // client: (id << 16 | life) whose host report this mission already got
     bool commands_ = false;
+    std::map<uint16_t, std::string> host_sa_;  // host: sync-attack clip last logged per animal
 };
 
 AnimalsModule* g_self = nullptr;

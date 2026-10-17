@@ -54,6 +54,9 @@ int UnlinkPart(void* owner, const char* tag);
 // Body state machine of the entity's model part 0 (scripted bodies: animals, items, NPCs). Name of the current
 // state ("" if none/fault); switch to a named state (reset = call the machine's vt +0x60 first, as
 // cObjItemEx::Activate does). 1 ok, 0 no machine, -1 fault.
+// A fault is an engine exception thrown through the script VM (cVMachine::ExecuteDirect pushes its cState stack and
+// only pops on a normal return). Every fault leaks VM state; a few hundred corrupt the VM (re/notes/yeti-bosses.md).
+// Never retry a name that faulted.
 std::string BodyStateName(void* ent);
 int SetBodyState(void* ent, const char* name, bool reset);
 // Model part count, and the body-state name of one part (part 0 is the legs). Empty if that part has no machine.
@@ -85,6 +88,35 @@ bool SetVisible(void* ent, bool visible);
 // cPhysicsObject::Freeze / Unfreeze (EngineDll7) on the entity's body (+0x118): the body flag +0xBC bit 2 stops
 // the physics step integrating it. False when the entity has no body or the call faulted.
 bool FreezeBody(void* ent, bool freeze);
+// ---- sync attacks (re/notes/yeti-bosses.md) ----
+// A sync attack ties the victim's model parts to the attacker's (cAIHuntTask_PlaySA::Begin CommonDll7 0xd19d0 and the
+// attack task's TryPlaySA 0xcadf0: victim part 0 SetSyncWith(animal part 0), victim part 1 SetSyncWith(victim part 0)).
+// cModelPart +0xf4 = first follower, +0x100 = the part this one follows, +0x10c = next follower; each a
+// cModelPartLink {vt, owner entity, part index}. cModelPart::SetAnim(int) (EngineDll7 0x1e73b0) replays every clip on
+// each follower and raises "Could not forward animation" when a follower cannot play it. Only the task's End undoes the
+// links. Links between the entity's own parts, and with its attached children (weapons: parent id +0xA4 == ent id),
+// are not "foreign".
+int ForeignSyncCount(void* ent);   // links between this entity's parts and another character's; -1 on fault
+int DetachForeignSync(void* ent);  // part vt +0x38 SetSyncWith(nullptr) on each; returns links removed, -1 on fault
+// Name of the clip a model part plays now (cModelPart::GetCurrentAnim, cModelAnim +4). "" if none.
+std::string PartClipName(void* ent, int part);
+// True when any model part has a clip by that name (cModelPart::GetAnimIndex(char const*) >= 0).
+bool HasClip(void* ent, const char* clip);
+// cModelPart::SetAnim(char const*) on each part that has the clip. Returns parts that took it, -1 on fault.
+int PlayClip(void* ent, const char* clip);
+// Every part's body state machine to `name` (as cObjCharacterEx::PlaySA does with "CutScene"). Parts set, -1 on fault.
+int SetPartsState(void* ent, const char* name, bool reset);
+// cAIHuntBrainEx::IsTaskActive / StopTask(char const*) on the hunt brain (+0x200). StopTask calls the task's End
+// (task vt +0x14): for AIHuntTask_PlaySA that unlinks the partner's parts and runs OnEndSA on both characters.
+// StopTask removes the task at once: a cutscene script blocked in WaitForTask on it (it keeps the task pointer,
+// CommonDll7 0x1f2c0) never resumes. BrainTask returns the task object (cAIHuntTaskEx*); its +4 is the state
+// (1 running, 2 finished: the task's own finish sets 2, the waiting script resumes and then StopTasks it).
+bool BrainTaskActive(void* ent, const char* taskClass);
+bool StopBrainTask(void* ent, const char* taskClass);
+void* BrainTask(void* ent, const char* taskClass);
+int TaskState(void* task);  // -1 unreadable
+// cObjCharacterEx::IsBrainFrozen: bit 4 of +0x204 (CharacterBrainFreeze). OnEndSA clears it.
+bool IsCharacterBrainFrozen(void* ent);
 // Manager vtable calls.
 int AddEntity(void* mgr, void* ent);                             // +0x10, returns index or -1 on fault
 bool RemoveEntity(void* mgr, void* ent);                         // +0x20 (ent, 1)

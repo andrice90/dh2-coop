@@ -196,10 +196,12 @@ constexpr uint8_t kDead = 1u << 0;
 constexpr uint8_t kParked = 1u << 1;
 constexpr uint8_t kFrozenOnHost = 1u << 2;
 constexpr uint8_t kNpc = 1u << 3;  // companion (obj_guide and other /npc/ models), not cScrAnimal
+constexpr uint8_t kSyncAttack = 1u << 4;  // inside PlaySA (+0x368) on the host; an animal's `arms` is the clip it plays
 }
 
 // One animal in an AnimalStates snapshot. `state` is the body-state name (legs).
-// `arms` is the NPC weapon body-state name (gun and upper body). Empty for animals.
+// `arms` is the NPC weapon body-state name (gun and upper body). For an animal it is empty, or the sync-attack clip
+// part 0 plays on the host while kSyncAttack is set.
 // Encode writes at most kMaxAnimalStateChars bytes of each. A longer string is truncated.
 struct AnimalState {
     uint16_t id = 0;
