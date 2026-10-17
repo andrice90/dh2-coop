@@ -687,6 +687,11 @@ int Count() {
     return n;
 }
 
+void* EntityOf(uint8_t playerId) {
+    const auto it = g_puppets.find(playerId);
+    return it != g_puppets.end() ? it->second.entity : nullptr;
+}
+
 uint8_t PlayerOf(void* ent) {
     if (!ent) return net::kInvalidPlayerId;
     for (const auto& [id, p] : g_puppets) {

@@ -27,6 +27,7 @@
 #include "core/module.h"
 #include "core/safe_mem.h"
 #include "engine/console_cmds.h"
+#include "engine/entity_api.h"
 
 namespace dh2::coop::combat {
 namespace {
@@ -407,6 +408,119 @@ void TryKnock(bool melee) {
     else events::Request(events::kKnockRequest, victim, how, 0.f, "");
 }
 
+// ---- host: animals go for the nearest player, and turn on a client who shoots them ----
+// Story scripts aim attack tasks at "hunter" (MAP3B leopards: AIHuntTask_AttackCats, target "hunter"), which on the
+// host is only the host. The engine re-targets to cAIHuntBrain_Animal::GetClosestAttackTarget only when an animal is
+// stuck (ProcessAttackStuck 0x8b800: task vt +0xf8(old, new) when task[1] == 1, then SetTarget(new, 0.1)). We run
+// the same switch every half second, for animals already chasing a player, when another player is clearly closer.
+// Only with puppets in the attack list ([Puppets] AttackTarget=1 / run-coop-local -Combat).
+using GetEntFn = void*(__thiscall*)(void* brain);
+using SetTargetFn = void(__thiscall*)(void* brain, void* ent, float f);
+using BrainHurtFn = void(__thiscall*)(void* brain, void* attacker);
+GetEntFn g_get_target = nullptr;
+GetEntFn g_closest = nullptr;
+SetTargetFn g_set_target = nullptr;
+BrainHurtFn g_brain_hurt = nullptr;
+constexpr float kRetargetMargin = 3.f;  // metres closer before an animal switches player
+constexpr uintptr_t kEntBrain = 0x200;  // cObjCharacterEx brain (entity_api FreezeBrain)
+constexpr uintptr_t kBrainTask = 0x158; // current task
+
+void* guarded_get(GetEntFn fn, void* brain) {
+    __try {
+        return fn(brain);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
+    }
+}
+
+bool guarded_switch(void* brain, void* task, void* from, void* to) {
+    __try {
+        if (task) {
+            using TaskSwitchFn = void(__thiscall*)(void* task, void* from, void* to);
+            reinterpret_cast<TaskSwitchFn>((*reinterpret_cast<void***>(task))[0xf8 / 4])(task, from, to);
+        }
+        g_set_target(brain, to, 0.1f);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+bool guarded_brain_hurt(void* brain, void* attacker) {
+    __try {
+        g_brain_hurt(brain, attacker);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+bool BindBrain() {
+    if (g_get_target && g_closest && g_set_target && g_brain_hurt) return true;
+    HMODULE common = GetModuleHandleA("CommonDll7.dll");
+    if (!common) return false;
+    g_get_target = reinterpret_cast<GetEntFn>(
+        core::find_export(common, "?GetTarget@cAIHuntBrain_Animal@@QBEPAVcObjEntity@@XZ"));
+    g_closest = reinterpret_cast<GetEntFn>(
+        core::find_export(common, "?GetClosestAttackTarget@cAIHuntBrain_Animal@@IAEPAVcObjEntity@@XZ"));
+    g_set_target = reinterpret_cast<SetTargetFn>(
+        core::find_export(common, "?SetTarget@cAIHuntBrain_Animal@@QAEXPAVcObjEntity@@M@Z"));
+    g_brain_hurt = reinterpret_cast<BrainHurtFn>(
+        core::find_export(common, "?OnHurt@cAIHuntBrain_Animal@@UAEXPAVcObjEntity@@@Z"));
+    return g_get_target && g_closest && g_set_target && g_brain_hurt;
+}
+
+bool PuppetsAreTargets() { return NetIsHost() && entity::AttackTargetCount() > 1; }
+
+bool IsPlayerEntity(void* ent) {
+    return ent && (ent == LocalPlayer().entity || puppets::PlayerOf(ent) != net::kInvalidPlayerId);
+}
+
+float DistSq(void* a, void* b) {
+    float pa[3] = {}, pb[3] = {};
+    core::safe_copy(static_cast<char*>(a) + kEntPos, pa, sizeof pa);
+    core::safe_copy(static_cast<char*>(b) + kEntPos, pb, sizeof pb);
+    const float dx = pa[0] - pb[0], dy = pa[1] - pb[1], dz = pa[2] - pb[2];
+    return dx * dx + dy * dy + dz * dz;
+}
+
+void RetargetToNearestPlayer() {
+    if (!PuppetsAreTargets() || !BindBrain()) return;
+    for (void* animal : Animals()) {
+        void* brain = nullptr;
+        if (!core::safe_read(static_cast<char*>(animal) + kEntBrain, brain) || !brain) continue;
+        void* cur = guarded_get(g_get_target, brain);
+        if (!IsPlayerEntity(cur)) continue;  // not chasing a player (or a scripted target): leave it alone
+        void* best = guarded_get(g_closest, brain);
+        if (!best || best == cur || !IsPlayerEntity(best)) continue;
+        const float d_cur = std::sqrt(DistSq(animal, cur)), d_best = std::sqrt(DistSq(animal, best));
+        if (d_cur - d_best < kRetargetMargin) continue;
+        void* task = nullptr;
+        core::safe_read(static_cast<char*>(brain) + kBrainTask, task);
+        int task_state = 0;
+        if (task) core::safe_read(static_cast<char*>(task) + 4, task_state);
+        if (task && task_state != 1) continue;  // ProcessAttackStuck only switches a task in state 1
+        const bool ok = guarded_switch(brain, task, cur, best);
+        spdlog::info("combat: animal id {} switches to the nearer player {} ({:.1f} m, was {:.1f} m) ok={}", IdOf(animal),
+                     puppets::PlayerOf(best) == net::kInvalidPlayerId ? 0 : puppets::PlayerOf(best), d_best, d_cur, ok);
+    }
+}
+
+}  // namespace
+
+// Host, from animals.cpp after a client's AnimalHit is applied: the animal's brain hears that the client's puppet
+// hurt it (cAIHuntBrain_Animal::OnHurt 0x83ec0 switches to an attacker that is in the attack list).
+void OnClientHitAnimal(void* animal, uint8_t shooter) {
+    if (!animal || !PuppetsAreTargets() || !BindBrain()) return;
+    void* puppet = puppets::EntityOf(shooter);
+    void* brain = nullptr;
+    if (!puppet || !core::safe_read(static_cast<char*>(animal) + kEntBrain, brain) || !brain) return;
+    const bool ok = guarded_brain_hurt(brain, puppet);
+    spdlog::info("combat: animal id {} hurt by player {}: brain told ok={}", IdOf(animal), shooter, ok);
+}
+
+namespace {
+
 class CombatModule : public dh2::Module {
 public:
     const char* Name() const override { return "combat"; }
@@ -451,6 +565,10 @@ public:
     void OnFrame(float) override {
         if (!cmd_registered_ && console_cmds::Ready()) cmd_registered_ = console_cmds::AddCommandStr("coop_knock", &cmd_knock);
         const uint32_t now = GetTickCount();
+        if (now - retarget_ms_ >= 500) {
+            retarget_ms_ = now;
+            RetargetToNearestPlayer();
+        }
         if (g_knocked && g_knock_end_ms && static_cast<int32_t>(now - g_knock_end_ms) >= 0) EndKnock("player knock done");
         if (g_knocked && now - g_knock_ms > kKnockTimeoutMs) EndKnock("timeout");
         const LocalPlayerSample& lp = LocalPlayer();
@@ -468,6 +586,7 @@ public:
     }
 
 private:
+    uint32_t retarget_ms_ = 0;
     bool cmd_registered_ = false;
     bool have_counts_ = false;
     uint8_t shots_ = 0;

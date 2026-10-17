@@ -34,6 +34,10 @@
 #include "core/safe_mem.h"
 #include "engine/entity_api.h"
 
+namespace dh2::coop::combat {
+void OnClientHitAnimal(void* animal, uint8_t shooter);  // combat.cpp
+}
+
 namespace dh2::coop::animals {
 namespace {
 
@@ -627,6 +631,8 @@ public:
         if (after <= 0.f) {
             const bool dead = entity::PresentDeath(ent);
             spdlog::info("animals: AnimalHit id={} lethal -> PresentDeath {}", hit.animalId, dead);
+        } else {
+            combat::OnClientHitAnimal(ent, hit.shooterId);  // the animal turns on the shooter (with -Combat)
         }
         spdlog::info("animals: AnimalHit id={} shooter={} dmg={:.2f} hp {:.1f}->{:.1f} ok={}", hit.animalId,
                      hit.shooterId, hit.damage, before, after, ok);

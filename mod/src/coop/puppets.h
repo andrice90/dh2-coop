@@ -18,5 +18,7 @@ int Count();
 bool Owns(void* ent);
 // The remote player this puppet body stands for, or net::kInvalidPlayerId (weapons and other entities too).
 uint8_t PlayerOf(void* ent);
+// That player's puppet entity, or null.
+void* EntityOf(uint8_t playerId);
 
 }  // namespace dh2::coop::puppets
