@@ -67,6 +67,9 @@ bool FreezeBrain(void* ent, bool freeze);
 // cObjCharacterEx::CharacterBrainFreeze(int). Fastcall: this in ecx, flag in edx.
 // NPCs use cScrBrain_NPC, not cAIHuntBrain_Animal. The animal FreezeBrain is the wrong function.
 bool CharacterBrainFreeze(void* ent, bool freeze);
+// cObjCharacterEx::CharacterFreeze(int), same convention: the physics body stops simulating (no gravity).
+// cObjCharacterEx::PlaySA pairs it with the no-collision flags so the two partners can overlap.
+bool CharacterFreeze(void* ent, bool freeze);
 // cAIHuntAnimalInterface::FuncInflictDamage (CommonDll7, static __cdecl): subtracts `dmg` from health +0x19C.
 bool InflictDamage(void* animal, float dmg);
 // cScrAnimal vfunc +0x154 (GameDll FUN_1001e8b0): death presentation. Early-outs once +0x600 is set.

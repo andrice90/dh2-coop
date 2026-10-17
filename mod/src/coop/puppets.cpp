@@ -21,6 +21,7 @@
 #include "core/exports.h"
 #include "core/safe_mem.h"
 #include "core/module.h"
+#include "engine/console_cmds.h"
 #include "engine/entity_api.h"
 #include "net/interp.h"
 
@@ -33,6 +34,13 @@ constexpr const char* kDefaultClass = "obj_humanEx";
 constexpr float kWalkSpeed = 0.6f;  // m/s: below = idle
 constexpr float kRunSpeed = 5.5f;   // m/s: above = run (hunter walks ≈ 5 m/s)
 bool g_physics = false;         // [Puppets] Physics=0: drop the puppet's physics body (see spawn_human)
+float g_phys_key_y = 0.f;       // [Puppets] PhysicsKeyY: metres added to y in the "position" key when Physics=1
+bool g_physy_cmd = false;
+// Test: coop_physy <metres> changes PhysicsKeyY live (finding where the body's origin sits relative to the feet).
+void __cdecl cmd_physy(const char* arg) {
+    g_phys_key_y = static_cast<float>(std::atof(core::safe_cstr(arg, 16).c_str()));
+    spdlog::info("puppets: PhysicsKeyY = {:.2f}", g_phys_key_y);
+}
 
 struct Puppet {
     net::SnapshotBuffer buffer;
@@ -51,6 +59,9 @@ struct Puppet {
     bool attack_target = false;  // host: registered in the animals' attack-target list (Phase 5)
     bool was_knocked = false;    // last sample had kFlagKnocked: play the get-up when it clears
     uint32_t getup_until = 0;
+    Vec3 placed;                 // Physics=1 diagnostics: where place() last put the entity
+    bool have_placed = false;
+    uint32_t drift_log_ms = 0;
 };
 
 constexpr uintptr_t kEntWorldBox = 0xC4;  // float[6] min xyz, max xyz — used by cBspTree::UpdateEntity
@@ -72,11 +83,24 @@ void capture_rel_box(Puppet& p) {
 // relink into the BSP so the renderer's leaf culling sees it (runtime spawns are otherwise never drawn).
 void place(Puppet& p, const entity::Vec3& pos, float yawDeg) {
     if (g_physics) {
-        // With a physics body ([Puppets] Physics=1, needed for animal attacks) the physics step copies the body's
-        // position back onto the entity. The "position" key moves the body as well (as for the F9 revive).
+        // [Puppets] Physics=1. Even frozen, the body writes its own position back onto the entity between our
+        // placements, and the model is drawn from the body: without the "position" key the puppet stayed at the
+        // map origin and was invisible (user, 2026-10-17 10:47; drift log = -target every frame). The key moves
+        // the body, but the model then sat below the feet (10:45): the body's origin is not the feet.
+        // g_phys_key_y (metres, [Puppets] PhysicsKeyY, console coop_physy) is that offset.
         char buf[64];
-        std::snprintf(buf, sizeof buf, "%.2f %.2f %.2f", pos.x * 100.f, pos.y * 100.f, pos.z * 100.f);
+        std::snprintf(buf, sizeof buf, "%.2f %.2f %.2f", pos.x * 100.f, (pos.y + g_phys_key_y) * 100.f, pos.z * 100.f);
         entity::HandleKey(p.entity, "position", buf);
+        Vec3 now{};
+        const uint32_t t = GetTickCount();
+        if (p.have_placed && t - p.drift_log_ms > 2000 &&
+            core::safe_read(reinterpret_cast<char*>(p.entity) + 0xE8, now)) {
+            p.drift_log_ms = t;
+            spdlog::info("puppets: physics drift since last place dy={:.2f} dx={:.2f} dz={:.2f} (target y {:.2f})",
+                         now.y - p.placed.y, now.x - p.placed.x, now.z - p.placed.z, pos.y);
+        }
+        p.placed = {pos.x, pos.y, pos.z};
+        p.have_placed = true;
     }
     entity::SetPos(p.entity, pos);
     entity::SetAngle(p.entity, {0.f, yawDeg, 0.f});
@@ -163,6 +187,9 @@ void* spawn_human(const char* why) {
             std::memcpy(phys + 0x20, &seven, sizeof seven);
             std::memcpy(phys + 0x24, &seven, sizeof seven);
             std::memcpy(phys + 0x28, &mask, sizeof mask);
+            // Open (re/notes/lead-combat.md): without ground collision the body falls and the drawn model sinks
+            // (user 10:31). CharacterFreeze is not the fix: frozen, the body collided again and lifted both players
+            // (10:47, y -2.9 to 73). The body's velocity / gravity fields are still unknown.
             spdlog::info("puppets: physics body {:#x} kept, collision off", reinterpret_cast<uintptr_t>(phys));
         }
     }
@@ -381,6 +408,8 @@ void load_settings() {
     char yoff[32] = {};
     GetPrivateProfileStringA("Puppets", "YOffset", "0", yoff, sizeof yoff, ini.c_str());
     g_y_offset = static_cast<float>(std::atof(yoff));
+    GetPrivateProfileStringA("Puppets", "PhysicsKeyY", "0", yoff, sizeof yoff, ini.c_str());
+    g_phys_key_y = static_cast<float>(std::atof(yoff));
     char crouch[64] = {};
     GetPrivateProfileStringA("Puppets", "CrouchClip", g_crouch_clip.c_str(), crouch, sizeof crouch, ini.c_str());
     g_crouch_clip = crouch;
@@ -454,6 +483,7 @@ public:
 
     void OnFrame(float dt) override {
         if (!g_enabled) return;
+        if (!g_physy_cmd && console_cmds::Ready()) g_physy_cmd = console_cmds::AddCommandStr("coop_physy", &cmd_physy);
         const auto& local = LocalPlayer();
         if (!local.valid) return;  // map not ready / hunter unknown
         if (!hunter_box_logged_ && local.entity) {

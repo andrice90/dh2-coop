@@ -507,6 +507,28 @@ bool CharacterBrainFreeze(void* ent, bool freeze) {
     return guarded_char_freeze(ent, freeze ? 1 : 0);
 }
 
+CharFreezeFn g_body_freeze = nullptr;  // cObjCharacterEx::CharacterFreeze: the physics body stops simulating
+
+bool guarded_body_freeze(void* ent, int freeze) {
+    __try {
+        g_body_freeze(ent, freeze);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+bool CharacterFreeze(void* ent, bool freeze) {
+    if (!ent) return false;
+    if (!g_body_freeze) {
+        if (HMODULE common = GetModuleHandleA("CommonDll7.dll"))
+            g_body_freeze = reinterpret_cast<CharFreezeFn>(
+                GetProcAddress(common, "?CharacterFreeze@cObjCharacterEx@@QAIXH@Z"));
+        if (!g_body_freeze) return false;
+    }
+    return guarded_body_freeze(ent, freeze ? 1 : 0);
+}
+
 bool InflictDamage(void* animal, float dmg) {
     if (!animal) return false;
     if (!g_inflict) {
