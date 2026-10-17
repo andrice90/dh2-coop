@@ -7,6 +7,7 @@
 #include "core/lifecycle.h"
 #include "core/log.h"
 #include "core/module.h"
+#include "engine/dinput_hooks.h"
 
 namespace {
 
@@ -32,6 +33,8 @@ BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID) {
         DisableThreadLibraryCalls(self);
         dh2::core::set_self_module(self);
         dh2::core::install_mutex_hook();
+        // Before this DllMain returns, EngineDll7 has not called DirectInput8Create yet.
+        dh2::dinput::TryInstall();
         if (HANDLE t = CreateThread(nullptr, 0, init_thread, nullptr, 0, nullptr)) CloseHandle(t);
     } else if (reason == DLL_PROCESS_DETACH) {
         dh2::core::request_shutdown();

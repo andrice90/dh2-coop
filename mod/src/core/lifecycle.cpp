@@ -16,6 +16,7 @@
 #include "core/safe_mem.h"
 #include "engine/console.h"
 #include "engine/d3d8_hooks.h"
+#include "engine/dinput_hooks.h"
 #include "probe/probe.h"
 
 namespace dh2::core {
@@ -289,6 +290,7 @@ void run_lifecycle() {
 
     for (;;) {
         d3d8::TryInstall();
+        dinput::TryInstall();
         if (HMODULE eng = g_engine.load()) note_engine(eng);
         if (!g_engine_done.load()) {
             if (HMODULE m = GetModuleHandleA("EngineDll7.dll")) note_engine(m);

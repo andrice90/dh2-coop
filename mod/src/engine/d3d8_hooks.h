@@ -22,6 +22,8 @@ void TryInstall();
 void TryLateDevice(HMODULE engine);
 
 void* Device();
+// HWND passed to IDirect3D8::CreateDevice (hDeviceWindow, else the focus window). Null until then.
+HWND DeviceWindow();
 Stats GetStats();
 
 // Overlay hook point. Runs on the game thread after module OnFrame and before the real Present.

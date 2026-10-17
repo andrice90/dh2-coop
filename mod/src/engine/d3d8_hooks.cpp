@@ -49,6 +49,7 @@ safetyhook::InlineHook* g_present = nullptr;
 safetyhook::InlineHook* g_reset = nullptr;
 
 std::atomic<void*> g_device{nullptr};
+std::atomic<HWND> g_device_window{nullptr};
 std::atomic<bool> g_object_hooked{false};
 std::atomic<std::uint32_t> g_n_create{0};
 std::atomic<std::uint32_t> g_n_device{0};
@@ -172,6 +173,12 @@ HRESULT __stdcall hk_CreateDevice(void* self, UINT adapter, UINT type, HWND focu
     spdlog::info("D3D8 CreateDevice #{} adapter={} devtype={} behavior={:#x} caller={}", n, adapter, type, flags,
                  core::describe_address(_ReturnAddress()));
     spdlog::info("D3D8   params in : {}", fmt_params(pp));
+    HWND dev_wnd = focus;
+    if (pp) {
+        D3D8Params params{};
+        if (core::safe_read(pp, params) && params.hDeviceWindow) dev_wnd = params.hDeviceWindow;
+    }
+    if (dev_wnd) g_device_window.store(dev_wnd);
     if (focus) {
         const DWORD owner = GetWindowThreadProcessId(focus, nullptr);
         if (owner) {
@@ -235,6 +242,8 @@ void TryLateDevice(HMODULE engine) {
 }
 
 void* Device() { return g_device.load(); }
+
+HWND DeviceWindow() { return g_device_window.load(); }
 
 Stats GetStats() {
     Stats s;
