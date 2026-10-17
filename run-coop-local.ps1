@@ -1,5 +1,5 @@
 # Two sandbox instances of the game, each with its own Bin directory and logs.
-# Usage: .\run-coop-local.ps1 [-Seconds N] [-NoArrange] [-Capture]
+# Usage: .\run-coop-local.ps1 [-Seconds N] [-NoArrange] [-Capture] [-Map HUNTMAP4|MAP3B|...]
 #   -NoArrange  do not move the windows
 #   -Capture    every 10s of a -Seconds run, save both windows under re\notes\coop-local\
 # The client starts after the host debug.log reaches engine time 8s (host in the map and listening).
@@ -10,7 +10,8 @@
 param(
     [int]$Seconds = 0,
     [switch]$NoArrange,
-    [switch]$Capture
+    [switch]$Capture,
+    [string]$Map = 'HUNTMAP4'
 )
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -22,7 +23,7 @@ $ini = Join-Path $root 'mod\dh2coop.ini'
 $cfg = Join-Path $root 'tools-src\console.windowed.cfg'
 $captureScript = Join-Path $root 'tools-src\capture-window.ps1'
 $shotDir = Join-Path $root 're\notes\coop-local'
-$launch = '+mod data -nointro -developper -cheats -spmap HUNTMAP4'
+$launch = "+mod data -nointro -developper -cheats -spmap $Map"
 $windowTimeoutSec = 90
 
 if ($Capture -and -not (Test-Path -LiteralPath $captureScript)) { throw "missing: $captureScript" }

@@ -42,6 +42,24 @@ New session? Follow **Resume protocol** at the bottom. This file is the single s
 
 Worker jobs now run through `tools-src\cursorjob.ps1` (Cursor CLI, Grok 4.7 Medium Fast). User decision 2026-10-16: Grok Build performance not good enough; `grokjob.ps1` retired.
 
+## PIVOT 2026-10-16 21:20 (user): story mode first
+User: "the real goal is singleplayer… switch to getting story mode missions to sync". Hunt-map map-change polish is parked.
+- **Story S1 started.**
+  - `run-coop-local.ps1 -Map MAP3B` loads the first-choice story map on both instances. They join, see each other's puppet and mirror its 2 animals (screens `re/notes/coop-local/story-3b-*-0.png`).
+  - New module `mod/src/coop/story.cpp` logs every:
+    - L1 trigger-volume activation (`cObjTrigger::OnActivate`);
+    - L2 script trigger event (`0x68eb0`);
+    - `CompleteTask`.
+  - At map start, both sides activate the same L2 events: `cScrTask01/02/06/07`.
+  - Next: the user plays MAP3B co-op; read the logs to see which decisions diverge, then build L1 sync (`re/notes/lead-story-coop.md`).
+- **Hunt-map state at the pivot:**
+  - Kill, death fall, client hit, claim and mission end all work in automated two-window tests (20:38–21:16).
+  - Map following works for A→B→A.
+  - **Known issue:** after a same-map replay (`spmap` of the current map), the *next* world teardown crashes in `cSndDrvDS::WaveRelease` (both windows).
+    - It is not the puppet-weapon refcount ring (fixed, balanced), not the BSP reset path (a forced full reload still crashes), and not the stale command file.
+    - The "weapons off" controls were invalid (`mod/dh2coop.ini` has no `Weapons` key), so whether puppet weapons are involved is still unknown.
+    - Workaround: don't replay the same map; restart the game instead.
+
 ## Next steps (in order)
 0. **Close the open test pair once the user is done**, then `.\mod\build.ps1` and run:
    - `.\tools-src\mapflow-test.ps1`: replay, switch to HUNTMAP1, menu; the client must follow each.
