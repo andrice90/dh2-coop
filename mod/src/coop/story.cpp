@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <unordered_set>
 
 #include <spdlog/spdlog.h>
 
@@ -32,6 +33,10 @@ safetyhook::InlineHook* g_volume_hook = nullptr;
 safetyhook::InlineHook* g_event_hook = nullptr;
 safetyhook::InlineHook* g_task_hook = nullptr;
 bool g_log = true;
+// Triggers whose OnActivate (0x68130) this process actually ran. The +0x1fc flag can be set
+// without that call (MAP12C cScrTask01, 2026-10-16 22:45): the host fire was then skipped and
+// the client stayed in the opening cutscene camera.
+std::unordered_set<int16_t> g_ran_fire;
 
 std::string Describe(void* ent) {
     if (!ent) return "null";
@@ -63,6 +68,11 @@ int16_t IdOf(void* ent) {
     int16_t id = -1;
     core::safe_read(static_cast<char*>(ent) + kEntId, id);
     return id;
+}
+
+void NoteFireRan(void* ent) {
+    const int16_t id = IdOf(ent);
+    if (id >= 0) g_ran_fire.insert(id);
 }
 
 std::string NameOf(void* ent) {
@@ -149,7 +159,18 @@ void OnFireCommit(const net::GameEvent& ev) {
         return;
     }
     if (!IsActive(ent)) Activate(ent);  // arm first if this client missed the arming
-    if (HasFired(ent)) return;
+    const int16_t id = IdOf(ent);
+    if (id >= 0 && g_ran_fire.count(id) != 0) {
+        spdlog::info("story: host fire '{}' (id {}) already ran here", ev.key, id);
+        return;
+    }
+    if (HasFired(ent)) {
+        int flag = 0;
+        core::safe_read(static_cast<char*>(ent) + 0x1fc, flag);
+        spdlog::info("story: host fire '{}' (id {}) flag={} but OnActivate did not run; clearing it", ev.key, id, flag);
+        const int zero = 0;
+        std::memcpy(static_cast<char*>(ent) + 0x1fc, &zero, sizeof zero);
+    }
     Fire(ent);
     spdlog::info("story: applied host fire '{}' (id {})", ev.key, ev.subjectId);
 }
@@ -161,12 +182,14 @@ void __fastcall hk_TriggerFire(void* self, void*, void* activator) {
     }
     if (g_in_apply || !g_sync_events || !NetIsOnline() || !activator) {
         g_fire_hook->unsafe_thiscall<void>(self, activator);
+        NoteFireRan(self);
         return;
     }
     const int16_t id = IdOf(self);
     const std::string name = NameOf(self);
     if (NetIsHost()) {
         g_fire_hook->unsafe_thiscall<void>(self, activator);
+        NoteFireRan(self);
         if (id >= 0) events::Commit(events::kTriggerFire, static_cast<uint16_t>(id), 0, 0.f, name, 0);
         return;
     }
@@ -239,6 +262,8 @@ class StoryModule : public dh2::Module {
 public:
     const char* Name() const override { return "story"; }
     int Priority() const override { return 47; }
+
+    void OnMapLoaded(const char*) override { g_ran_fire.clear(); }
 
     void OnInit() override {
         const std::string ini = (core::self_dir() / "dh2coop.ini").string();

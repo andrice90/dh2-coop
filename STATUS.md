@@ -1,6 +1,6 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-16 22:46 (America/Chicago) by the Cursor worker (Grok). Lead's 21:35 handoff is below.
+**Last updated:** 2026-10-16 22:49 (America/Chicago) by the Cursor worker (Grok). Lead's 21:35 handoff is below.
 
 ## Cursor worker log (lead away)
 - **21:35** Previous MAP3B pair had already shut down cleanly. That session killed both leopards and never logged a mission end.
@@ -12,6 +12,7 @@
   - Snakes were not in the 2-animal `cScrAnimal` mirror.
   - In-game pause menus are not synced. Not a small fix; user accepts the desync. See Next steps.
 - **21:56** Closed that pair and smoke-tested MAP12B, MAP12C, MAP4A, MAP11B (30 s each). All four clients were welcomed. Animals received: 1, 1, 6, 8. MAP11B's post-join `cScrTask02` arm was applied on the client. MAP12C's client crashed in `cObjNPC::Update` (guide model `mountainguide.skin`, missing `cBodyShotgun1npc`); no client screenshot. The other three had no exception in the kept lines. Shots in `re/notes/coop-local/story-s1-map*.png`.
+- **22:49** Client cutscene camera: `cScrTask01` had `+0x1fc` flag 5 without `0x68130` ever running, so the host fire was skipped. `OnFireCommit` now runs OnActivate when this process has not. Relaunched 22:48. Client log: `flag=5 but OnActivate did not run; clearing it` then `applied host fire 'cScrTask01'`. Host hunter left the spawn and fired. Client view yaw stopped moving at that same moment (cutscene camera released; the client window had no input).
 - **22:46** MAP12C user test: client joined ~8s after the host, after `cScrTask01` had already fired (22:42:16 host, 22:42:18 client welcome). Client hunter stayed in `CutScene` and could not play. Yeti position synced (drift 0) but local body state stayed `CutScene` while `SetBodyState` of `Attack`/`Run`/`IdleAttack`/`Hurt` returned -1, so it slid without an animation. `run-coop-local.ps1` now starts the client when the host logs `coop: host start`, not at engine time 8s. Relaunched 22:45: client welcomed in the same second as the host, still inside the yeti's `CutScene`; the host fired `cScrTask01` 5s later. The client applied the arm of `cScrTask02` and did not log `applied host fire` for `cScrTask01` (the trigger was already marked fired). Yeti `SetBodyState` still returns -1 after that.
 - **22:17** MAP12C client crash fixed in `puppets.cpp`. Solo MAP12C does not log `cBodyShotgun1npc`. Co-op did, because the puppet body played `shotgun1/idlealertneutral` and the gun mesh played `idlealertneutral`; both ask for `cBodyShotgun1npc`, which this map does not register. Body clips are unarmed `GAME.AP` names again. The gun mesh stays attached and is not `SetAnim`'d. Retest: `run-coop-local.ps1 -Map MAP12C -Seconds 25` exited 0 (client alive the whole window). One `cBodyShotgun1npc` line remains at weapon spawn. The client yeti (`id=24`) logs `SetBodyState 'Attack'/'IdleAttack' -> -1` and does not take the process down. Shutdown still logs the usual nvgpu first-chance.
 
