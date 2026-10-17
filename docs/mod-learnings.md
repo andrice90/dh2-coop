@@ -65,3 +65,4 @@ Practical knowledge for building, injecting, hooking, testing and orchestrating.
 - Claude subagents can hit session usage limits mid-task and die without writing summaries. Mitigation: workers write deliverables incrementally; lead keeps `STATUS.md` current.
 - Windows PowerShell 5.1 `Get-Content -Raw` reads BOM-less UTF-8 as ANSI; writing it back mangles `—`/`→` into `â€”`. Edit docs with Write/Edit tools, or pass `-Encoding UTF8` on both read and write — 2026-10-16.
 - Only one worker per wave launches the game (shared sandbox, single disc mount, DirectInput exclusive mode).
+- **cursor-agent worker timing:** the story-inventory job (read ~350 script files, two Ghidra dumps, a 4000-line deliverable) took 15 min on `grok-4.7-medium-fast` with `--auto-review`, no permission stalls. A one-line smoke prompt answers in seconds - 2026-10-16.

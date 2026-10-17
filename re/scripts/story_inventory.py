@@ -235,15 +235,8 @@ def parse_registrar_dump(text, binary):
             sig_class = mm.group(1)
         funcs.append((func, reg_rva, sig_class, parent, binary))
         # walk ExportFnc( ... ); then the next s_Export*Function
-        i = 0
-        while True:
-            j = ch.find("ExportFnc(", i)
-            if j < 0:
-                break
-            k = j + len("ExportFnc")
-            if k >= len(ch) or ch[k] != "(":
-                i = j + 1
-                continue
+        for mcall in re.finditer(r"ExportFnc\s*\(", ch):
+            k = mcall.end() - 1
             depth = 0
             p = k
             while p < len(ch):
@@ -292,11 +285,10 @@ def parse_registrar_dump(text, binary):
                     "parent": parent,
                     "codes": codes,
                     "impl": impl,
-                    "impl_rva": impl_rva,
                     "kind": kind,
+                    "impl_rva": impl_rva,
                 }
             )
-            i = p
     return rows, funcs
 
 
@@ -425,7 +417,8 @@ def main():
                 inst = instances_in(class_body(wtext, gclass))
             else:
                 inst = instances_in(wtext)
-                gclass = "UNVERIFIED (no new Class(globals))"
+                classes = re.findall(r"\bclass\s+([A-Za-z_][A-Za-z0-9_]*)", wtext)
+                gclass = "no globals constructor; instances are on " + ", ".join(classes)
         mission_lines = {}
         for base in missions:
             p = next((f for f in uniq if f.name == base and "mission" in f.as_posix().lower()), None)
@@ -487,10 +480,12 @@ def main():
     # natives
     gtext = (ROOT / "re" / "notes" / "story-natives-gamedll.c").read_text(encoding="latin1", errors="replace")
     ctext = (ROOT / "re" / "notes" / "story-natives-commondll.c").read_text(encoding="latin1", errors="replace")
+    ltext = (ROOT / "re" / "notes" / "lead-natives.c").read_text(encoding="latin1", errors="replace")
     grows, gfuncs = parse_registrar_dump(gtext, "GameDll7")
     crows, cfuncs = parse_registrar_dump(ctext, "CommonDll7")
+    lrows, _lfuncs = parse_registrar_dump(ltext, "lead-natives.c")
     all_rows = grows + crows
-    for r in all_rows:
+    for r in all_rows + lrows:
         catalog_names.add(r["name"])
 
     # player refs: unique files in story+bonus closures
@@ -581,9 +576,14 @@ def main():
         if p.suffix.lower() == ".spj":
             continue
         for i, line in enumerate(lines_of(p), 1):
-            if QTE_RE.search(line):
-                commented = line.strip().startswith("//")
-                qte_hits.append((rel(p), i, commented, snippet(line, 160)))
+            mm = QTE_RE.search(line)
+            if not mm:
+                continue
+            commented = line.strip().startswith("//")
+            code, _ = mask_line(line)
+            in_string = (not commented) and (QTE_RE.search(code) is None)
+            where = "comment" if commented else ("string" if in_string else "code")
+            qte_hits.append((rel(p), i, where, mm.group(0), snippet(line, 160)))
 
     # transitions
     trans_hits = []
@@ -788,12 +788,14 @@ def main():
     w("")
     w("| Name | Impl RVA | Impl symbol | Codes |")
     w("|---|---|---|---|")
-    globals_rows = [r for r in grows if r["func"] == "FUN_1000ba30"]
+    globals_rows = [r for r in lrows if r["func"] == "FUN_1000ba30"] or lrows
+    dump_globals = [r for r in grows if r["func"] == "FUN_1000ba30"]
     for r in globals_rows:
         impl_r = f"`0x{r['impl_rva']:x}`" if r["impl_rva"] is not None else "—"
         w(f"| `{r['name']}` | {impl_r} | `{r['impl'] or '—'}` | `{', '.join(r['codes'])}` |")
     w("")
-    w(f"Count: {len(globals_rows)} `ExportFnc` entries in `FUN_1000ba30`.")
+    same = [r["name"] for r in globals_rows] == [r["name"] for r in dump_globals]
+    w(f"Count: {len(globals_rows)} `ExportFnc` entries in `re/notes/lead-natives.c` `FUN_1000ba30`. The same function in `re/notes/story-natives-gamedll.c` has {len(dump_globals)} entries; name lists match: {same}.")
     w("")
     w("### 2b. Class-method dumps")
     w("")
@@ -839,7 +841,7 @@ def main():
     # section 3
     w("## 3. Native usage in story scripts")
     w("")
-    w("Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is counted on every map that lists it). `sites` is the number of unique file:line hits across story, bonus, and hunt closures (a shared file counts once). `in catalog` is yes when section 2 has that name. Category is assigned from the identifier, in this order: timing (`Pause`/`Wait`/`WaitForTask`/prefix `Wait`); AI (`StartTask`, `StopTask`, `StopAllTask`, `SetTaskParam`, `ForceBrainActivate`, `MoveToPos`, or name contains `Brain`/`Animal`/`AnimPak`); mission (`Task`/`Mission`/`Objective`); HUD (`Hud`/`Hint`/`PlayMessage`/`OpenMenu`/`MenuPage`); cutscene (`CutScene`/`Camera`/`Movie`/`Cinematic`/`ExecuteScript`); sound (`Sound`/`Music`); triggers (`Trigger`, `Activate`, `Deactivate`, `ActivateBy`, `ActivateAfter`, HUD activate); NPC (`NPC`/`Companion`/`Guide`/`Follow`/`Talk`/`SetCanBeAttacked`); spawn (`Spawn`/`Destroy`/`MakeVisible`/`Show`/`Hide`/`AddAnimal`/`AddEvent`/`Precache`/`AddAI`); player control (`PFlags`/`Health`/`Weapon`/`Ammo`/`Item`/`Inventory`/`Freeze`/`Teleport`/`Hurt`/`Damage`/`Crouch`/`Equip`/`LockInput`/`Knife`); else other.")
+    w("Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is counted on every map that lists it). The numeric column is that sum, not a unique file:line count. `in catalog` is yes when section 2 has that name. Category is assigned from the identifier, in this order: timing (`Pause`/`Wait`/`WaitForTask`/prefix `Wait`); AI (`StartTask`, `StopTask`, `StopAllTask`, `SetTaskParam`, `ForceBrainActivate`, `MoveToPos`, or name contains `Brain`/`Animal`/`AnimPak`); mission (`Task`/`Mission`/`Objective`); HUD (`Hud`/`Hint`/`PlayMessage`/`OpenMenu`/`MenuPage`); cutscene (`CutScene`/`Camera`/`Movie`/`Cinematic`/`ExecuteScript`); sound (`Sound`/`Music`); triggers (`Trigger`, `Activate`, `Deactivate`, `ActivateBy`, `ActivateAfter`, HUD activate); NPC (`NPC`/`Companion`/`Guide`/`Follow`/`Talk`/`SetCanBeAttacked`); spawn (`Spawn`/`Destroy`/`MakeVisible`/`Show`/`Hide`/`AddAnimal`/`AddEvent`/`Precache`/`AddAI`); player control (`PFlags`/`Health`/`Weapon`/`Ammo`/`Item`/`Inventory`/`Freeze`/`Teleport`/`Hurt`/`Damage`/`Crouch`/`Equip`/`LockInput`/`Knife`); else other.")
     w("")
     # group
     grouped = defaultdict(list)
@@ -866,7 +868,7 @@ def main():
             w("None.")
             w("")
             continue
-        w("| Name | In catalog | Sites | Per-map counts (zeros omitted) | First example |")
+        w("| Name | In catalog | Sum of per-map counts | Per-map counts (zeros omitted) | First example |")
         w("|---|---|---:|---|---|")
         for name in names:
             per = use_map[name]
@@ -885,7 +887,7 @@ def main():
             incat = "yes" if name in catalog_names else "no"
             w(f"| `{name}` | {incat} | {total_sum} | {per_s} | {ex} |")
         w("")
-    w("`Sites` in the tables above is the sum of per-map counts, so a line in a shared script (for example `MAPWORLDBASE.SCR`) is counted once per map that includes it.")
+    w("A line in a shared script (for example `MAPWORLDBASE.SCR`) is counted once per map that includes it, so the sum is larger than the number of source lines.")
     w("")
     overlap = sorted(n for n in use_map if n in defs)
     w(f"Identifiers that are both script-defined and called are excluded above. Script-defined names collected: {len(defs)}. None of the excluded names are listed here by construction.")
@@ -982,15 +984,17 @@ def main():
     w("")
     w("### QTE / struggle / melee / button / fight / knife")
     w("")
-    w(f"Case-insensitive search of every `.scr`/`.spl`/`.lua` under `re/extracted/SCRIPTS` for `QTE`, `Struggle`, `Melee`, `Button`, `Fight`, `CloseCombat`, `Knife`, `Mash`, `QuickTime`. Hits: {len(qte_hits)}.")
+    w("Case-insensitive search of every `.scr`/`.spl`/`.lua` under `re/extracted/SCRIPTS` for `QTE`, `Struggle`, `Melee`, `Button`, `Fight`, `CloseCombat`, `Knife`, `Mash`, `QuickTime`. `where` is `comment`, `string` (the match sits inside quotes), or `code`.")
+    w("")
+    w(f"Hits: {len(qte_hits)}. In code: {sum(1 for h in qte_hits if h[2]=='code')}. In strings: {sum(1 for h in qte_hits if h[2]=='string')}. In comments: {sum(1 for h in qte_hits if h[2]=='comment')}.")
     w("")
     if not qte_hits:
         w("No matches in the extracted scripts.")
     else:
-        w("| File:line | In comment | Line |")
-        w("|---|---|---|")
-        for path, i, commented, text in qte_hits:
-            w(f"| `{path}:{i}` | {'yes' if commented else 'no'} | `{esc(text)}` |")
+        w("| File:line | Where | Match | Line |")
+        w("|---|---|---|---|")
+        for path, i, where, match, text in qte_hits:
+            w(f"| `{path}:{i}` | {where} | `{match}` | `{esc(text)}` |")
     w("")
     knife_natives = [r for r in all_rows if re.search(r"knife|melee|qte|struggle|fight|button", r["name"], re.I)]
     w("ExportFnc names matching the same words (native exists even if scripts do not call it):")
@@ -1019,7 +1023,7 @@ def main():
             w("- No `SetMission` call in the mission script.")
         w(f"- Task blocks: {len(info['tasks'])}")
         for bi, block in enumerate(info["tasks"], 1):
-            body = "; ".join(f"{ln}:{esc(tx)}" for ln, tx in block)
+            body = " | ".join(f"{ln}:{esc(tx)}" for ln, tx in block)
             src = block[0][0]
             w(f"  - task {bi} (starts line {src}): {body}")
         if info["tokens"]:
@@ -1036,15 +1040,86 @@ def main():
     # section 7
     w("## 7. Map transitions, checkpoints, saves, death")
     w("")
-    w("Search of every file in story, bonus, and hunt `MAIN.SPJ` closures (each file once) for `LoadMap`, `NextMap`, `ChangeLevel`, `ChangeMap`, `Restart`, `Checkpoint`, `SaveGame`, `LoadGame`, `Respawn`, `OnDeath`, `PlayerDeath`, `KillPlayer`, `OpenMenu`, `LoadLevel`, `EndGame`, `GameOver`, `spmap`, `SetMap`, `MissionComplete`, `GoToMenu`, `ReturnToMenu`, or a quoted map token `MAP*`, `HUNTMAP*`, `MAPMENU`, `MAPARENA`, `MAPISLAND`, `MAPTSAVO`.")
+    w("Searched every file in story, bonus, and hunt `MAIN.SPJ` closures (each file once). A call that loads another map, restarts the mission, saves, loads a checkpoint, or handles player death is quoted below. Keyword collisions are listed separately so they are not read as those calls.")
     w("")
-    if not trans_hits:
-        w("No matches.")
+
+    def trans_bucket(text):
+        if re.search(r"CanBeRespawned|StampedeRespawn", text):
+            return "animal CanBeRespawned / StampedeRespawn (not a player respawn)"
+        if re.search(r"OpenMenuPage\s*\(", text):
+            return "OpenMenuPage (page index)"
+        if re.search(r"\bOpenMenu\s*\(", text):
+            return "OpenMenu("
+        if re.search(r"\bRestartMission\s*\(", text):
+            return "RestartMission("
+        if re.search(r"\bRestart\s*\(", text):
+            return "Restart("
+        if re.search(r"SaveGame\s*\(|LoadGame\s*\(|Checkpoint", text, re.I):
+            return "save/load/checkpoint"
+        if re.search(r"\bSetMap(LensFlare)?\s*\(", text):
+            return "SetMap lens-flare rect (not a level load)"
+        if re.search(r"LoadMap|NextMap|ChangeLevel|ChangeMap|LoadLevel|spmap|GoToMenu|ReturnToMenu|MissionComplete|EndGame|GameOver", text, re.I):
+            return "map-load or end name"
+        if re.search(r"OnDeath|PlayerDeath|KillPlayer", text, re.I):
+            return "player death name"
+        if MAPTOKEN_RE.search(text):
+            return "quoted map token"
+        return "other keyword"
+
+    buckets = defaultdict(list)
+    for path, i, text in trans_hits:
+        buckets[trans_bucket(text)].append((path, i, text))
+    wanted = [
+        "Restart(",
+        "RestartMission(",
+        "save/load/checkpoint",
+        "map-load or end name",
+        "player death name",
+        "OpenMenu(",
+        "quoted map token",
+    ]
+    for key in wanted:
+        rows = buckets.get(key, [])
+        w(f"### {key}")
+        w("")
+        if not rows:
+            w("No matches in the script closures.")
+            w("")
+            continue
+        w("| File:line | Line |")
+        w("|---|---|")
+        for path, i, text in rows:
+            w(f"| `{path}:{i}` | `{esc(text)}` |")
+        w("")
+    w("### Player damage lines")
+    w("")
+    dmg = [row for row in player_rows if row[4].startswith("damage/health")]
+    if not dmg:
+        w("No story/bonus player-reference line classified as damage/health.")
     else:
         w("| File:line | Line |")
         w("|---|---|")
-        for path, i, text in trans_hits:
+        for path, i, text, call, kind, map_s in dmg:
             w(f"| `{path}:{i}` | `{esc(text)}` |")
+    w("")
+    w("`IsLegHurt` and `GetHealth` are queries. `Hurt(` on those lines is the damage call.")
+    w("")
+    w("### Keyword collisions (not map load, save, checkpoint, or player respawn)")
+    w("")
+    for key in (
+        "SetMap lens-flare rect (not a level load)",
+        "animal CanBeRespawned / StampedeRespawn (not a player respawn)",
+        "OpenMenuPage (page index)",
+        "other keyword",
+    ):
+        rows = buckets.get(key, [])
+        w(f"- `{key}`: {len(rows)} lines.")
+        for path, i, text in rows[:8]:
+            w(f"  - `{path}:{i}` `{esc(text)}`")
+        if len(rows) > 8:
+            w(f"  - … {len(rows) - 8} more")
+    w("")
+    w("There is no script call in these closures whose text is `LoadMap`, `NextMap`, `Checkpoint`, `SaveGame`, or `LoadGame`. `Restart` / `RestartMission` / `OpenMenu` / `SaveGame` exist as ExportFnc names (section 2c, GameDll registrar `0xc2d40` and CommonDll `cGuiSaveMan::ScrExport` `0x102270`). Whether a script calls `Restart` is the table above, not an inference from the export.")
     w("")
     w("Candidate C++ exports from `re/exports/*.demangled.txt` whose demangled name matches `Checkpoint`, `Save`, `Load`, `Restart`, `Respawn`, `Death`, `Die`, `NextMap`, or `Level`. These are names only (UNVERIFIED: not tied to a script call).")
     w("")
@@ -1093,39 +1168,30 @@ def main():
             w(f"  - … {len(info['quotes']) - 25} more lines")
     w("")
 
-    # section 9 — filled after we know numbers. Compute here.
     w("## 9. Summary for the lead")
     w("")
-    # simplest: few player lines that are map-local, few cutscenes, no qte, few npcs
     local_player = Counter()
     for path, i, text, call, kind, map_s in player_rows:
         if map_s.startswith("shared"):
             continue
-        # map_s may be comma list
         for m in map_s.split(","):
-            if m in story_bonus or m in STORY or m in BONUS:
+            if m in STORY or m in BONUS:
                 local_player[m] += 1
     cut_n = {m: len(map_meta[m]["cuts"]) for m in STORY + BONUS}
     npc_n = {m: len(npc_info[m]["names"]) for m in STORY + BONUS}
-    qte_maps = Counter()
-    for path, i, commented, text in qte_hits:
-        if commented:
-            continue
-        for m in STORY + BONUS:
-            if m.lower() in path.lower():
-                qte_maps[m] += 1
-    w(f"- Player-reference lines in story+bonus closures: {len(player_rows)}. By kind: " + ", ".join(f"{k} {n}" for k, n in kind_counts.most_common()) + ".")
-    w(f"- Cutscene scripts listed by story+bonus MAIN.SPJ: {sum(cut_n.values())} across {sum(1 for m in STORY+BONUS if cut_n[m])} maps. Files with `state Skip`: {len(skip_files)}.")
-    w(f"- Non-comment QTE/melee/button/fight/knife hits in all extracted scripts: {sum(1 for h in qte_hits if not h[2])}. Comment hits: {sum(1 for h in qte_hits if h[2])}.")
-    w(f"- Maps with at least one NPC/custom-character globals instance: {sum(1 for m in STORY+BONUS if npc_n[m])}.")
-    w("- Largest player-reference files are the per-map trigger and world scripts (the table in section 4). Shared files inflate section 3 per-map sums.")
     ranked = sorted(STORY, key=lambda m: (cut_n[m], npc_n[m], local_player[m], len(mission_info[m]["tasks"])))
-    w("- Story maps ordered by fewer cutscene scripts, then fewer NPC instances, then fewer map-local player lines, then fewer task blocks: " + ", ".join(
-        f"{m} (cs {cut_n[m]}, npc {npc_n[m]}, local-player-lines {local_player[m]}, tasks {len(mission_info[m]['tasks'])})"
-        for m in ranked
-    ) + ".")
-    w("- `ExecuteScript(\"cScrCutScene…\")` is the call that starts a cutscene class; `player.ActivateCutSceneMode` / `PLAYER_INCUTSCENE` / `BeginCamera` run inside the cutscene script (section 5 counts).")
-    w("- Mission end calls in scripts are `UpdateMissionStatus`, `CompleteTask`, and `GlobalsCheckMissionStatus` where section 6 lists them. No design applied.")
+    def brief(m):
+        return f"{m} (cutscenes {cut_n[m]}, npc instances {npc_n[m]}, map-local player lines {local_player[m]}, tasks {len(mission_info[m]['tasks'])})"
+    qte_code = [h for h in qte_hits if h[2] == "code"]
+    w(f"- Player-reference lines in story+bonus closures: {len(player_rows)}. Kinds: " + ", ".join(f"{k} {n}" for k, n in kind_counts.most_common()) + ".")
+    w(f"- Cutscene scripts named by story+bonus MAIN.SPJ: {sum(cut_n.values())} on {sum(1 for m in STORY+BONUS if cut_n[m])} maps. Cutscene files on disk: {len(cut_files)}. Files containing `state Skip`: {len(skip_files)}.")
+    w(f"- QTE/Struggle/Melee/Button/CloseCombat/Mash/QuickTime: no code hits. Code hits for the search words: {len(qte_code)} (knife distance, knife equip, `Pumafight` anim state, knife class names). String/comment hits are dialogue or comments (section 5).")
+    w(f"- Maps with a globals NPC or custom-character instance: {sum(1 for m in STORY+BONUS if npc_n[m])} of {len(STORY)+len(BONUS)}.")
+    w("- No `LoadMap` / `NextMap` / `Checkpoint` / `SaveGame` / `LoadGame` call in the script closures (section 7).")
+    w("- Fewest cutscenes, then fewest NPC instances, then fewest map-local player lines: " + "; ".join(brief(m) for m in ranked[:5]) + ".")
+    w("- Other end of that order: " + "; ".join(brief(m) for m in ranked[-5:]) + ".")
+    w("- Cutscenes start with `ExecuteScript(\"cScrCutScene…\")` from trigger scripts. Inside the cutscene script the player calls are `SetPFlags(PLAYER_INCUTSCENE)`, `ActivateCutSceneMode`, `ClearPFlags`, `DeactivateCutSceneMode`, plus camera `BeginCamera` / `EndCamera` (section 5).")
+    w("- Task definitions are `m_pMission.CreateTask` blocks in `MISSIONS\\*.SCR`. Scripts advance them with `UpdateMissionStatus` and `ActivateTriggerOnEnd` / `ActivateTriggerOnFail` (section 6). `CompleteTask` and `GlobalsCheckMissionStatus` counts are in section 3.")
     w("")
 
     w("## Proposed MEMORY facts")

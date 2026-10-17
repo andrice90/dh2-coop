@@ -90,16 +90,32 @@ int __fastcall hk_StartGame(void* self, void*, const char* map, int arg) {
     return r;
 }
 
-void install_start_game_hook() {
+// Main7 cSpServer::StopServer (RVA 0x1b060, thiscall(server) -> 1). spmap/menumap call it before StartGame;
+// it destroys the world. Modules get OnMapUnloading first, while entities are still valid.
+safetyhook::InlineHook* g_stop_hook = nullptr;
+
+int __fastcall hk_StopServer(void* self, void*) {
+    modules::DispatchMapUnloading();
+    return g_stop_hook->unsafe_thiscall<int>(self);
+}
+
+void* checked_main7(uintptr_t rva, const char* label) {
     static const uint8_t kPrologue[5] = {0x55, 0x8b, 0xec, 0x6a, 0xff};
     auto* exe = reinterpret_cast<uint8_t*>(GetModuleHandleA(nullptr));
-    void* target = exe ? exe + 0x1ed80 : nullptr;
+    void* target = exe ? exe + rva : nullptr;
     uint8_t got[5] = {};
     if (!target || !safe_copy(target, got, sizeof got) || std::memcmp(got, kPrologue, sizeof got) != 0) {
-        spdlog::error("cSpServer::StartGame: unexpected bytes at Main7+0x1ed80; not hooked (wrong game build?)");
-        return;
+        spdlog::error("{}: unexpected bytes at Main7+{:#x}; not hooked (wrong game build?)", label, rva);
+        return nullptr;
     }
-    g_start_hook = install_hook("cSpServer::StartGame", target, reinterpret_cast<void*>(&hk_StartGame));
+    return target;
+}
+
+void install_start_game_hook() {
+    g_start_hook = install_hook("cSpServer::StartGame", checked_main7(0x1ed80, "cSpServer::StartGame"),
+                                reinterpret_cast<void*>(&hk_StartGame));
+    g_stop_hook = install_hook("cSpServer::StopServer", checked_main7(0x1b060, "cSpServer::StopServer"),
+                               reinterpret_cast<void*>(&hk_StopServer));
 }
 
 struct LdrStr {

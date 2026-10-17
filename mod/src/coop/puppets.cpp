@@ -13,6 +13,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include "coop/coop.h"
 #include "coop/player_tracker.h"
 #include "core/hook.h"
 #include "core/log.h"
@@ -42,6 +43,7 @@ struct Puppet {
     int weapon_kind = 0;    // net::WeaponKind currently attached
     bool weapon_failed = false;
     uint32_t fire_until = 0;  // ms: fire clip plays until then
+    bool attack_target = false;  // host: registered in the animals' attack-target list (Phase 5)
 };
 
 constexpr uintptr_t kEntWorldBox = 0xC4;  // float[6] min xyz, max xyz — used by cBspTree::UpdateEntity
@@ -96,6 +98,7 @@ float g_y_offset = 0.f;         // [Puppets] YOffset (metres) added to the netwo
 std::string g_crouch_clip = "coveridle";  // [Puppets] CrouchClip: NPC packs have no crouch-walk clip
 uint32_t g_fire_ms = 600;       // [Puppets] FireMs: how long the fire clip plays per shot
 bool g_weapons = true;          // [Puppets] Weapons=1: attach a third-person weapon model to the puppet's hand
+bool g_attack_target = true;    // [Puppets] AttackTarget=1: host animals may pick puppets as attack targets
 void* g_spike_entity = nullptr;
 float g_spike_t = 0.f;
 float g_spike_wait = 0.f;
@@ -266,6 +269,24 @@ void pick_anim(Puppet& p, const std::string& want) {
     spdlog::info("puppets: entity {:#x} anim '{}' -> {}", reinterpret_cast<uintptr_t>(p.entity), want, ok);
 }
 
+// Host only: animals pick the closest entry of cAIHuntAnimalInterface's attack-target list
+// (re/notes/lead-combat.md). The entry must go before the entity does, or GetClosestAttackTarget reads freed memory.
+void register_target(Puppet& p) {
+    if (!g_attack_target || p.attack_target || !p.entity || !NetIsHost()) return;
+    p.attack_target = entity::AddAttackTarget(p.entity);
+    spdlog::info("puppets: attack target add {:#x} -> {} (list {})", reinterpret_cast<uintptr_t>(p.entity),
+                 p.attack_target, entity::AttackTargetCount());
+}
+
+void unregister_target(Puppet& p) {
+    if (!p.attack_target) return;
+    p.attack_target = false;
+    if (!p.entity) return;
+    const bool ok = entity::RemoveAttackTarget(p.entity);
+    spdlog::info("puppets: attack target remove {:#x} -> {} (list {})", reinterpret_cast<uintptr_t>(p.entity), ok,
+                 entity::AttackTargetCount());
+}
+
 void load_settings() {
     const std::string ini = (core::self_dir() / "dh2coop.ini").string();
     char buf[64] = {};
@@ -281,6 +302,7 @@ void load_settings() {
     g_crouch_clip = crouch;
     g_fire_ms = GetPrivateProfileIntA("Puppets", "FireMs", 600, ini.c_str());
     g_weapons = GetPrivateProfileIntA("Puppets", "Weapons", 1, ini.c_str()) != 0;
+    g_attack_target = GetPrivateProfileIntA("Puppets", "AttackTarget", 1, ini.c_str()) != 0;
     GetPrivateProfileStringA("Puppets", "Class", kDefaultClass, buf, sizeof buf, ini.c_str());
     g_class = buf;
     char model[260] = {};
@@ -308,6 +330,7 @@ public:
         // The map change destroyed every entity, including ours: forget pointers, keep the snapshot buffers.
         for (auto& [id, p] : g_puppets) {
             p.entity = nullptr;
+            p.attack_target = false;
             p.spawn_failed = false;
             p.anim.clear();
             p.weapon = nullptr;
@@ -317,6 +340,10 @@ public:
         g_spawn_manager = nullptr;
         g_spike_entity = nullptr;
         g_spike_wait = 0.f;
+    }
+
+    void OnMapUnloading() override {
+        for (auto& [id, p] : g_puppets) unregister_target(p);
     }
 
     void OnFrame(float dt) override {
@@ -344,6 +371,7 @@ public:
                 if (p.entity) capture_rel_box(p);
             }
             if (!p.entity) continue;
+            register_target(p);
             place(p, {s.pos[0], s.pos[1] + g_y_offset, s.pos[2]}, s.yaw);
             sync_weapon(p, s.weaponId);
             place_weapon(p);
@@ -462,6 +490,7 @@ void OnRemoteState(uint8_t playerId, const net::PlayerState& state, uint32_t loc
 void OnRemoteLeft(uint8_t playerId) {
     auto it = g_puppets.find(playerId);
     if (it == g_puppets.end()) return;
+    unregister_target(it->second);
     drop_weapon(it->second);
     if (it->second.entity && g_spawn_manager) {
         const bool ok = entity::RemoveEntity(g_spawn_manager, it->second.entity);
@@ -472,6 +501,7 @@ void OnRemoteLeft(uint8_t playerId) {
 
 void RemoveAll() {
     for (auto& [id, p] : g_puppets) {
+        unregister_target(p);
         drop_weapon(p);
         if (p.entity && g_spawn_manager) entity::RemoveEntity(g_spawn_manager, p.entity);
     }

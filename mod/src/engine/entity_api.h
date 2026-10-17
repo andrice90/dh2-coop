@@ -56,6 +56,11 @@ bool InflictDamage(void* animal, float dmg);
 // cScrAnimal vfunc +0x154 (GameDll FUN_1001e8b0): death presentation. Early-outs once +0x600 is set.
 // Also AddDeadAnimal. Call once when a remote animal dies. Do not call it on the simulating host.
 bool PresentDeath(void* animal);
+// Animal attack-target list on the cAIHuntAnimalInterface singleton (CommonDll7 0x1aea7c). Animals pick the
+// closest entry (cAIHuntBrain_Animal::GetClosestAttackTarget). Remove an entity before it is destroyed.
+bool AddAttackTarget(void* ent);
+bool RemoveAttackTarget(void* ent);
+int AttackTargetCount();  // -1 when the interface is not available
 // Manager vtable calls.
 int AddEntity(void* mgr, void* ent);                             // +0x10, returns index or -1 on fault
 bool RemoveEntity(void* mgr, void* ent);                         // +0x20 (ent, 1)

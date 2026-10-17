@@ -15,6 +15,9 @@ public:
     virtual void OnEngineReady(HMODULE engine) { (void)engine; }
     virtual void OnGameDllLoaded(HMODULE game) { (void)game; }
     virtual void OnMapLoaded(const char* bspName) { (void)bspName; }
+    // Main thread, before cSpServer::StopServer tears the world down (map change, replay, exit).
+    // Entities are still valid here: drop engine-side references to them (attack lists, attachments).
+    virtual void OnMapUnloading() {}
     virtual void OnFrame(float dtSeconds) { (void)dtSeconds; }
     virtual void OnShutdown() {}
 };
@@ -38,6 +41,7 @@ void DispatchInit();
 void DispatchEngineReady(HMODULE engine);
 void DispatchGameDll(HMODULE game);
 void DispatchMapLoaded(const char* bspName);
+void DispatchMapUnloading();
 void DispatchFrame(float dtSeconds);
 void DispatchShutdown();
 }  // namespace modules

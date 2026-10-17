@@ -105,6 +105,7 @@ void DispatchGameDll(HMODULE game) {
 void DispatchMapLoaded(const char* bspName) {
     each("OnMapLoaded", [bspName](Module& m) { m.OnMapLoaded(bspName); });
 }
+void DispatchMapUnloading() { each("OnMapUnloading", [](Module& m) { m.OnMapUnloading(); }); }
 void DispatchFrame(float dtSeconds) {
     each("OnFrame", [dtSeconds](Module& m) { m.OnFrame(dtSeconds); });
 }

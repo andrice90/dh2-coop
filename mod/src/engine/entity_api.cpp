@@ -235,6 +235,42 @@ bool guarded_present_death(void* animal) {
     }
 }
 
+using AttackListFn = void(__thiscall*)(void* iface, void* ent);
+using AttackCountFn = int(__thiscall*)(void* iface);
+AttackListFn g_add_attack = nullptr;
+AttackListFn g_remove_attack = nullptr;
+AttackCountFn g_attack_count = nullptr;
+void** g_animal_iface = nullptr;  // CommonDll7 DAT 0x1aea7c, read by GetClosestAttackTarget
+
+bool bind_attack_list() {
+    if (g_add_attack && g_remove_attack && g_attack_count && g_animal_iface) return true;
+    HMODULE common = GetModuleHandleA("CommonDll7.dll");
+    if (!common) return false;
+    g_add_attack = core::find_export_as<AttackListFn>(common, "?AddAttackTarget@cAIHuntAnimalInterface@@QAEXPAVcObjEntity@@@Z");
+    g_remove_attack =
+        core::find_export_as<AttackListFn>(common, "?RemoveAttackTarget@cAIHuntAnimalInterface@@QAEXPAVcObjEntity@@@Z");
+    g_attack_count = core::find_export_as<AttackCountFn>(common, "?GetAttackTargetCount@cAIHuntAnimalInterface@@QAEHXZ");
+    g_animal_iface = reinterpret_cast<void**>(reinterpret_cast<char*>(common) + 0x1aea7c);
+    return g_add_attack && g_remove_attack && g_attack_count;
+}
+
+bool guarded_attack_list(AttackListFn fn, void* iface, void* ent) {
+    __try {
+        fn(iface, ent);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+int guarded_attack_count(void* iface) {
+    __try {
+        return g_attack_count(iface);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+
 bool guarded_remove(void* mgr, void* ent) {
     __try {
         reinterpret_cast<RemoveFn>(slot(mgr, kMgrRemove))(mgr, ent, 1);
@@ -348,6 +384,24 @@ bool PresentDeath(void* animal) {
     const bool ok = guarded_present_death(animal);
     spdlog::info("entity_api: PresentDeath ent={:#x} ok={}", reinterpret_cast<uintptr_t>(animal), ok);
     return ok;
+}
+
+bool AddAttackTarget(void* ent) {
+    if (!ent || !bind_attack_list()) return false;
+    void* iface = *g_animal_iface;
+    return iface && guarded_attack_list(g_add_attack, iface, ent);
+}
+
+bool RemoveAttackTarget(void* ent) {
+    if (!ent || !bind_attack_list()) return false;
+    void* iface = *g_animal_iface;
+    return iface && guarded_attack_list(g_remove_attack, iface, ent);
+}
+
+int AttackTargetCount() {
+    if (!bind_attack_list()) return -1;
+    void* iface = *g_animal_iface;
+    return iface ? guarded_attack_count(iface) : -1;
 }
 
 int TagIndex(void* ent, const char* name) { return (ent && name && g_tag_index) ? guarded_tag_index(ent, name) : -2; }

@@ -20,14 +20,32 @@ New session? Follow **Resume protocol** at the bottom. This file is the single s
 - The 16:36/16:53 "both crashed" runs were the Grok Build shell's job object killing the launched games, not the mod. `run-coop-local.ps1` now starts games with `Win32_Process.Create`.
 - **Phase 3 (ghost mode): DONE**, user-confirmed 15:30.
 
+### Later results (20:09–20:35)
+- **Client hit (verified 20:11):** `coop_kill 120:20` on the client hits the local mirror → `AnimalHit` → host hp 45→25 → host deer state `Run` (flees).
+- **Built, compiled, NOT runtime-tested yet** (the user's test windows were open, so no install):
+  - **Map flow.**
+    - Main7 `cSpServer::StartGame` (`0x1ed80`) hook dispatches `OnMapLoaded` on same-map replays (no `cBspTree::Load` then).
+    - `StopServer` (`0x1b060`) hook adds a new module callback `OnMapUnloading` (entities still valid).
+    - Host commits `kMapStart` (4); clients follow with `spmap`/`menumap`. A same-name commit means replay.
+    - Animal mirror is gated on same map.
+    - Test: `tools-src\mapflow-test.ps1`.
+  - **Friends UX.** `[Coop] AutoRole=off|host|join`, `JoinAddress`, `JoinRetrySeconds` (retry while offline; `coop_leave` stops it).
+  - **P5a.** On the host, puppets are added to the animals' attack-target list (`cAIHuntAnimalInterface::AddAttackTarget`, CommonDll singleton `0x1aea7c`) and removed before teardown. Animals natively choose the closest target. `[Puppets] AttackTarget=1`. Plan: `re/notes/lead-combat.md`.
+- **Story prep:**
+  - Worker inventory `re/notes/story-inventory.md` (cursor-agent Grok 4.7, 15 min; gitignored: quotes ~2000 script lines; regenerate with `re\scripts\story_inventory.py`).
+  - Lead design `re/notes/lead-story-coop.md`: host decides, everyone runs the scripts; sync trigger-volume activations (`cObjTrigger::OnActivate` CommonDll `0x4dee0`). First story map: MAP3B.
+
 ## In flight
 | Job | Owner | Log | Deliverable |
 |---|---|---|---|
-| (none) | | | |
+| (none) | | | story-inventory finished 20:23, lead-reviewed |
 
 Worker jobs now run through `tools-src\cursorjob.ps1` (Cursor CLI, Grok 4.7 Medium Fast). User decision 2026-10-16: Grok Build performance not good enough; `grokjob.ps1` retired.
 
 ## Next steps (in order)
+0. **Close the open test pair once the user is done**, then `.\mod\build.ps1` and run:
+   - `.\tools-src\mapflow-test.ps1`: replay, switch to HUNTMAP1, menu; the client must follow each.
+   - A P5a check: log `puppets: attack target add` on the host, then make the puma attack (HUNTMAP4 predator after a claim, or MAPARENA).
 1. **User play check (hunt map, two windows `.\run-coop-local.ps1`):**
    - Host kills a deer: does the client see it **fall**? Log: client `animals: present death id=… ok=true`. If it stays standing, try unfreezing the brain after `PresentDeath`.
    - Client walks to the corpse and presses **F** (real key): both windows should show MISSION SUCCESSFUL. Log: client `events: client claim id=…`.

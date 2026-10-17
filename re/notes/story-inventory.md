@@ -35,7 +35,7 @@ Globals class is the class constructed with `new <Class>(globals)` in the map `W
 | MAPARENA | MISSIONMAPARENA.SCR (23) | TRIGGERMAPARENA.SCR (107) | 0 | 10 | cScrMapGlobals | cScrAnimal×11, cScrHunter×1, cScrLavaThrower×1, cScrTriggerArena1×1, cScrTriggerArena2×1, cScrTriggerArena3×1, cScrTriggerArena4×1, cScrTriggerArena5×1, cScrTriggerArena6×1, cScrTriggerArena7×1, cScrTriggerEvent×1, cScrWorldItem×3 | 800 |
 | MAPISLAND | MISSIONMAPISLAND.SCR (24) | TRIGGERMAPISLAND.SCR (155) | 0 | 6 | cScrMapGlobals | cScrAnimal×2, cScrHunter×1, cScrTriggerArena1×1, cScrTriggerArena2×1, cScrTriggerArena3×1, cScrTriggerArena4×1, cScrTriggerArena5×1, cScrTriggerArena6×1, cScrTriggerArena7×1, cScrTriggerEvent×2, cScrWorldItem×2 | 347 |
 | MAPTSAVO | MISSIONMAPTSAVO.SCR (24) | TRIGGERMAPTSAVO.SCR (106) | 0 | 10 | cScrMapGlobals | cScrAnimal×2, cScrHunter×1, cScrTriggerArena1×1, cScrTriggerArena2×1, cScrTriggerArena3×1, cScrTriggerArena4×1, cScrTriggerArena5×1, cScrTriggerArena6×1, cScrTriggerArena7×1, cScrTriggerEvent×1, cScrWorldItem×3 | 376 |
-| MAPMENU | — | — | 0 | 0 | UNVERIFIED (no new Class(globals)) | cScrCamera×1 | 22 |
+| MAPMENU | — | — | 0 | 0 | no globals constructor; instances are on cMapTest | cScrCamera×1 | 22 |
 
 Model and cutscene file names, and other MAIN.SPJ entries that are not mission/trigger/model/cutscene/this map's WORLD.SCR:
 
@@ -126,21 +126,31 @@ Each row is one `cExportKey::ExportFnc` in that function. Codes are the numeric 
 | `LoadEventMat` | `0x5fe0` | `FUN_10005fe0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `LoadRiverMat` | `0x6170` | `FUN_10006170` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `AddHUDItem` | `0x6300` | `FUN_10006300` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
+| `SetPoisonColor` | `0x6720` | `LAB_10006720` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `SetPoisonIntensity` | `0x6700` | `LAB_10006700` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
+| `SetEyeHurtColor` | `0x66e0` | `LAB_100066e0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `SetEyeHurtIntensity` | `0x6710` | `LAB_10006710` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `SetDamageDuration` | `0x6740` | `LAB_10006740` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetFadeOutSndValue` | `0x6750` | `LAB_10006750` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `AddFX` | `0x6770` | `LAB_10006770` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `AddManager` | `0x6790` | `LAB_10006790` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `AutoPlayMusic` | `0x6460` | `LAB_10006460` | `0, 0x7fffffd8, -1, 0x7fffffdd, 0xffffffff` |
+| `SetAutoPlayMusicDelays` | `0x6480` | `LAB_10006480` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `AddAnimal` | `0x8d970` | `FUN_1008d970` | `0, 0x7fffffea, -1, 0x7fffffea, 0x7fffffea, 0x7fffffe7, 0xffffffff` |
+| `AddEvent` | `0x76b0` | `FUN_100076b0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffe7, 0xffffffff` |
 | `AddDanger` | `0x64a0` | `LAB_100064a0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `PrecacheAnimal` | `0x8d220` | `FUN_1008d220` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
+| `SetTime` | `0x7040` | `FUN_10007040` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `EquipAIWith` | `0x7180` | `FUN_10007180` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffe7, 0xffffffff` |
 | `AiCanFindItem` | `0x7340` | `FUN_10007340` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffe7, 0xffffffff` |
 | `AddAIToBeProtected` | `0x77c0` | `FUN_100077c0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `RemoveAIToBeProtected` | `0x78f0` | `FUN_100078f0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `FindEntScrObject` | `0x6f00` | `FUN_10006f00` | `0, 0x7fffffea, -1, 0x7fffffe7, 0xffffffff` |
 | `SetMaxAttackerNo` | `0x7a20` | `LAB_10007a20` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
+| `SetDiffProps` | `0xa530` | `FUN_1000a530` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
+| `SetDamageBlurParams` | `0x7e40` | `LAB_10007e40` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `SetWaterFog` | `0x80b0` | `FUN_100080b0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
+| `UpdateMissionStatus` | `0x8390` | `FUN_10008390` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `ActivateTrigger` | `0x84a0` | `FUN_100084a0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `DeactivateTrigger` | `0x85c0` | `FUN_100085c0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `ActivateAIHuntAreaPoint` | `0x86e0` | `FUN_100086e0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
@@ -149,16 +159,32 @@ Each row is one `cExportKey::ExportFnc` in that function. Codes are the numeric 
 | `GameIsInCutScene` | `0x9040` | `FUN_10009040` | `0, 0x7fffffdd, -1, -1` |
 | `SetCharacterModel` | `0x9190` | `FUN_10009190` | `0, 0x7fffffdd, -1, 0x7fffffea, 0xffffffff` |
 | `SetBreathFxVisible` | `0x91a0` | `LAB_100091a0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
+| `ActivateBulletWarning` | `0x93a0` | `LAB_100093a0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffe7, 0xffffffff` |
+| `SetColorLightDirDown` | `0x9500` | `FUN_10009500` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
+| `SetColorLightDirUp` | `0x9610` | `FUN_10009610` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
+| `SetAmbientalColor` | `0x9810` | `FUN_10009810` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
+| `SetModifiedDirLight` | `0x9730` | `FUN_10009730` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `SetCoeficientLightUp` | `0x98d0` | `LAB_100098d0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetCoeficientLightDown` | `0x98b0` | `LAB_100098b0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `GlobalsCheckMissionStatus` | `0x98f0` | `FUN_100098f0` | `0, 0x7fffffd8, -1, -1` |
+| `GetDistFromClosestStimulusTo` | `0x8cc0` | `FUN_10008cc0` | `0, 0x7fffffe9, -1, 0x7fffffe7, 0xffffffff` |
+| `GetClosestMatchingEntity` | `0x8e20` | `FUN_10008e20` | `0, 0x7fffffe7, -1, 0x7fffffe7, 0x7fffffe7, 0x7fffffe7, 0xffffffff` |
+| `SetDamageBloomFadeInOut` | `0x7e20` | `LAB_10007e20` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `SetDamageBloom` | `0xaf90` | `FUN_1000af90` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `SetDeathBloom` | `0xb130` | `FUN_1000b130` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `SetPoisonBloom` | `0xb470` | `FUN_1000b470` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `SetLightBloom` | `0xb2d0` | `FUN_1000b2d0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `SetShadowBloom` | `0xb610` | `FUN_1000b610` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `EnableHudItem` | `0x64c0` | `FUN_100064c0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `DisableHudItem` | `0x65d0` | `FUN_100065d0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
+| `SetShootingAccuracy` | `0x9010` | `LAB_10009010` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `SetMinSoftlock` | `0x9060` | `LAB_10009060` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `CompleteTask` | `0x9080` | `FUN_10009080` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
+| `GetDistBetween2Ais` | `0x9200` | `FUN_10009200` | `0, 0x7fffffe9, -1, 0x7fffffe7, 0x7fffffe7, 0xffffffff` |
+| `AddPlayerStepSoundForMaterial` | `0xb920` | `FUN_1000b920` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `GetTaskStatus` | `0x93d0` | `FUN_100093d0` | `0, 0x7fffffea, -1, 0x7fffffea, 0xffffffff` |
 
-Count: 35 `ExportFnc` entries in `FUN_1000ba30`.
+Count: 61 `ExportFnc` entries in `re/notes/lead-natives.c` `FUN_1000ba30`. The same function in `re/notes/story-natives-gamedll.c` has 61 entries; name lists match: True.
 
 ### 2b. Class-method dumps
 
@@ -176,19 +202,19 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 
 | Binary | Registrar | RVA | Signature class | Parent string in export block | ExportFnc count | static/method |
 |---|---|---|---|---|---:|---|
-| GameDll7 | `FUN_1000ba30` | `0xba30` | `—` | `cBaseClass` | 35 | static |
-| GameDll7 | `FUN_1001ec10` | `0x1ec10` | `—` | `cScrCharacterEx` | 24 | method |
+| GameDll7 | `FUN_1000ba30` | `0xba30` | `—` | `cBaseClass` | 61 | static |
+| GameDll7 | `FUN_1001ec10` | `0x1ec10` | `—` | `cScrCharacterEx` | 32 | method |
 | GameDll7 | `FUN_10022a30` | `0x22a30` | `—` | `cScrEntity` | 3 | method |
-| GameDll7 | `FUN_100244f0` | `0x244f0` | `—` | `cScrItemEx` | 5 | method |
+| GameDll7 | `FUN_100244f0` | `0x244f0` | `—` | `cScrItemEx` | 6 | method |
 | GameDll7 | `FUN_10029eb0` | `0x29eb0` | `—` | `cMOD_ScrWeapon` | 3 | method |
-| GameDll7 | `FUN_10039830` | `0x39830` | `—` | `cScrItemEx` | 17 | method |
+| GameDll7 | `FUN_10039830` | `0x39830` | `—` | `cScrItemEx` | 18 | method |
 | GameDll7 | `FUN_10043ef0` | `0x43ef0` | `—` | `cScrEntity` | 1 | method |
 | GameDll7 | `FUN_10044aa0` | `0x44aa0` | `—` | `cScrCharacterEx` | 1 | method |
 | GameDll7 | `FUN_10044c20` | `0x44c20` | `—` | `—` | 3 | method |
-| GameDll7 | `FUN_10053e80` | `0x53e80` | `—` | `cScrPlayer` | 38 | method |
-| GameDll7 | `FUN_10063510` | `0x63510` | `—` | `cScrHunter` | 28 | method |
-| GameDll7 | `FUN_10067670` | `0x67670` | `—` | `cScrHumanEx` | 7 | method |
-| GameDll7 | `FUN_1006ba10` | `0x6ba10` | `—` | `cScrEntity` | 22 | method |
+| GameDll7 | `FUN_10053e80` | `0x53e80` | `—` | `cScrPlayer` | 46 | method |
+| GameDll7 | `FUN_10063510` | `0x63510` | `—` | `cScrHunter` | 37 | method |
+| GameDll7 | `FUN_10067670` | `0x67670` | `—` | `cScrHumanEx` | 9 | method |
+| GameDll7 | `FUN_1006ba10` | `0x6ba10` | `—` | `cScrEntity` | 23 | method |
 | GameDll7 | `FUN_100746b0` | `0x746b0` | `—` | `cScrEntity` | 3 | method |
 | GameDll7 | `FUN_100749e0` | `0x749e0` | `—` | `cScrBirds` | 2 | method |
 | GameDll7 | `FUN_1007a9d0` | `0x7a9d0` | `—` | `cScrEntity` | 2 | method |
@@ -196,28 +222,28 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | GameDll7 | `FUN_10081810` | `0x81810` | `—` | `cScrEntity` | 5 | method |
 | GameDll7 | `FUN_10089510` | `0x89510` | `—` | `cScrItemEx` | 3 | method |
 | GameDll7 | `FUN_1008ee40` | `0x8ee40` | `—` | `cBaseClass` | 5 | method |
-| GameDll7 | `FUN_10095bd0` | `0x95bd0` | `—` | `cScrEntity` | 20 | method |
-| GameDll7 | `FUN_100ad9e0` | `0xad9e0` | `—` | `cBaseClass` | 6 | method |
+| GameDll7 | `FUN_10095bd0` | `0x95bd0` | `—` | `cScrEntity` | 23 | method |
+| GameDll7 | `FUN_100ad9e0` | `0xad9e0` | `—` | `cBaseClass` | 8 | method |
 | GameDll7 | `FUN_100c2d40` | `0xc2d40` | `—` | `cBaseClass` | 39 | static |
-| GameDll7 | `FUN_100e37c0` | `0xe37c0` | `—` | `cHUDItem` | 6 | static |
+| GameDll7 | `FUN_100e37c0` | `0xe37c0` | `—` | `cHUDItem` | 8 | static |
 | GameDll7 | `FUN_100e9fe0` | `0xe9fe0` | `—` | `cBaseClass` | 10 | static |
-| CommonDll7 | `cScrHuman::ScrExport` | `0xeae0` | `cScrHuman` | `cScrCharacter` | 2 | method |
-| CommonDll7 | `cScrCharacter::ScrExport` | `0x10700` | `cScrCharacter` | `cScrEntity` | 24 | method |
-| CommonDll7 | `cScrCharacterEx::ScrExport` | `0x293c0` | `cScrCharacterEx` | `cScrEntity` | 22 | method |
-| CommonDll7 | `cScrHumanEx::ScrExport` | `0x298a0` | `cScrHumanEx` | `cScrCharacterEx` | 5 | method |
+| CommonDll7 | `cScrHuman::ScrExport` | `0xeae0` | `cScrHuman` | `cScrCharacter` | 3 | method |
+| CommonDll7 | `cScrCharacter::ScrExport` | `0x10700` | `cScrCharacter` | `cScrEntity` | 26 | method |
+| CommonDll7 | `cScrCharacterEx::ScrExport` | `0x293c0` | `cScrCharacterEx` | `cScrEntity` | 23 | method |
+| CommonDll7 | `cScrHumanEx::ScrExport` | `0x298a0` | `cScrHumanEx` | `cScrCharacterEx` | 6 | method |
 | CommonDll7 | `cScrItem::ScrExport` | `0x31570` | `cScrItem` | `cScrEntity` | 1 | method |
 | CommonDll7 | `cScrItemEx::ScrExport` | `0x33e20` | `cScrItemEx` | `cScrEntity` | 1 | method |
-| CommonDll7 | `cScrEntity::ScrExport` | `0x41690` | `cScrEntity` | `cBaseClass` | 55 | method,static |
-| CommonDll7 | `cScrTrain::ScrExport` | `0x4c3b0` | `cScrTrain` | `cScrEntity` | 5 | method |
+| CommonDll7 | `cScrEntity::ScrExport` | `0x41690` | `cScrEntity` | `cBaseClass` | 61 | method,static |
+| CommonDll7 | `cScrTrain::ScrExport` | `0x4c3b0` | `cScrTrain` | `cScrEntity` | 8 | method |
 | CommonDll7 | `cScrRotating::ScrExport` | `0x4c7b0` | `cScrRotating` | `cScrEntity` | 4 | method |
 | CommonDll7 | `cScrWayPoint::ScrExport` | `0x60880` | `cScrWayPoint` | `cScrEntity` | 2 | method |
-| CommonDll7 | `FUN_100663a0` | `0x663a0` | `—` | `cScrItemEx` | 6 | method |
-| CommonDll7 | `cScrAIHunt::ScrExport` | `0xa1080` | `cScrAIHunt` | `cScrEntity` | 2 | static |
-| CommonDll7 | `FUN_100dfd20` | `0xdfd20` | `—` | `cScrContainer` | 35 | method,static |
+| CommonDll7 | `FUN_100663a0` | `0x663a0` | `—` | `cScrItemEx` | 7 | method |
+| CommonDll7 | `cScrAIHunt::ScrExport` | `0xa1080` | `cScrAIHunt` | `cScrEntity` | 4 | static |
+| CommonDll7 | `FUN_100dfd20` | `0xdfd20` | `—` | `cScrContainer` | 39 | method,static |
 | CommonDll7 | `cGuiEvent::ScrExport` | `0xe7610` | `cGuiEvent` | `cBaseClass` | 8 | method,static |
-| CommonDll7 | `cGuiSkinBase::ScrExport` | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | 37 | method |
-| CommonDll7 | `FUN_100f74c0` | `0xf74c0` | `—` | `cBaseClass` | 1 | static |
-| CommonDll7 | `cGuiSaveMan::ScrExport` | `0x102270` | `cGuiSaveMan` | `cScrContainer` | 30 | method |
+| CommonDll7 | `cGuiSkinBase::ScrExport` | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | 47 | method |
+| CommonDll7 | `FUN_100f74c0` | `0xf74c0` | `—` | `cBaseClass` | 4 | static |
+| CommonDll7 | `cGuiSaveMan::ScrExport` | `0x102270` | `cGuiSaveMan` | `cScrContainer` | 31 | method |
 
 ### 2c. Method and extra-registrar natives
 
@@ -225,8 +251,11 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 
 | Name | Binary | Registrar RVA | Signature class | Parent string | Kind | Impl RVA | Impl symbol | Codes |
 |---|---|---|---|---|---|---|---|---|
+| `AddHitBone` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x18b10` | `LAB_10018b10` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffea, 0x7fffffea, 0xffffffff` |
+| `AddHurtProbab` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x18b20` | `LAB_10018b20` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `SetHitSphereRadius` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16160` | `LAB_10016160` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetTrackSize` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x18b30` | `LAB_10018b30` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
+| `SetHitImpulse` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x18b40` | `LAB_10018b40` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `AddSound` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x1dff0` | `FUN_1001dff0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffea, 0xffffffff` |
 | `SetModelScale` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x15ec0` | `FUN_10015ec0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetHealth` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x15ff0` | `FUN_10015ff0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
@@ -234,21 +263,26 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `IsProtected` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16180` | `LAB_10016180` | `0, 0x7fffffd8, -1, -1` |
 | `MoveToPos` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x161a0` | `FUN_100161a0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `CustomProps` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16300` | `FUN_10016300` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
+| `AddStep` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x1d600` | `FUN_1001d600` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `SetTranqHurt` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16450` | `LAB_10016450` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetTranqTime` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16470` | `LAB_10016470` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetTimeBeforeLimpOnTranq` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16490` | `LAB_10016490` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetHitSound` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x165c0` | `FUN_100165c0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `CanBeRespawned` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x164b0` | `FUN_100164b0` | `0, 0x7fffffdd, -1, -1` |
+| `SetPhysDimensionsXZ` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x166e0` | `FUN_100166e0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `PlaySoundEffect` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16800` | `FUN_10016800` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `SetName` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x15c70` | `FUN_10015c70` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
+| `SetScrClaimCallback` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16930` | `FUN_10016930` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffe7, 0xffffffff` |
 | `SetCanBeClaimed` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16910` | `LAB_10016910` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `Kill` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16a40` | `FUN_10016a40` | `0, 0x7fffffd8, -1, -1` |
+| `DontPlayHurtOrImpulseOnHurt` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16b50` | `LAB_10016b50` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `SetTimeBeforeGetUp` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16bf0` | `LAB_10016bf0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetTimeBeforeFade` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16bd0` | `LAB_10016bd0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetKickMultiplier` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16c00` | `LAB_10016c00` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `LoadSoundOnJumpSurprise` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16c10` | `FUN_10016c10` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `GetDistFromClosestStimulus` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16e30` | `FUN_10016e30` | `0, 0x7fffffe9, -1, -1` |
 | `MakeBoss` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x16d20` | `FUN_10016d20` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffe7, 0xffffffff` |
+| `SetMinMaxDelaysBetweenHurts` | GameDll7 | `0x1ec10` | `—` | `cScrCharacterEx` | method | `0x17000` | `LAB_10017000` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `SetCountDownTime` | GameDll7 | `0x22a30` | `—` | `cScrEntity` | method | `0x22410` | `LAB_10022410` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `StartCountDown` | GameDll7 | `0x22a30` | `—` | `cScrEntity` | method | `0x22430` | `LAB_10022430` | `0, 0x7fffffd8, -1, -1` |
 | `RestoreLight` | GameDll7 | `0x22a30` | `—` | `cScrEntity` | method | `0x22450` | `LAB_10022450` | `0, 0x7fffffd8, -1, -1` |
@@ -256,6 +290,7 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `CompleteTask` | GameDll7 | `0x244f0` | `—` | `cScrItemEx` | method | `0x22dc0` | `LAB_10022dc0` | `0, 0x7fffffd8, -1, -1` |
 | `UncompleteTask` | GameDll7 | `0x244f0` | `—` | `cScrItemEx` | method | `0x22dd0` | `LAB_10022dd0` | `0, 0x7fffffd8, -1, -1` |
 | `BSMGoToState` | GameDll7 | `0x244f0` | `—` | `cScrItemEx` | method | `0x240f0` | `FUN_100240f0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
+| `SetStormFXOffset` | GameDll7 | `0x244f0` | `—` | `cScrItemEx` | method | `0x24200` | `LAB_10024200` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `MakeVisible` | GameDll7 | `0x244f0` | `—` | `cScrItemEx` | method | `0x24250` | `LAB_10024250` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `GetArmStatus` | GameDll7 | `0x29eb0` | `—` | `cMOD_ScrWeapon` | method | `0x29c10` | `LAB_10029c10` | `0, 0x7fffffe9, -1, -1` |
 | `ForceFeedBack` | GameDll7 | `0x29eb0` | `—` | `cMOD_ScrWeapon` | method | `0x65ec0` | `LAB_10065ec0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
@@ -276,6 +311,7 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `GetZoomFromBkp` | GameDll7 | `0x39830` | `—` | `cScrItemEx` | method | `0x374f0` | `LAB_100374f0` | `0, 0x7fffffe9, -1, -1` |
 | `BeginAim` | GameDll7 | `0x39830` | `—` | `cScrItemEx` | method | `0x37240` | `FUN_10037240` | `0, 0x7fffffd8, -1, -1` |
 | `ExitAim` | GameDll7 | `0x39830` | `—` | `cScrItemEx` | method | `0x37360` | `FUN_10037360` | `0, 0x7fffffd8, -1, -1` |
+| `SetCamOffsetsInAim` | GameDll7 | `0x39830` | `—` | `cScrItemEx` | method | `0x37480` | `LAB_10037480` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `CanFire` | GameDll7 | `0x39830` | `—` | `cScrItemEx` | method | `0x36460` | `LAB_10036460` | `0, 0x7fffffdd, -1, -1` |
 | `MoveToPos` | GameDll7 | `0x43ef0` | `—` | `cScrEntity` | method | `0x3e8f0` | `FUN_1003e8f0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `MoveToPos` | GameDll7 | `0x44aa0` | `—` | `cScrCharacterEx` | method | `0x18b10` | `LAB_10018b10` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
@@ -284,12 +320,18 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `Deactivate` | GameDll7 | `0x44c20` | `—` | `—` | method | `0x416e0` | `LAB_100416e0` | `0, 0x7fffffd8, -1, -1` |
 | `ActivateCutSceneMode` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4a6b0` | `FUN_1004a6b0` | `0, 0x7fffffd8, -1, -1` |
 | `DeactivateCutSceneMode` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4a7e0` | `FUN_1004a7e0` | `0, 0x7fffffd8, -1, -1` |
+| `SetHealthDamageFromPoison` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4a900` | `LAB_1004a900` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `SetRecoverSpeed` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4a920` | `LAB_1004a920` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetMaxSpringTime` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4a930` | `LAB_1004a930` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetMinStaminaForRunning` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4a940` | `LAB_1004a940` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetChanceToGetDamaged` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4a960` | `LAB_1004a960` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetTimeSelfRecoverDisabled` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4a950` | `LAB_1004a950` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetMinHurtForDamage` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4a970` | `LAB_1004a970` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
+| `SetStaminaRecoverSpeedOnIdle` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4a980` | `LAB_1004a980` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
+| `SetStaminaRecoverSpeedOnWalk` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4a990` | `LAB_1004a990` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
+| `SetBreathSoundFadeOutSpeedOnIdle` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4a9a0` | `LAB_1004a9a0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
+| `SetBreathSoundFadeOutSpeedOnWalk` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4a9b0` | `LAB_1004a9b0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
+| `SetBreathSoundFadeOutSpeedOnRunning` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4a9c0` | `LAB_1004a9c0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `PlaySound` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4d790` | `LAB_1004d790` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `PlayMessage` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4a9d0` | `FUN_1004a9d0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `PlayDialog` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x65ec0` | `LAB_10065ec0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
@@ -312,7 +354,9 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `SetIceCrackTime` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4b950` | `LAB_1004b950` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetIceFallTime` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4b970` | `LAB_1004b970` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetIceSpeedFallForPlayer` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4b990` | `LAB_1004b990` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
+| `SetIceModelsOffsets` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4b9b0` | `LAB_1004b9b0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `SetIceWalkRunMultiplier` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4ba10` | `LAB_1004ba10` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
+| `SetStealthLevels` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4bb70` | `LAB_1004bb70` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `GetStealthLevel` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4bbb0` | `LAB_1004bbb0` | `0, 0x7fffffe9, -1, -1` |
 | `ShowInfo` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4bbe0` | `FUN_1004bbe0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `DisableStimulus` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4bd00` | `LAB_1004bd00` | `0, 0x7fffffd8, -1, -1` |
@@ -322,13 +366,16 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `SetMaxKnifeDistance` | GameDll7 | `0x53e80` | `—` | `cScrPlayer` | method | `0x4c090` | `LAB_1004c090` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetSoundShader` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x60ca0` | `FUN_10060ca0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffe7, 0xffffffff` |
 | `SetAttribute` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59160` | `FUN_10059160` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0xffffffff` |
+| `ConfigTaskPriority` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59280` | `FUN_10059280` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `ConfigTaskCmd` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x593b0` | `FUN_100593b0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffea, 0xffffffff` |
+| `ConfigTaskExtraCmd` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x594d0` | `FUN_100594d0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffe7, 0x7fffffea, 0xffffffff` |
 | `SetHelloDistance` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59600` | `LAB_10059600` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetFollowDistance` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59620` | `LAB_10059620` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetSafeDistance` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59640` | `LAB_10059640` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetCoverPointSearchDist` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59c40` | `LAB_10059c40` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `AllowTask` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59770` | `FUN_10059770` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `DenyTask` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59890` | `FUN_10059890` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
+| `ActivateWeaponIn` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x599f0` | `FUN_100599f0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `DeactivateWeaponIn` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59b20` | `FUN_10059b20` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `SetAIType` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x60db0` | `FUN_10060db0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffe7, 0xffffffff` |
 | `SetFavoriteWeapon` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x599d0` | `LAB_100599d0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
@@ -336,18 +383,26 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `AddToCoverPointList` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59c60` | `FUN_10059c60` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `RemoveFromCoverPointList` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59d80` | `FUN_10059d80` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `SetFreezePhysics` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59ec0` | `FUN_10059ec0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
+| `SetRightEyeRelPos` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59ff0` | `FUN_10059ff0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `SetLeftEyeRelPos` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x5a120` | `FUN_1005a120` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `SetRightEyeRelAngles` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x5a250` | `LAB_1005a250` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `SetLeftEyeRelAngles` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x5a280` | `LAB_1005a280` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `StopAllTask` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59660` | `FUN_10059660` | `0, 0x7fffffd8, -1, -1` |
 | `SetInstantActivate` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x5a2b0` | `LAB_1005a2b0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `GetInstantActivate` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x5a2d0` | `LAB_1005a2d0` | `0, 0x7fffffea, -1, -1` |
+| `SetIconCoords` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59000` | `LAB_10059000` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `SetNPCName` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x59050` | `FUN_10059050` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `EnableStimulus` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x5a400` | `LAB_1005a400` | `0, 0x7fffffd8, -1, -1` |
 | `DisableStimulus` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x4bd00` | `LAB_1004bd00` | `0, 0x7fffffd8, -1, -1` |
 | `SetPhysNPC` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x5a730` | `LAB_1005a730` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `SetCanBeHited` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x5a760` | `LAB_1005a760` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
+| `AddIgnoredStimulus` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x5a790` | `FUN_1005a790` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffea, 0xffffffff` |
 | `RemoveIgnoredStimulus` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x5a8b0` | `FUN_1005a8b0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `EnableBlocker` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x5a9d0` | `FUN_1005a9d0` | `0, 0x7fffffd8, -1, -1` |
 | `DisableBlocker` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x5aad0` | `FUN_1005aad0` | `0, 0x7fffffd8, -1, -1` |
 | `PlaySoundOnTime` | GameDll7 | `0x63510` | `—` | `cScrHunter` | method | `0x5a610` | `FUN_1005a610` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0xffffffff` |
+| `SetHumanSize` | GameDll7 | `0x67670` | `—` | `cScrHumanEx` | method | `0x18b10` | `LAB_10018b10` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `AddStep` | GameDll7 | `0x67670` | `—` | `cScrHumanEx` | method | `0x66e60` | `FUN_10066e60` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `SetPFlags` | GameDll7 | `0x67670` | `—` | `cScrHumanEx` | method | `0x67260` | `LAB_10067260` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `ClearPFlags` | GameDll7 | `0x67670` | `—` | `cScrHumanEx` | method | `0x67250` | `LAB_10067250` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `IsCrouch` | GameDll7 | `0x67670` | `—` | `cScrHumanEx` | method | `0x66fe0` | `LAB_10066fe0` | `0, 0x7fffffdd, -1, -1` |
@@ -377,6 +432,7 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `Activate` | GameDll7 | `0x6ba10` | `—` | `cScrEntity` | method | `0x6aa90` | `FUN_1006aa90` | `0, 0x7fffffd8, -1, -1` |
 | `Deactivate` | GameDll7 | `0x6ba10` | `—` | `cScrEntity` | method | `0x6ab90` | `FUN_1006ab90` | `0, 0x7fffffd8, -1, -1` |
 | `WaitTask` | GameDll7 | `0x6ba10` | `—` | `cScrEntity` | method | `0x6ac90` | `FUN_1006ac90` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
+| `UpdateTaskSoundParam` | GameDll7 | `0x6ba10` | `—` | `cScrEntity` | method | `0x6ada0` | `FUN_1006ada0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `Destroy` | GameDll7 | `0x746b0` | `—` | `cScrEntity` | method | `0x70f40` | `FUN_10070f40` | `0, 0x7fffffd8, -1, -1` |
 | `SetScale` | GameDll7 | `0x746b0` | `—` | `cScrEntity` | method | `0x71050` | `FUN_10071050` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `PlaySound` | GameDll7 | `0x746b0` | `—` | `cScrEntity` | method | `0x71180` | `FUN_10071180` | `0, 0x7fffffd8, -1, -1` |
@@ -404,6 +460,8 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `SetTaskId` | GameDll7 | `0x95bd0` | `—` | `cScrEntity` | method | `0x92700` | `LAB_10092700` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `SetTaskPrimary` | GameDll7 | `0x95bd0` | `—` | `cScrEntity` | method | `0x92720` | `LAB_10092720` | `0, 0x7fffffd8, -1, -1` |
 | `SetTaskTimeLimit` | GameDll7 | `0x95bd0` | `—` | `cScrEntity` | method | `0x92760` | `LAB_10092760` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
+| `SetTaskAnimalToShoot` | GameDll7 | `0x95bd0` | `—` | `cScrEntity` | method | `0x92780` | `LAB_10092780` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
+| `SetTaskObjToFind` | GameDll7 | `0x95bd0` | `—` | `cScrEntity` | method | `0x927c0` | `LAB_100927c0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `InsertSecondaryTask` | GameDll7 | `0x95bd0` | `—` | `cScrEntity` | method | — | `—` | `0, 0x7fffffd8, -1, -1` |
 | `ActivateTriggerOnEnd` | GameDll7 | `0x95bd0` | `—` | `cScrEntity` | method | `0x927f0` | `FUN_100927f0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `ActivateTriggerOnFail` | GameDll7 | `0x95bd0` | `—` | `cScrEntity` | method | `0x92910` | `FUN_10092910` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
@@ -415,10 +473,13 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `SetEndMessageForTask` | GameDll7 | `0x95bd0` | `—` | `cScrEntity` | method | `0x92f60` | `LAB_10092f60` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `SetTargetLimit` | GameDll7 | `0x95bd0` | `—` | `cScrEntity` | method | `0x93090` | `FUN_10093090` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `MissionHasTargetLimit` | GameDll7 | `0x95bd0` | `—` | `cScrEntity` | method | `0x931a0` | `LAB_100931a0` | `0, 0x7fffffd8, -1, 0x7fffffdd, 0xffffffff` |
+| `SetMissionOnFleePointReachedAction` | GameDll7 | `0x95bd0` | `—` | `cScrEntity` | method | `0x931c0` | `LAB_100931c0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `SetTaskAvailableTarget` | GameDll7 | `0x95bd0` | `—` | `cScrEntity` | method | `0x931e0` | `LAB_100931e0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `IsBonusTask` | GameDll7 | `0x95bd0` | `—` | `cScrEntity` | method | `0x93200` | `LAB_10093200` | `0, 0x7fffffd8, -1, -1` |
 | `SetCompleteCondition` | GameDll7 | `0x95bd0` | `—` | `cScrEntity` | method | `0x93210` | `LAB_10093210` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `Add_Task` | GameDll7 | `0xad9e0` | `—` | `cBaseClass` | method | `0xac630` | `FUN_100ac630` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffea, 0xffffffff` |
+| `Add_Senses` | GameDll7 | `0xad9e0` | `—` | `cBaseClass` | method | `0xaa7e0` | `FUN_100aa7e0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `ConfigTaskPriority` | GameDll7 | `0xad9e0` | `—` | `cBaseClass` | method | `0xa4d00` | `FUN_100a4d00` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `ConfigTaskCmd` | GameDll7 | `0xad9e0` | `—` | `cBaseClass` | method | `0xa4e20` | `FUN_100a4e20` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffea, 0xffffffff` |
 | `SetHelloDistance` | GameDll7 | `0xad9e0` | `—` | `cBaseClass` | method | `0xa4f40` | `LAB_100a4f40` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `SetFollowDistance` | GameDll7 | `0xad9e0` | `—` | `cBaseClass` | method | `0xa4f50` | `LAB_100a4f50` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
@@ -464,7 +525,9 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `SetCTBMultiplier` | GameDll7 | `0xc2d40` | `—` | `cBaseClass` | static | `0xbf9f0` | `FUN_100bf9f0` | `0, 0x7fffffd8, -1, -1` |
 | `SetViewDistance` | GameDll7 | `0xc2d40` | `—` | `cBaseClass` | static | `0xbfb10` | `FUN_100bfb10` | `0, 0x7fffffd8, -1, -1` |
 | `AddLensFlare` | GameDll7 | `0xe37c0` | `—` | `cHUDItem` | static | `0xdd7f0` | `FUN_100dd7f0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
+| `SetMap` | GameDll7 | `0xe37c0` | `—` | `cHUDItem` | static | `0xdd960` | `LAB_100dd960` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `SetSize` | GameDll7 | `0xe37c0` | `—` | `cHUDItem` | static | `0xcb020` | `LAB_100cb020` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `SetColor` | GameDll7 | `0xe37c0` | `—` | `cHUDItem` | static | `0xcaf90` | `LAB_100caf90` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `SetShader` | GameDll7 | `0xe37c0` | `—` | `cHUDItem` | static | `0xcb050` | `FUN_100cb050` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `SetFlags` | GameDll7 | `0xe37c0` | `—` | `cHUDItem` | static | `0xcb160` | `LAB_100cb160` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `SetDotFactor` | GameDll7 | `0xe37c0` | `—` | `cHUDItem` | static | `0xcb170` | `LAB_100cb170` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
@@ -479,9 +542,11 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `GetBonusName` | GameDll7 | `0xe9fe0` | `—` | `cBaseClass` | static | `0xe93d0` | `FUN_100e93d0` | `0, 0x7fffffe7, -1, 0x7fffffea, 0xffffffff` |
 | `LoadGame` | GameDll7 | `0xe9fe0` | `—` | `cBaseClass` | static | — | `pcVar3` | `0, 0x7fffffd8, -1, -1` |
 | `IsDiscInserted` | GameDll7 | `0xe9fe0` | `—` | `cBaseClass` | static | `0xe7e90` | `FUN_100e7e90` | `0, 0x7fffffdd, -1, -1` |
+| `SetHumanSize` | CommonDll7 | `0xeae0` | `cScrHuman` | `cScrCharacter` | method | `0xe040` | `LAB_1000e040` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `IsCrouched` | CommonDll7 | `0xeae0` | `cScrHuman` | `cScrCharacter` | method | `0xe070` | `LAB_1000e070` | `0, 0x7fffffdd, -1, -1` |
 | `SetCrouched` | CommonDll7 | `0xeae0` | `cScrHuman` | `cScrCharacter` | method | `0xe0a0` | `LAB_1000e0a0` | `0, 0x7fffffd8, -1, 0x7fffffdd, 0xffffffff` |
 | `SetLOD` | CommonDll7 | `0x10700` | `cScrCharacter` | `cScrEntity` | method | — | `SetLOD` | `0, 0x7fffffd8, -1, 0x7fffffdd, 0xffffffff` |
+| `Activate` | CommonDll7 | `0x10700` | `cScrCharacter` | `cScrEntity` | method | — | `Activate` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `Deactivate` | CommonDll7 | `0x10700` | `cScrCharacter` | `cScrEntity` | method | — | `Deactivate` | `0, 0x7fffffd8, -1, -1` |
 | `StartTask` | CommonDll7 | `0x10700` | `cScrCharacter` | `cScrEntity` | method | `0xe0d0` | `LAB_1000e0d0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `StopTask` | CommonDll7 | `0x10700` | `cScrCharacter` | `cScrEntity` | method | `0xe100` | `LAB_1000e100` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
@@ -501,6 +566,7 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `ItemGive` | CommonDll7 | `0x10700` | `cScrCharacter` | `cScrEntity` | method | `0xe050` | `LAB_1000e050` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `ItemActivate` | CommonDll7 | `0x10700` | `cScrCharacter` | `cScrEntity` | method | `0xe0b0` | `LAB_1000e0b0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `LockInput` | CommonDll7 | `0x10700` | `cScrCharacter` | `cScrEntity` | method | `0xe0e0` | `LAB_1000e0e0` | `0, 0x7fffffd8, -1, 0x7fffffdd, 0xffffffff` |
+| `SetStaticBound` | CommonDll7 | `0x10700` | `cScrCharacter` | `cScrEntity` | method | `0xe080` | `LAB_1000e080` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `SetCharacterFlags` | CommonDll7 | `0x10700` | `cScrCharacter` | `cScrEntity` | method | `0xe110` | `LAB_1000e110` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `ResetCharacterFlags` | CommonDll7 | `0x10700` | `cScrCharacter` | `cScrEntity` | method | `0xe140` | `LAB_1000e140` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `TestCharacterFlags` | CommonDll7 | `0x10700` | `cScrCharacter` | `cScrEntity` | method | `0xdfe0` | `LAB_1000dfe0` | `0, 0x7fffffdd, -1, 0x7fffffea, 0xffffffff` |
@@ -526,7 +592,9 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `TestCharacterFlags` | CommonDll7 | `0x293c0` | `cScrCharacterEx` | `cScrEntity` | method | `0xe110` | `LAB_1000e110` | `0, 0x7fffffdd, -1, 0x7fffffea, 0xffffffff` |
 | `BrainFreeze` | CommonDll7 | `0x293c0` | `cScrCharacterEx` | `cScrEntity` | method | `0xe140` | `LAB_1000e140` | `0, 0x7fffffd8, -1, 0x7fffffdd, 0xffffffff` |
 | `GetBrainParam` | CommonDll7 | `0x293c0` | `cScrCharacterEx` | `cScrEntity` | method | `0xdfe0` | `LAB_1000dfe0` | `0, 0x7fffffe7, -1, 0x7fffffe7, 0xffffffff` |
+| `AddSA` | CommonDll7 | `0x293c0` | `cScrCharacterEx` | `cScrEntity` | method | `0xe010` | `LAB_1000e010` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `PlaySA` | CommonDll7 | `0x293c0` | `cScrCharacterEx` | `cScrEntity` | method | `0xe040` | `LAB_1000e040` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffe7, 0xffffffff` |
+| `SetHumanSize` | CommonDll7 | `0x298a0` | `cScrHumanEx` | `cScrCharacterEx` | method | `0xe070` | `LAB_1000e070` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `IsCrouched` | CommonDll7 | `0x298a0` | `cScrHumanEx` | `cScrCharacterEx` | method | `0xe0a0` | `LAB_1000e0a0` | `0, 0x7fffffdd, -1, -1` |
 | `SetCrouched` | CommonDll7 | `0x298a0` | `cScrHumanEx` | `cScrCharacterEx` | method | `0x25820` | `LAB_10025820` | `0, 0x7fffffd8, -1, 0x7fffffdd, 0xffffffff` |
 | `ResetAngles` | CommonDll7 | `0x298a0` | `cScrHumanEx` | `cScrCharacterEx` | method | `0xe0d0` | `LAB_1000e0d0` | `0, 0x7fffffd8, -1, -1` |
@@ -553,15 +621,19 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `Phys_CreateMover` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40470` | `LAB_10040470` | `0, 0x7fffffd8, -1, -1` |
 | `Phys_CreateBox` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40500` | `LAB_10040500` | `0, 0x7fffffd8, -1, -1` |
 | `Phys_CreateJoint` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40570` | `LAB_10040570` | `0, 0x7fffffd8, -1, -1` |
+| `Phys_CreateHinge` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x405e0` | `LAB_100405e0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `Phys_SetMass` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40790` | `LAB_10040790` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `Phys_TestColision` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40650` | `LAB_10040650` | `0, 0x7fffffd8, -1, 0x7fffffdd, 0xffffffff` |
 | `Phys_TestColisionObj` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x406c0` | `LAB_100406c0` | `0, 0x7fffffd8, -1, 0x7fffffdd, 0xffffffff` |
 | `Phys_SetPlayer` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40720` | `LAB_10040720` | `0, 0x7fffffd8, -1, 0x7fffffdd, 0xffffffff` |
+| `Phys_SetDimension` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40460` | `LAB_10040460` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `Phys_SetOffset` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x404f0` | `LAB_100404f0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `Phys_ResetDimension` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x405d0` | `LAB_100405d0` | `0, 0x7fffffd8, -1, -1` |
 | `Phys_ResetOffset` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40560` | `LAB_10040560` | `0, 0x7fffffd8, -1, -1` |
 | `Phys_SetSpeedLimit` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40640` | `LAB_10040640` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
 | `Phys_SetFly` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x406b0` | `LAB_100406b0` | `0, 0x7fffffd8, -1, 0x7fffffdd, 0xffffffff` |
 | `Phys_SetCanSwim` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40710` | `LAB_10040710` | `0, 0x7fffffd8, -1, 0x7fffffdd, 0xffffffff` |
+| `Phys_SignalCollision` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40780` | `LAB_10040780` | `0, 0x7fffffd8, -1, 0x7fffffdd, 0x7fffffdd, 0xffffffff` |
 | `Phys_UseAngles` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40450` | `LAB_10040450` | `0, 0x7fffffd8, -1, 0x7fffffdd, 0xffffffff` |
 | `Phys_GetSpeed` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x404e0` | `LAB_100404e0` | `0, 0x7fffffe9, -1, -1` |
 | `BeginCamera` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40550` | `LAB_10040550` | `0, 0x7fffffd8, -1, -1` |
@@ -572,6 +644,8 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `GetAngleX` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40770` | `LAB_10040770` | `0, 0x7fffffe9, -1, -1` |
 | `GetAngleY` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40440` | `LAB_10040440` | `0, 0x7fffffe9, -1, -1` |
 | `GetAngleZ` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x404d0` | `LAB_100404d0` | `0, 0x7fffffe9, -1, -1` |
+| `SetPos` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40540` | `LAB_10040540` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `Rotate` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x405b0` | `LAB_100405b0` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `GetDistance` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40620` | `LAB_10040620` | `0, 0x7fffffe9, -1, 0x7fffffea, 0xffffffff` |
 | `Use` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40610` | `LAB_10040610` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `GetTarget` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | method | `0x40690` | `LAB_10040690` | `0, 0x7fffffe7, -1, -1` |
@@ -590,6 +664,9 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `ConsoleRealExec` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | static | — | `pcVar3` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `DebugMessage` | CommonDll7 | `0x41690` | `cScrEntity` | `cBaseClass` | static | — | `pcVar3` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `Stop` | CommonDll7 | `0x4c3b0` | `cScrTrain` | `cScrEntity` | method | `0xe0d0` | `LAB_1000e0d0` | `0, 0x7fffffd8, -1, -1` |
+| `Translate` | CommonDll7 | `0x4c3b0` | `cScrTrain` | `cScrEntity` | method | `0xe130` | `LAB_1000e130` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `Teleport` | CommonDll7 | `0x4c3b0` | `cScrTrain` | `cScrEntity` | method | `0xe000` | `LAB_1000e000` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `Move` | CommonDll7 | `0x4c3b0` | `cScrTrain` | `cScrEntity` | method | `0xe160` | `LAB_1000e160` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `MoveToEntity` | CommonDll7 | `0x4c3b0` | `cScrTrain` | `cScrEntity` | method | `0xe030` | `LAB_1000e030` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `TargetReached` | CommonDll7 | `0x4c3b0` | `cScrTrain` | `cScrEntity` | method | `0xe100` | `LAB_1000e100` | `0, 0x7fffffdd, -1, -1` |
 | `PlayerIn` | CommonDll7 | `0x4c3b0` | `cScrTrain` | `cScrEntity` | method | — | `PlayerIn` | `0, 0x7fffffdd, -1, 0x7fffffea, 0xffffffff` |
@@ -606,8 +683,11 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `SetAmmoCount` | CommonDll7 | `0x663a0` | `—` | `cScrItemEx` | method | `0xe160` | `LAB_1000e160` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `GetClipSize` | CommonDll7 | `0x663a0` | `—` | `cScrItemEx` | method | `0xe000` | `LAB_1000e000` | `0, 0x7fffffea, -1, -1` |
 | `SetAim` | CommonDll7 | `0x663a0` | `—` | `cScrItemEx` | method | `0x656e0` | `FUN_100656e0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
+| `SetWeaponTunningParam` | CommonDll7 | `0x663a0` | `—` | `cScrItemEx` | method | `0x65800` | `FUN_10065800` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `AIHuntAddMemberToGroup` | CommonDll7 | `0xa1080` | `cScrAIHunt` | `cScrEntity` | static | `0xa0a00` | `FUN_100a0a00` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `AIHuntGroupAlreadyCreated` | CommonDll7 | `0xa1080` | `cScrAIHunt` | `cScrEntity` | static | `0xa0b20` | `FUN_100a0b20` | `0, 0x7fffffea, -1, 0x7fffffea, 0xffffffff` |
 | `AIHuntCreateDailyRoutine` | CommonDll7 | `0xa1080` | `cScrAIHunt` | `cScrEntity` | static | — | `pcVar3` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
+| `AIHuntAddTaskInfo` | CommonDll7 | `0xa1080` | `cScrAIHunt` | `cScrEntity` | static | — | `pcVar3` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `TestFlags` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xdc130` | `FUN_100dc130` | `0, 0x7fffffdd, -1, 0x7fffffea, 0xffffffff` |
 | `SetFlags` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xdc160` | `FUN_100dc160` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `ClearFlags` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xdc190` | `FUN_100dc190` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
@@ -617,8 +697,11 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `GetChildByName` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xde450` | `FUN_100de450` | `0, 0x7fffffd5, -1, 0x7fffffe7, 0xffffffff` |
 | `BringToFront` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xde5f0` | `FUN_100de5f0` | `0, 0x7fffffd8, -1, 0x7fffffd5, 0xffffffff` |
 | `SendToBack` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xde740` | `FUN_100de740` | `0, 0x7fffffd8, -1, 0x7fffffd5, 0xffffffff` |
+| `LocalPointInView` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xdc0b0` | `FUN_100dc0b0` | `0, 0x7fffffdd, -1, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `GlobalPointInView` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xde9f0` | `FUN_100de9f0` | `0, 0x7fffffdd, -1, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `WaitForObject` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xdc600` | `LAB_100dc600` | `1, 0x7fffffd8, -1, 0x7fffffd5, 0xffffffff` |
 | `WaitEvent` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xdc5d0` | `LAB_100dc5d0` | `1, 0x7fffffd8, -1, -1` |
+| `PostEvent` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xdc7a0` | `FUN_100dc7a0` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `ToLocalX` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xdc1c0` | `FUN_100dc1c0` | `0, 0x7fffffe9, -1, 0x7fffffe9, 0xffffffff` |
 | `ToLocalY` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xdc330` | `FUN_100dc330` | `0, 0x7fffffe9, -1, 0x7fffffe9, 0xffffffff` |
 | `FindSelectable` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xdf860` | `FUN_100df860` | `0, 0x7fffffd5, -1, 0x7fffffd5, 0x7fffffea, 0xffffffff` |
@@ -642,6 +725,7 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `ConsoleSet` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xdd890` | `FUN_100dd890` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `ConsoleExec` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | method | `0xdd9e0` | `FUN_100dd9e0` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `StrDeleteChar` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | static | `0xddb10` | `LAB_100ddb10` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffea, 0xffffffff` |
+| `StrInsertChar` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | static | `0xddb80` | `LAB_100ddb80` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `GetASCII` | CommonDll7 | `0xdfd20` | `—` | `cScrContainer` | static | `0xddbe0` | `LAB_100ddbe0` | `0, 0x7fffffea, -1, 0x7fffffe7, 0xffffffff` |
 | `Clear` | CommonDll7 | `0xe7610` | `cGuiEvent` | `cBaseClass` | method | — | `Clear` | `0, 0x7fffffd8, -1, -1` |
 | `Get` | CommonDll7 | `0xe7610` | `cGuiEvent` | `cBaseClass` | method | — | `Get` | `0, 0x7fffffd8, -1, -1` |
@@ -656,11 +740,19 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `GetBrush` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `GetBrush` | `0, 0x7fffffea, -1, 0x7fffffe7, 0xffffffff` |
 | `DrawBrush` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `DrawBrush` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `DrawBrushColor` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `DrawBrushColor` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0xffffffff` |
+| `EnableBrushClipping` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `EnableBrushClipping` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `DisableBrushClipping` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `DisableBrushClipping` | `0, 0x7fffffd8, -1, -1` |
+| `DrawHLine` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `DrawHLine` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `DrawVLine` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `DrawVLine` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `DrawLine` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `DrawLine` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `DrawRect` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `DrawRect` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `GetFont` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `GetFont` | `0, 0x7fffffea, -1, 0x7fffffe7, 0xffffffff` |
 | `SetFont` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `SetFont` | `0, 0x7fffffd8, -1, 0x7fffffea, 0xffffffff` |
 | `DrawText` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `DrawTextA` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `DrawTextScroll` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `DrawTextScroll` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffe7, 0xffffffff` |
+| `DrawTextClip` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `DrawTextClip` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffea, 0x7fffffea, 0xffffffff` |
+| `DrawTextClip2` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `DrawTextClip2` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0x7fffffea, 0x7fffffea, 0xffffffff` |
+| `GetFirstVisible` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `GetFirstVisible` | `0, 0x7fffffea, -1, 0x7fffffe7, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `TextGetTotalWidth` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `scrTextGetTotalWidth` | `0, 0x7fffffe9, -1, 0x7fffffe7, 0xffffffff` |
 | `TextGetTotalHeight` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `scrTextGetTotalHeight` | `0, 0x7fffffe9, -1, 0x7fffffe7, 0xffffffff` |
 | `AMGet` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `AMGet` | `0, 0x7fffffea, -1, -1` |
@@ -687,8 +779,13 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `AMGetBoneRotX` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `AMGetBoneRotX` | `0, 0x7fffffe9, -1, 0x7fffffe7, 0xffffffff` |
 | `AMGetBoneRotY` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `AMGetBoneRotY` | `0, 0x7fffffe9, -1, 0x7fffffe7, 0xffffffff` |
 | `AMGetBoneRotZ` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `AMGetBoneRotZ` | `0, 0x7fffffe9, -1, 0x7fffffe7, 0xffffffff` |
+| `CameraSetPos` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `CameraSetPos` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
+| `CameraSetRot` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `CameraSetRot` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0x7fffffe9, 0x7fffffe9, 0xffffffff` |
 | `CameraSetFov` | CommonDll7 | `0xf56e0` | `cGuiSkinBase` | `cScrContainer` | method | — | `CameraSetFov` | `0, 0x7fffffd8, -1, 0x7fffffe9, 0xffffffff` |
+| `GetRenderDescNum` | CommonDll7 | `0xf74c0` | `—` | `cBaseClass` | static | — | `pcVar3` | `0, 0x7fffffea, -1, 0x7fffffe7, 0x7fffffdd, 0xffffffff` |
+| `GetRenderDesc` | CommonDll7 | `0xf74c0` | `—` | `cBaseClass` | static | — | `pcVar3` | `0, 0x7fffffe7, -1, 0x7fffffe7, 0x7fffffea, 0x7fffffdd, 0xffffffff` |
 | `GetCap` | CommonDll7 | `0xf74c0` | `—` | `cBaseClass` | static | — | `pcVar3` | `0, 0x7fffffea, -1, 0x7fffffe7, 0xffffffff` |
+| `ScanInt` | CommonDll7 | `0xf74c0` | `—` | `cBaseClass` | static | — | `pcVar3` | `0, 0x7fffffea, -1, 0x7fffffe7, 0x7fffffe7, 0x7fffffea, 0xffffffff` |
 | `SaveGame` | CommonDll7 | `0x102270` | `cGuiSaveMan` | `cScrContainer` | method | — | `SaveGame` | `0, 0x7fffffea, -1, 0x7fffffe7, 0xffffffff` |
 | `LoadGame` | CommonDll7 | `0x102270` | `cGuiSaveMan` | `cScrContainer` | method | — | `LoadGame` | `0, 0x7fffffea, -1, 0x7fffffe7, 0xffffffff` |
 | `Autosave` | CommonDll7 | `0x102270` | `cGuiSaveMan` | `cScrContainer` | method | — | `Autosave` | `0, 0x7fffffea, -1, -1` |
@@ -705,6 +802,7 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `GetStatus` | CommonDll7 | `0x102270` | `cGuiSaveMan` | `cScrContainer` | method | — | `GetStatus` | `0, 0x7fffffdd, -1, -1` |
 | `CreateDevice` | CommonDll7 | `0x102270` | `cGuiSaveMan` | `cScrContainer` | method | — | `CreateDevice` | `0, 0x7fffffd8, -1, 0x7fffffe7, 0xffffffff` |
 | `GetMaxSaves` | CommonDll7 | `0x102270` | `cGuiSaveMan` | `cScrContainer` | method | — | `GetMaxSaves` | `0, 0x7fffffea, -1, -1` |
+| `PostEvent` | CommonDll7 | `0x102270` | `cGuiSaveMan` | `cScrContainer` | method | — | `PostEvent` | `0, 0x7fffffd8, -1, 0x7fffffea, 0x7fffffea, 0x7fffffea, 0xffffffff` |
 | `GetFiles` | CommonDll7 | `0x102270` | `cGuiSaveMan` | `cScrContainer` | method | — | `GetFiles` | `0, 0x7fffffea, -1, -1` |
 | `GetFile` | CommonDll7 | `0x102270` | `cGuiSaveMan` | `cScrContainer` | method | — | `GetFile` | `0, 0x7fffffe7, -1, 0x7fffffea, 0xffffffff` |
 | `FileExists` | CommonDll7 | `0x102270` | `cGuiSaveMan` | `cScrContainer` | method | — | `FileExists` | `0, 0x7fffffdd, -1, 0x7fffffe7, 0xffffffff` |
@@ -720,20 +818,20 @@ Registrar list (signature class when Ghidra named the function; otherwise the fu
 | `InitMenu` | CommonDll7 | `0x102270` | `cGuiSaveMan` | `cScrContainer` | method | — | `InitMenu` | `0, 0x7fffffd8, -1, -1` |
 | `GetFileName` | CommonDll7 | `0x102270` | `cGuiSaveMan` | `cScrContainer` | method | — | `GetFileName` | `0, 0x7fffffe7, -1, 0x7fffffe7, 0xffffffff` |
 
-Rows in 2c: 494. Distinct ExportFnc names in both dumps: 471.
+Rows in 2c: 566. Distinct ExportFnc names in both dumps: 562.
 
 ## 3. Native usage in story scripts
 
-Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is counted on every map that lists it). `sites` is the number of unique file:line hits across story, bonus, and hunt closures (a shared file counts once). `in catalog` is yes when section 2 has that name. Category is assigned from the identifier, in this order: timing (`Pause`/`Wait`/`WaitForTask`/prefix `Wait`); AI (`StartTask`, `StopTask`, `StopAllTask`, `SetTaskParam`, `ForceBrainActivate`, `MoveToPos`, or name contains `Brain`/`Animal`/`AnimPak`); mission (`Task`/`Mission`/`Objective`); HUD (`Hud`/`Hint`/`PlayMessage`/`OpenMenu`/`MenuPage`); cutscene (`CutScene`/`Camera`/`Movie`/`Cinematic`/`ExecuteScript`); sound (`Sound`/`Music`); triggers (`Trigger`, `Activate`, `Deactivate`, `ActivateBy`, `ActivateAfter`, HUD activate); NPC (`NPC`/`Companion`/`Guide`/`Follow`/`Talk`/`SetCanBeAttacked`); spawn (`Spawn`/`Destroy`/`MakeVisible`/`Show`/`Hide`/`AddAnimal`/`AddEvent`/`Precache`/`AddAI`); player control (`PFlags`/`Health`/`Weapon`/`Ammo`/`Item`/`Inventory`/`Freeze`/`Teleport`/`Hurt`/`Damage`/`Crouch`/`Equip`/`LockInput`/`Knife`); else other.
+Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is counted on every map that lists it). The numeric column is that sum, not a unique file:line count. `in catalog` is yes when section 2 has that name. Category is assigned from the identifier, in this order: timing (`Pause`/`Wait`/`WaitForTask`/prefix `Wait`); AI (`StartTask`, `StopTask`, `StopAllTask`, `SetTaskParam`, `ForceBrainActivate`, `MoveToPos`, or name contains `Brain`/`Animal`/`AnimPak`); mission (`Task`/`Mission`/`Objective`); HUD (`Hud`/`Hint`/`PlayMessage`/`OpenMenu`/`MenuPage`); cutscene (`CutScene`/`Camera`/`Movie`/`Cinematic`/`ExecuteScript`); sound (`Sound`/`Music`); triggers (`Trigger`, `Activate`, `Deactivate`, `ActivateBy`, `ActivateAfter`, HUD activate); NPC (`NPC`/`Companion`/`Guide`/`Follow`/`Talk`/`SetCanBeAttacked`); spawn (`Spawn`/`Destroy`/`MakeVisible`/`Show`/`Hide`/`AddAnimal`/`AddEvent`/`Precache`/`AddAI`); player control (`PFlags`/`Health`/`Weapon`/`Ammo`/`Item`/`Inventory`/`Freeze`/`Teleport`/`Hurt`/`Damage`/`Crouch`/`Equip`/`LockInput`/`Knife`); else other.
 
 ### mission/task (28)
 
-| Name | In catalog | Sites | Per-map counts (zeros omitted) | First example |
+| Name | In catalog | Sum of per-map counts | Per-map counts (zeros omitted) | First example |
 |---|---|---:|---|---|
 | `Add_Task` | yes | 3888 | MAP3A:420 MAP3B:372 MAP3C:420 MAP4A:372 MAP7:372 MAP8:372 MAP11A:372 MAP11B:372 MAP11C:372 MAP12A:444 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:98` `brain.Add_Task("AITaskNPC_MoveToPos", 0.0);` |
 | `ConfigTaskCmd` | yes | 352 | MAP1:2 MAP2A:1 MAP2B:3 MAP3A:35 MAP3B:31 MAP3C:35 MAP4A:31 MAP4B:7 MAP7:33 MAP8:37 MAP11A:31 MAP11B:31 MAP11C:31 MAP12A:44 | `re/extracted/SCRIPTS/CUTSCENE/MAP1/CUTSCENE2.SCR:82` `hugsm1.ConfigTaskCmd("AITaskNPC_MoveToPos", TASK_ACTION_NORMAL);` |
 | `AllowTask` | yes | 348 | MAP1:5 MAP2A:1 MAP2B:6 MAP3A:35 MAP3B:31 MAP3C:35 MAP4A:31 MAP7:33 MAP8:37 MAP10:3 MAP11A:31 MAP11B:31 MAP11C:31 MAP12A:38 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:247` `::globals.hugsm1.AllowTask(AINPC_TASK_ATTACK);` |
-| `ConfigTaskPriority` | no | 324 | MAP3A:35 MAP3B:31 MAP3C:35 MAP4A:31 MAP7:31 MAP8:31 MAP11A:31 MAP11B:31 MAP11C:31 MAP12A:37 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:111` `brain.ConfigTaskPriority("AITaskNPC_MoveToPos", 1, 100);` |
+| `ConfigTaskPriority` | yes | 324 | MAP3A:35 MAP3B:31 MAP3C:35 MAP4A:31 MAP7:31 MAP8:31 MAP11A:31 MAP11B:31 MAP11C:31 MAP12A:37 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:111` `brain.ConfigTaskPriority("AITaskNPC_MoveToPos", 1, 100);` |
 | `DenyTask` | yes | 195 | MAP1:3 MAP2A:2 MAP2B:6 MAP2C:2 MAP3A:16 MAP3B:12 MAP3C:13 MAP4A:12 MAP5:3 MAP6:4 MAP7:20 MAP8:39 MAP10:4 MAP11A:12 MAP11B:12 MAP11C:12 MAP12A:23 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:202` `::globals.hugsm1.DenyTask(AINPC_TASK_ATTACK);` |
 | `StopAllTasks` | yes | 160 | MAP1:5 MAP2A:9 MAP2B:20 MAP2C:6 MAP3A:4 MAP3C:8 MAP4B:16 MAP5:17 MAP6:6 MAP7:4 MAP8:5 MAP9:2 MAP10:9 MAP11B:2 MAP12A:4 MAP12B:2 MAP12C:1 HUNTMAP1:10 HUNTMAP2:10 HUNTMAP3:10 HUNTMAP4:10 | `re/extracted/SCRIPTS/CUTSCENE/MAP1/CUTSCENE4.SCR:33` `puma_t8_01.StopAllTasks();` |
 | `CreateTask` | yes | 132 | MAP1:6 MAP2A:6 MAP2B:8 MAP2C:7 MAP3A:9 MAP3B:2 MAP3C:3 MAP4A:3 MAP4B:4 MAP5:3 MAP6:8 MAP7:9 MAP8:10 MAP9:6 MAP10:11 MAP11A:4 MAP11B:7 MAP11C:5 MAP12A:8 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:2 HUNTMAP2:2 HUNTMAP3:2 HUNTMAP4:2 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:18` `m_pMission.CreateTask(TASK_RACE);` |
@@ -741,27 +839,27 @@ Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is count
 | `SetTaskId` | yes | 132 | MAP1:6 MAP2A:6 MAP2B:8 MAP2C:7 MAP3A:9 MAP3B:2 MAP3C:3 MAP4A:3 MAP4B:4 MAP5:3 MAP6:8 MAP7:9 MAP8:10 MAP9:6 MAP10:11 MAP11A:4 MAP11B:7 MAP11C:5 MAP12A:8 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:2 HUNTMAP2:2 HUNTMAP3:2 HUNTMAP4:2 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:19` `m_pMission.SetTaskId(1);` |
 | `CompleteTask` | yes | 87 | MAP2C:8 MAP4B:4 MAP5:4 MAP6:13 MAP7:7 MAP8:13 MAP9:5 MAP10:20 MAP11A:2 MAP11C:4 MAP12A:7 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02C.SCR:105` `CompleteTask(2);` |
 | `BeginTaskMsg` | yes | 55 | MAP1:5 MAP2A:4 MAP2B:3 MAP2C:5 MAP3A:4 MAP3C:1 MAP4A:2 MAP5:2 MAP6:3 MAP7:3 MAP8:2 MAP9:1 MAP10:2 MAP11A:1 MAP11B:3 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:2 HUNTMAP2:2 HUNTMAP3:2 HUNTMAP4:2 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:20` `m_pMission.BeginTaskMsg("mis1task1_1_0");` |
-| `UpdateMissionStatus` | no | 54 | MAP1:2 MAP2A:6 MAP2B:3 MAP2C:3 MAP3A:7 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:2 MAP6:2 MAP7:2 MAP8:4 MAP9:1 MAP10:2 MAP11A:1 MAP11B:2 MAP11C:1 MAP12A:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:2 HUNTMAP2:2 HUNTMAP3:2 HUNTMAP4:2 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:81` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 1);` |
+| `UpdateMissionStatus` | yes | 54 | MAP1:2 MAP2A:6 MAP2B:3 MAP2C:3 MAP3A:7 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:2 MAP6:2 MAP7:2 MAP8:4 MAP9:1 MAP10:2 MAP11A:1 MAP11B:2 MAP11C:1 MAP12A:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:2 HUNTMAP2:2 HUNTMAP3:2 HUNTMAP4:2 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:81` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 1);` |
 | `EndTaskMsg` | yes | 53 | MAP1:5 MAP2A:3 MAP2B:3 MAP2C:4 MAP3A:3 MAP3C:2 MAP4A:1 MAP4B:1 MAP5:2 MAP6:3 MAP7:3 MAP8:2 MAP9:1 MAP10:2 MAP11B:3 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:2 HUNTMAP2:2 HUNTMAP3:2 HUNTMAP4:2 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:21` `m_pMission.EndTaskMsg("mis1task1_1_1");` |
 | `SetObjective` | yes | 45 | MAP1:1 MAP2A:1 MAP2B:3 MAP2C:7 MAP3A:5 MAP3B:1 MAP3C:2 MAP4A:1 MAP4B:1 MAP5:1 MAP6:2 MAP7:1 MAP8:2 MAP9:4 MAP10:2 MAP11B:4 MAP12A:1 MAP12B:1 MAP12C:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:9` `SetObjective("hugsm1");` |
 | `SetTaskTimeLimit` | yes | 45 | MAP1:2 MAP2A:5 MAP2B:4 MAP2C:4 MAP3A:4 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:2 MAP6:2 MAP7:3 MAP8:3 MAP9:1 MAP10:2 MAP11A:1 MAP11B:2 MAP11C:1 MAP12A:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:22` `m_pMission.SetTaskTimeLimit(0);` |
 | `SetMissionId` | yes | 29 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 HUNTMAP1:2 HUNTMAP2:2 HUNTMAP3:2 HUNTMAP4:2 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:16` `m_pMission.SetMissionId(1); // indica pozita in tabela de misiuni` |
 | `UncompleteTask` | yes | 21 | MAP11A:7 MAP11C:7 MAP12C:7 | `re/extracted/SCRIPTS/MODELS/WORLD/HELICOPTER/HELICOPTER.SCR:25` `m_pHelicopter.UncompleteTask();` |
 | `CheckMissionStatus` | yes | 19 | MAP1:1 MAP2C:1 MAP3C:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11C:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:400` `CheckMissionStatus();` |
-| `ConfigTaskExtraCmd` | no | 19 | MAP2B:2 MAP3A:2 MAP3B:1 MAP3C:1 MAP4A:1 MAP7:1 MAP8:4 MAP9:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:3 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:290` `::globals.hugs2b.ConfigTaskExtraCmd("AITaskNPC_PlayAnim", "idle", 0);` |
+| `ConfigTaskExtraCmd` | yes | 19 | MAP2B:2 MAP3A:2 MAP3B:1 MAP3C:1 MAP4A:1 MAP7:1 MAP8:4 MAP9:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:3 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:290` `::globals.hugs2b.ConfigTaskExtraCmd("AITaskNPC_PlayAnim", "idle", 0);` |
 | `SetMission` | yes | 19 | MAP1:1 MAP2A:1 MAP3A:1 MAP4A:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP12A:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:15` `SetMission(1);` |
 | `ForceStartTask` | yes | 13 | MAP1:2 MAP2C:3 MAP4B:6 MAP12A:2 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:214` `::globals.wtail1.ForceStartTask("AIHuntTask_IdleScare");` |
 | `GlobalsCheckMissionStatus` | yes | 12 | HUNTMAP1:3 HUNTMAP2:3 HUNTMAP3:3 HUNTMAP4:3 | `re/extracted/SCRIPTS/LEVELS/HUNTMAPBASE.SCR:71` `GlobalsCheckMissionStatus();//end the mission` |
-| `SetMissionOnFleePointReachedAction` | no | 12 | MAP1:1 MAP2A:1 MAP2B:4 MAP2C:1 MAP4B:1 MAP7:1 MAP12A:2 MAP12B:1 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:49` `m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_LOSE_TARGET);` |
+| `SetMissionOnFleePointReachedAction` | yes | 12 | MAP1:1 MAP2A:1 MAP2B:4 MAP2C:1 MAP4B:1 MAP7:1 MAP12A:2 MAP12B:1 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:49` `m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_LOSE_TARGET);` |
 | `IsBonusTask` | yes | 9 | MAP1:1 MAP4B:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:47` `m_pMission.IsBonusTask();` |
 | `IsTaskCompleted` | yes | 9 | MAP11A:3 MAP11C:3 MAP12C:3 | `re/extracted/SCRIPTS/MODELS/WORLD/HELICOPTER/HELICOPTER.SCR:49` `if (m_pHelicopter.IsTaskCompleted())` |
-| `SetTaskObjToFind` | no | 4 | MAP1:1 MAP3A:1 MAP7:1 MAP8:1 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:27` `m_pMission.SetTaskObjToFind(AI_GUIDE_ID,1);` |
+| `SetTaskObjToFind` | yes | 4 | MAP1:1 MAP3A:1 MAP7:1 MAP8:1 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:27` `m_pMission.SetTaskObjToFind(AI_GUIDE_ID,1);` |
 | `GetTaskStatus` | yes | 1 | MAP1:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:238` `if(TASK_FAILED == GetTaskStatus(4))` |
 | `SetTaskAvailableTarget` | yes | 1 | MAP1:1 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:51` `m_pMission.SetTaskAvailableTarget(2);` |
 
 ### HUD/hint/text (9)
 
-| Name | In catalog | Sites | Per-map counts (zeros omitted) | First example |
+| Name | In catalog | Sum of per-map counts | Per-map counts (zeros omitted) | First example |
 |---|---|---:|---|---|
 | `DeactivateHUD` | yes | 148 | MAP1:10 MAP2A:12 MAP2B:6 MAP2C:6 MAP3A:8 MAP3C:6 MAP4A:4 MAP4B:10 MAP5:6 MAP6:10 MAP7:6 MAP8:10 MAP9:8 MAP10:12 MAP11A:6 MAP11B:4 MAP11C:6 MAP12A:14 MAP12B:2 MAP12C:2 | `re/extracted/SCRIPTS/CUTSCENE/MAP1/CUTSCENE1.SCR:59` `trigger.DeactivateHUD();` |
 | `PlayMessage` | yes | 125 | MAP1:12 MAP2A:10 MAP2B:5 MAP2C:8 MAP3A:6 MAP3C:3 MAP4A:5 MAP5:13 MAP6:9 MAP7:8 MAP8:10 MAP9:6 MAP10:8 MAP11A:4 MAP11B:4 MAP11C:1 MAP12A:13 | `re/extracted/SCRIPTS/CUTSCENE/MAP1/CUTSCENE1.SCR:44` `hugsm1.PlayMessage("Well, c'mon, youngster. Think you can show <key_time:2> a thing or two to Old Hugh, do ya? <key_time:2> Well, we'll just see about that. <key_time:3> ");` |
@@ -775,7 +873,7 @@ Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is count
 
 ### cutscene/camera/movie (5)
 
-| Name | In catalog | Sites | Per-map counts (zeros omitted) | First example |
+| Name | In catalog | Sum of per-map counts | Per-map counts (zeros omitted) | First example |
 |---|---|---:|---|---|
 | `DeactivateCutSceneMode` | yes | 148 | MAP1:10 MAP2A:12 MAP2B:6 MAP2C:6 MAP3A:8 MAP3C:6 MAP4A:4 MAP4B:10 MAP5:6 MAP6:10 MAP7:6 MAP8:10 MAP9:8 MAP10:12 MAP11A:6 MAP11B:4 MAP11C:6 MAP12A:14 MAP12B:2 MAP12C:2 | `re/extracted/SCRIPTS/CUTSCENE/MAP1/CUTSCENE1.SCR:61` `player.DeactivateCutSceneMode();` |
 | `EndCamera` | yes | 136 | MAP1:11 MAP2A:6 MAP2B:8 MAP2C:6 MAP3A:8 MAP3C:6 MAP4B:10 MAP5:4 MAP6:10 MAP7:9 MAP8:4 MAP9:8 MAP10:10 MAP11A:6 MAP11B:4 MAP11C:6 MAP12A:16 MAP12B:2 MAP12C:2 | `re/extracted/SCRIPTS/CUTSCENE/MAP1/CUTSCENE1.SCR:48` `c1cam1.EndCamera();` |
@@ -785,7 +883,7 @@ Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is count
 
 ### player control (24)
 
-| Name | In catalog | Sites | Per-map counts (zeros omitted) | First example |
+| Name | In catalog | Sum of per-map counts | Per-map counts (zeros omitted) | First example |
 |---|---|---:|---|---|
 | `ClearPFlags` | yes | 1885 | MAP1:82 MAP2A:78 MAP2B:72 MAP2C:109 MAP3A:74 MAP3B:66 MAP3C:72 MAP4A:70 MAP4B:78 MAP5:72 MAP6:111 MAP7:107 MAP8:76 MAP9:80 MAP10:78 MAP11A:72 MAP11B:70 MAP11C:72 MAP12A:82 MAP12B:78 MAP12C:72 MAPARENA:70 MAPISLAND:14 MAPTSAVO:70 HUNTMAP1:15 HUNTMAP2:15 HUNTMAP3:15 HUNTMAP4:15 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:23` `player.ClearPFlags(PLAYER_CAN_CROUCH);` |
 | `SetPFlags` | yes | 1576 | MAP1:67 MAP2A:63 MAP2B:60 MAP2C:88 MAP3A:61 MAP3B:57 MAP3C:60 MAP4A:59 MAP4B:63 MAP5:60 MAP6:89 MAP7:87 MAP8:62 MAP9:69 MAP10:63 MAP11A:60 MAP11B:59 MAP11C:60 MAP12A:65 MAP12B:70 MAP12C:63 MAPARENA:61 MAPISLAND:13 MAPTSAVO:61 HUNTMAP1:14 HUNTMAP2:14 HUNTMAP3:14 HUNTMAP4:14 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:189` `::globals.player.SetPFlags(PLAYER_CAN_CROUCH);` |
@@ -795,16 +893,16 @@ Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is count
 | `EquipAIWith` | yes | 64 | MAP1:1 MAP2A:3 MAP2B:3 MAP2C:4 MAP3A:2 MAP3B:3 MAP3C:3 MAP4A:2 MAP4B:3 MAP5:3 MAP6:2 MAP7:1 MAP8:1 MAP9:1 MAP10:3 MAP11A:1 MAP11B:3 MAP11C:1 MAP12A:4 MAP12C:1 MAPARENA:3 MAPISLAND:1 MAPTSAVO:3 HUNTMAP1:3 HUNTMAP2:3 HUNTMAP3:3 HUNTMAP4:3 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:148` `EquipAIWith("hugsm1", "shotgun1,map1");` |
 | `SetChanceToGetDamaged` | yes | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:60` `SetChanceToGetDamaged(30.0);//chance in percents to get a special damage(leg, eye, arm, ear)` |
 | `SetDamageDuration` | yes | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:57` `SetDamageDuration(0.3);//duration for damage screen in seconds` |
-| `SetEyeHurtColor` | no | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:42` `SetEyeHurtColor(218, 51, 0);//color in r,g,b components` |
+| `SetEyeHurtColor` | yes | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:42` `SetEyeHurtColor(218, 51, 0);//color in r,g,b components` |
 | `SetEyeHurtIntensity` | yes | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:43` `SetEyeHurtIntensity(30);//max alpha for fadein/out PC differs from PS2 - much higher level of alpha` |
-| `SetHealthDamageFromPoison` | no | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:38` `SetHealthDamageFromPoison(0.04, 15.0);//Damage per second; max. second poison lasts` |
+| `SetHealthDamageFromPoison` | yes | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:38` `SetHealthDamageFromPoison(0.04, 15.0);//Damage per second; max. second poison lasts` |
 | `SetMinHurtForDamage` | yes | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:61` `SetMinHurtForDamage(10.0);//min damage that triggers chance to get a special damage` |
-| `SetDamageBloom` | no | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:46` `SetDamageBloom(0.0, 0.0, 0.0, 0.0, 0.4, 0.0, 0.0, 0.0, 3.0);` |
-| `SetDamageBloomFadeInOut` | no | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:52` `SetDamageBloomFadeInOut(0.1, 0.4, 0.1);` |
-| `SetDamageBlurParams` | no | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:51` `SetDamageBlurParams(0.0, 120.0, 0.15, 6.0, 4.0);` |
+| `SetDamageBloom` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:46` `SetDamageBloom(0.0, 0.0, 0.0, 0.0, 0.4, 0.0, 0.0, 0.0, 3.0);` |
+| `SetDamageBloomFadeInOut` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:52` `SetDamageBloomFadeInOut(0.1, 0.4, 0.1);` |
+| `SetDamageBlurParams` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:51` `SetDamageBlurParams(0.0, 120.0, 0.15, 6.0, 4.0);` |
 | `SetHealth` | yes | 26 | MAP2A:1 MAP2B:12 MAP3C:3 MAP4A:6 MAP5:4 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02A.SCR:460` `::globals.wolf3.SetHealth(600);` |
 | `DeactivateWeaponIn` | yes | 17 | MAP2A:2 MAP2B:4 MAP2C:3 MAP5:2 MAP6:2 MAP10:2 MAP11B:1 MAP12A:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02A.SCR:56` `::globals.hugs2a.DeactivateWeaponIn(-1);` |
-| `ActivateWeaponIn` | no | 13 | MAP1:2 MAP2A:1 MAP2B:1 MAP2C:3 MAP4B:1 MAP5:2 MAP6:1 MAP10:1 MAP12A:1 | `re/extracted/SCRIPTS/CUTSCENE/MAP1/CUTSCENE1.SCR:27` `hugsm1.ActivateWeaponIn(0,-1);` |
+| `ActivateWeaponIn` | yes | 13 | MAP1:2 MAP2A:1 MAP2B:1 MAP2C:3 MAP4B:1 MAP5:2 MAP6:1 MAP10:1 MAP12A:1 | `re/extracted/SCRIPTS/CUTSCENE/MAP1/CUTSCENE1.SCR:27` `hugsm1.ActivateWeaponIn(0,-1);` |
 | `AiCanFindItem` | yes | 13 | MAP1:2 MAP2A:1 MAP2B:1 MAP2C:1 MAP3C:1 MAP5:1 MAP9:2 MAP12B:3 MAP12C:1 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:149` `AiCanFindItem("hunter", "handgun5_1st");` |
 | `GetHealth` | yes | 13 | MAP2B:6 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:95` `fWolfHealth = ::globals.wolf1.GetHealth();` |
 | `TakeItem` | yes | 8 | MAP2A:1 MAP2B:3 MAP2C:2 MAP5:2 | `re/extracted/SCRIPTS/CUTSCENE/MAP2A/CUTSCENE4.SCR:112` `player.TakeItem("rifle1_1st");` |
@@ -814,22 +912,22 @@ Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is count
 
 ### AI tasks and animals (10)
 
-| Name | In catalog | Sites | Per-map counts (zeros omitted) | First example |
+| Name | In catalog | Sum of per-map counts | Per-map counts (zeros omitted) | First example |
 |---|---|---:|---|---|
 | `SetTaskParam` | yes | 860 | MAP1:21 MAP2A:87 MAP2B:103 MAP2C:15 MAP3A:32 MAP3B:8 MAP3C:18 MAP4A:16 MAP4B:63 MAP5:43 MAP6:47 MAP7:41 MAP8:70 MAP9:34 MAP10:65 MAP11A:7 MAP11B:29 MAP11C:12 MAP12A:48 MAP12B:5 MAP12C:13 MAPARENA:11 MAPISLAND:2 MAPTSAVO:2 HUNTMAP1:17 HUNTMAP2:17 HUNTMAP3:17 HUNTMAP4:17 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:24` `::globals.hugsm1.SetTaskParam("target", "start1");` |
 | `StartTask` | yes | 689 | MAP1:28 MAP2A:61 MAP2B:58 MAP2C:20 MAP3A:35 MAP3B:10 MAP3C:15 MAP4A:13 MAP4B:48 MAP5:21 MAP6:33 MAP7:38 MAP8:45 MAP9:29 MAP10:55 MAP11A:11 MAP11B:25 MAP11C:17 MAP12A:42 MAP12B:3 MAP12C:4 MAPARENA:12 MAPISLAND:3 MAPTSAVO:3 HUNTMAP1:15 HUNTMAP2:15 HUNTMAP3:15 HUNTMAP4:15 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:23` `::globals.hugsm1.StartTask("AITaskNPC_MoveToPos");` |
 | `MoveToPos` | yes | 554 | MAP1:24 MAP2A:25 MAP2B:50 MAP2C:25 MAP3A:27 MAP3B:8 MAP3C:9 MAP4A:10 MAP4B:50 MAP5:23 MAP6:25 MAP7:23 MAP8:23 MAP9:21 MAP10:64 MAP11A:10 MAP11B:15 MAP11C:15 MAP12A:62 MAP12B:7 MAP12C:3 MAPARENA:14 MAPISLAND:4 MAPTSAVO:5 HUNTMAP1:3 HUNTMAP2:3 HUNTMAP3:3 HUNTMAP4:3 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:21` `::globals.faketrap1.MoveToPos("capcana1");` |
 | `SetBrain` | yes | 324 | MAP3A:35 MAP3B:31 MAP3C:35 MAP4A:31 MAP7:31 MAP8:31 MAP11A:31 MAP11B:31 MAP11C:31 MAP12A:37 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:89` `SetBrain("brain_npc");` |
 | `StopTask` | yes | 224 | MAP1:16 MAP2A:37 MAP2B:19 MAP2C:5 MAP3A:4 MAP3C:7 MAP4B:17 MAP5:4 MAP6:10 MAP7:10 MAP8:13 MAP9:9 MAP10:15 MAP11B:3 MAP12A:11 MAP12B:1 MAP12C:3 HUNTMAP1:10 HUNTMAP2:10 HUNTMAP3:10 HUNTMAP4:10 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:98` `::globals.hugsm1.StopTask("AITaskNPC_MoveToPos");` |
-| `AddAnimal` | no | 170 | MAP1:6 MAP2A:6 MAP2B:8 MAP2C:4 MAP3A:11 MAP3B:5 MAP3C:7 MAP4A:6 MAP4B:15 MAP5:4 MAP6:5 MAP7:6 MAP8:11 MAP9:3 MAP10:10 MAP11A:6 MAP11B:7 MAP11C:4 MAP12A:9 MAP12B:1 MAP12C:1 MAPARENA:11 MAPISLAND:2 MAPTSAVO:2 HUNTMAP1:5 HUNTMAP2:5 HUNTMAP3:5 HUNTMAP4:5 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:163` `AddAnimal(ANIMAL_BBEAR, TRUE, "bear");` |
+| `AddAnimal` | yes | 170 | MAP1:6 MAP2A:6 MAP2B:8 MAP2C:4 MAP3A:11 MAP3B:5 MAP3C:7 MAP4A:6 MAP4B:15 MAP5:4 MAP6:5 MAP7:6 MAP8:11 MAP9:3 MAP10:10 MAP11A:6 MAP11B:7 MAP11C:4 MAP12A:9 MAP12B:1 MAP12C:1 MAPARENA:11 MAPISLAND:2 MAPTSAVO:2 HUNTMAP1:5 HUNTMAP2:5 HUNTMAP3:5 HUNTMAP4:5 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:163` `AddAnimal(ANIMAL_BBEAR, TRUE, "bear");` |
 | `ForceBrainActivate` | yes | 146 | MAP1:9 MAP2A:8 MAP2B:15 MAP2C:4 MAP3A:6 MAP3C:11 MAP4B:24 MAP5:10 MAP6:9 MAP7:4 MAP8:6 MAP9:3 MAP10:13 MAP11B:3 MAP12A:7 MAP12B:3 MAP12C:3 HUNTMAP1:2 HUNTMAP2:2 HUNTMAP3:2 HUNTMAP4:2 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:276` `::globals.mlion.ForceBrainActivate(0);` |
-| `SetTaskAnimalToShoot` | no | 83 | MAP1:4 MAP2A:1 MAP2B:4 MAP2C:3 MAP3A:5 MAP3B:1 MAP3C:2 MAP4A:1 MAP4B:3 MAP5:1 MAP6:6 MAP7:6 MAP8:7 MAP9:5 MAP10:9 MAP11A:3 MAP11B:5 MAP11C:4 MAP12A:7 MAP12B:1 MAP12C:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:39` `m_pMission.SetTaskAnimalToShoot(TARGET_CAN, ANIMAL_KILL,4);` |
+| `SetTaskAnimalToShoot` | yes | 83 | MAP1:4 MAP2A:1 MAP2B:4 MAP2C:3 MAP3A:5 MAP3B:1 MAP3C:2 MAP4A:1 MAP4B:3 MAP5:1 MAP6:6 MAP7:6 MAP8:7 MAP9:5 MAP10:9 MAP11A:3 MAP11B:5 MAP11C:4 MAP12A:7 MAP12B:1 MAP12C:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:39` `m_pMission.SetTaskAnimalToShoot(TARGET_CAN, ANIMAL_KILL,4);` |
 | `StopAllTask` | yes | 62 | MAP1:5 MAP2A:2 MAP2B:5 MAP2C:5 MAP3A:2 MAP3C:2 MAP4B:6 MAP5:3 MAP6:5 MAP7:8 MAP9:3 MAP10:6 MAP11B:2 MAP12A:7 MAP12C:1 | `re/extracted/SCRIPTS/CUTSCENE/MAP1/CUTSCENE1.SCR:72` `hugsm1.StopAllTask();` |
 | `AddAnimPakForAI` | yes | 14 | MAP1:2 MAP2B:1 MAP2C:1 MAP4B:2 MAP6:1 MAP7:1 MAP10:4 MAP12A:2 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:175` `AddAnimPakForAI("bear", "map1.ap");` |
 
 ### NPC/companion (4)
 
-| Name | In catalog | Sites | Per-map counts (zeros omitted) | First example |
+| Name | In catalog | Sum of per-map counts | Per-map counts (zeros omitted) | First example |
 |---|---|---:|---|---|
 | `SetFollowDistance` | yes | 324 | MAP3A:35 MAP3B:31 MAP3C:35 MAP4A:31 MAP7:31 MAP8:31 MAP11A:31 MAP11B:31 MAP11C:31 MAP12A:37 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:114` `brain.SetFollowDistance(15.0);` |
 | `SetNPCName` | yes | 312 | MAP3A:34 MAP3B:30 MAP3C:34 MAP4A:30 MAP7:30 MAP8:30 MAP11A:30 MAP11B:30 MAP11C:30 MAP12A:34 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:140` `SetNPCName("Hugh Andrews");` |
@@ -838,17 +936,17 @@ Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is count
 
 ### spawn/destroy/show/hide (5)
 
-| Name | In catalog | Sites | Per-map counts (zeros omitted) | First example |
+| Name | In catalog | Sum of per-map counts | Per-map counts (zeros omitted) | First example |
 |---|---|---:|---|---|
 | `CanBeRespawned` | yes | 66 | MAP2A:1 MAP2B:6 MAP2C:1 MAP5:3 MAP8:8 MAPARENA:30 MAPISLAND:6 MAPTSAVO:7 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02A.SCR:397` `if (TRUE==::globals.wolf3.CanBeRespawned())` |
 | `Destroy` | yes | 57 | MAP1:3 MAP2A:2 MAP2B:2 MAP2C:2 MAP3A:2 MAP3B:2 MAP3C:2 MAP4A:2 MAP4B:2 MAP5:2 MAP6:2 MAP7:2 MAP8:2 MAP9:3 MAP10:2 MAP11A:2 MAP11B:2 MAP11C:2 MAP12A:2 MAP12B:3 MAP12C:3 MAPARENA:3 MAPISLAND:1 MAPTSAVO:3 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/ANIMALS/SNAKE/SNAKE.SCR:99` `pSnake.Destroy();` |
-| `AddEvent` | no | 47 | MAP1:2 MAP2A:3 MAP2B:3 MAP2C:2 MAP3A:4 MAP3B:4 MAP3C:4 MAP4B:3 MAP5:1 MAP6:4 MAP7:6 MAP8:1 MAP9:4 MAP10:2 MAP11B:1 MAP12A:2 MAP12B:1 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:142` `AddEvent(EVENT_ANIMAL, ANIMAL_MOUNTAINLION, "animal");` |
+| `AddEvent` | yes | 47 | MAP1:2 MAP2A:3 MAP2B:3 MAP2C:2 MAP3A:4 MAP3B:4 MAP3C:4 MAP4B:3 MAP5:1 MAP6:4 MAP7:6 MAP8:1 MAP9:4 MAP10:2 MAP11B:1 MAP12A:2 MAP12B:1 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:142` `AddEvent(EVENT_ANIMAL, ANIMAL_MOUNTAINLION, "animal");` |
 | `MakeVisible` | yes | 12 | MAP11A:6 MAP11C:6 | `re/extracted/SCRIPTS/CUTSCENE/MAP11A/CUTSCENE2.SCR:29` `helicopter.MakeVisible(0);` |
 | `AddAIToBeProtected` | yes | 11 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP5:1 MAP6:1 MAP7:1 MAP9:1 MAP10:1 MAP11B:1 MAP12A:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:288` `AddAIToBeProtected("hugsm1");` |
 
 ### triggers/activation (8)
 
-| Name | In catalog | Sites | Per-map counts (zeros omitted) | First example |
+| Name | In catalog | Sum of per-map counts | Per-map counts (zeros omitted) | First example |
 |---|---|---:|---|---|
 | `ActivateAfter` | yes | 289 | MAP1:12 MAP2A:14 MAP2B:19 MAP2C:7 MAP3A:16 MAP3B:7 MAP3C:5 MAP4A:10 MAP4B:20 MAP5:20 MAP6:12 MAP7:19 MAP8:29 MAP9:16 MAP10:22 MAP11A:9 MAP11B:11 MAP11C:10 MAP12A:15 MAP12B:2 MAP12C:2 MAPARENA:1 MAPISLAND:2 MAPTSAVO:1 HUNTMAP1:2 HUNTMAP2:2 HUNTMAP3:2 HUNTMAP4:2 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:8` `ActivateAfter(0);` |
 | `ActivateBy` | yes | 289 | MAP1:12 MAP2A:14 MAP2B:19 MAP2C:7 MAP3A:16 MAP3B:7 MAP3C:5 MAP4A:10 MAP4B:20 MAP5:20 MAP6:12 MAP7:19 MAP8:29 MAP9:16 MAP10:22 MAP11A:9 MAP11B:11 MAP11C:10 MAP12A:15 MAP12B:2 MAP12C:2 MAPARENA:1 MAPISLAND:2 MAPTSAVO:1 HUNTMAP1:2 HUNTMAP2:2 HUNTMAP3:2 HUNTMAP4:2 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:6` `ActivateBy("hunter");` |
@@ -861,21 +959,21 @@ Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is count
 
 ### sound/music (9)
 
-| Name | In catalog | Sites | Per-map counts (zeros omitted) | First example |
+| Name | In catalog | Sum of per-map counts | Per-map counts (zeros omitted) | First example |
 |---|---|---:|---|---|
 | `SetSoundShader` | yes | 5020 | MAP3A:502 MAP3B:502 MAP3C:502 MAP4A:502 MAP7:502 MAP8:502 MAP11A:502 MAP11B:502 MAP11C:502 MAP12A:502 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:56` `SetSoundShader(SOUND_LOST1_ID, "GMRD05");` |
-| `AddPlayerStepSoundForMaterial` | no | 124 | MAP1:5 MAP2A:6 MAP2B:6 MAP2C:6 MAP3A:6 MAP3B:6 MAP3C:6 MAP4B:6 MAP5:4 MAP6:5 MAP7:5 MAP8:5 MAP9:5 MAP10:5 MAP11B:3 MAP12A:5 MAP12B:3 MAP12C:5 MAPARENA:2 MAPISLAND:5 MAPTSAVO:5 HUNTMAP1:5 HUNTMAP2:5 HUNTMAP3:5 HUNTMAP4:5 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:134` `AddPlayerStepSoundForMaterial(MATERIAL_GRASS);` |
+| `AddPlayerStepSoundForMaterial` | yes | 124 | MAP1:5 MAP2A:6 MAP2B:6 MAP2C:6 MAP3A:6 MAP3B:6 MAP3C:6 MAP4B:6 MAP5:4 MAP6:5 MAP7:5 MAP8:5 MAP9:5 MAP10:5 MAP11B:3 MAP12A:5 MAP12B:3 MAP12C:5 MAPARENA:2 MAPISLAND:5 MAPTSAVO:5 HUNTMAP1:5 HUNTMAP2:5 HUNTMAP3:5 HUNTMAP4:5 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:134` `AddPlayerStepSoundForMaterial(MATERIAL_GRASS);` |
 | `PlaySound` | yes | 118 | MAP1:12 MAP2A:12 MAP2B:4 MAP2C:9 MAP3A:3 MAP3B:1 MAP3C:4 MAP4A:6 MAP4B:1 MAP5:6 MAP6:11 MAP7:5 MAP8:11 MAP9:6 MAP10:9 MAP11A:1 MAP11B:3 MAP11C:1 MAP12A:9 MAP12B:1 MAP12C:1 MAPARENA:1 MAPTSAVO:1 | `re/extracted/SCRIPTS/MODELS/WORLD/BIRDS/BIRDS.SCR:17` `pBirds.PlaySound();` |
 | `PlaySoundEffect` | yes | 112 | MAP1:8 MAP2A:6 MAP2B:9 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:2 MAP4A:3 MAP4B:9 MAP5:4 MAP6:4 MAP7:11 MAP8:14 MAP9:14 MAP10:6 MAP11A:5 MAP11B:5 MAP11C:3 MAP12A:6 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:56` `PlaySoundEffect("M1OH02", "hugsm1");` |
 | `SetSoundToBePlayed` | yes | 75 | MAP1:2 MAP2A:1 MAP2B:4 MAP2C:2 MAP3A:5 MAP3B:1 MAP3C:2 MAP4A:1 MAP4B:2 MAP5:2 MAP6:5 MAP7:5 MAP8:8 MAP9:5 MAP10:9 MAP11A:3 MAP11B:5 MAP11C:4 MAP12A:7 MAP12B:1 MAP12C:1 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:61` `m_pMission.SetSoundToBePlayed("attack2");` |
-| `SetBreathSoundFadeOutSpeedOnIdle` | no | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:70` `SetBreathSoundFadeOutSpeedOnIdle(5.0);//1.0 is one second, greater the fade out time raises - for IDLE` |
-| `SetBreathSoundFadeOutSpeedOnRunning` | no | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:72` `SetBreathSoundFadeOutSpeedOnRunning(15.0);//1.0 is one second, greater the fade out time raises - for RUNNING` |
-| `SetBreathSoundFadeOutSpeedOnWalk` | no | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:71` `SetBreathSoundFadeOutSpeedOnWalk(10.0);//1.0 is one second, greater the fade out time raises - for WALKING` |
+| `SetBreathSoundFadeOutSpeedOnIdle` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:70` `SetBreathSoundFadeOutSpeedOnIdle(5.0);//1.0 is one second, greater the fade out time raises - for IDLE` |
+| `SetBreathSoundFadeOutSpeedOnRunning` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:72` `SetBreathSoundFadeOutSpeedOnRunning(15.0);//1.0 is one second, greater the fade out time raises - for RUNNING` |
+| `SetBreathSoundFadeOutSpeedOnWalk` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:71` `SetBreathSoundFadeOutSpeedOnWalk(10.0);//1.0 is one second, greater the fade out time raises - for WALKING` |
 | `PlayByteSound` | yes | 23 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPTSAVO:1 | `re/extracted/SCRIPTS/MODELS/ANIMALS/SNAKE/SNAKE.SCR:40` `pSnake.PlayByteSound();` |
 
 ### timing/latent (6)
 
-| Name | In catalog | Sites | Per-map counts (zeros omitted) | First example |
+| Name | In catalog | Sum of per-map counts | Per-map counts (zeros omitted) | First example |
 |---|---|---:|---|---|
 | `WaitForAnim` | yes | 981 | MAP1:40 MAP2A:40 MAP2B:40 MAP2C:57 MAP3A:40 MAP3B:40 MAP3C:40 MAP4A:40 MAP4B:40 MAP5:40 MAP6:57 MAP7:57 MAP8:40 MAP9:40 MAP10:40 MAP11A:40 MAP11B:40 MAP11C:40 MAP12A:40 MAP12B:40 MAP12C:40 MAPARENA:40 MAPISLAND:2 MAPTSAVO:40 HUNTMAP1:2 HUNTMAP2:2 HUNTMAP3:2 HUNTMAP4:2 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:713` `WaitForAnim(1);` |
 | `Wait` | yes | 440 | MAP1:10 MAP2A:11 MAP2B:10 MAP2C:8 MAP3A:8 MAP3C:9 MAP4A:7 MAP4B:2 MAP5:16 MAP6:7 MAP7:10 MAP8:14 MAP9:7 MAP10:7 MAP11A:6 MAP11B:3 MAP11C:4 MAP12A:12 MAP12B:1 HUNTMAP1:68 HUNTMAP2:76 HUNTMAP3:68 HUNTMAP4:76 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:92` `Wait(1);` |
@@ -886,36 +984,36 @@ Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is count
 
 ### other (133)
 
-| Name | In catalog | Sites | Per-map counts (zeros omitted) | First example |
+| Name | In catalog | Sum of per-map counts | Per-map counts (zeros omitted) | First example |
 |---|---|---:|---|---|
 | `setstate` | no | 4972 | MAP1:223 MAP2A:157 MAP2B:172 MAP2C:198 MAP3A:151 MAP3B:139 MAP3C:151 MAP4A:147 MAP4B:162 MAP5:150 MAP6:200 MAP7:202 MAP8:156 MAP9:284 MAP10:157 MAP11A:155 MAP11B:145 MAP11C:155 MAP12A:174 MAP12B:390 MAP12C:220 MAPARENA:192 MAPISLAND:127 MAPTSAVO:192 MAPMENU:1 HUNTMAP1:143 HUNTMAP2:143 HUNTMAP3:143 HUNTMAP4:143 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:197` `setstate(checkforenter);` |
 | `TestBodyCmd` | no | 3454 | MAP1:140 MAP2A:105 MAP2B:105 MAP2C:132 MAP3A:105 MAP3B:105 MAP3C:105 MAP4A:105 MAP4B:105 MAP5:105 MAP6:132 MAP7:132 MAP8:105 MAP9:188 MAP10:105 MAP11A:105 MAP11B:105 MAP11C:105 MAP12A:105 MAP12B:268 MAP12C:147 MAPARENA:140 MAPISLAND:113 MAPTSAVO:140 HUNTMAP1:113 HUNTMAP2:113 HUNTMAP3:113 HUNTMAP4:113 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:20` `if(TestBodyCmd(BODYCMD_PLAYER_CROUCH) )` |
 | `SetAnim` | yes | 2876 | MAP1:118 MAP2A:102 MAP2B:102 MAP2C:129 MAP3A:102 MAP3B:98 MAP3C:103 MAP4A:99 MAP4B:103 MAP5:101 MAP6:131 MAP7:131 MAP8:106 MAP9:131 MAP10:104 MAP11A:130 MAP11B:100 MAP11C:128 MAP12A:105 MAP12B:145 MAP12C:131 MAPARENA:108 MAPISLAND:52 MAPTSAVO:108 MAPMENU:1 HUNTMAP1:52 HUNTMAP2:52 HUNTMAP3:52 HUNTMAP4:52 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:16` `SetAnim("idle");` |
 | `SetAttribute` | yes | 2296 | MAP2A:2 MAP2B:6 MAP3A:245 MAP3B:217 MAP3C:247 MAP4A:217 MAP6:2 MAP7:217 MAP8:217 MAP9:4 MAP11A:217 MAP11B:217 MAP11C:217 MAP12A:271 | `re/extracted/SCRIPTS/CUTSCENE/MAP2A/CUTSCENE4.SCR:22` `hugs2a.SetAttribute(ATTRIBUTE_HEALTH_CURRENT, 10000);` |
-| `AddStep` | no | 1678 | MAP1:26 MAP2A:26 MAP2B:26 MAP2C:26 MAP3A:212 MAP3B:72 MAP3C:212 MAP4A:72 MAP4B:26 MAP5:26 MAP6:26 MAP7:72 MAP8:72 MAP9:26 MAP10:26 MAP11A:72 MAP11B:72 MAP11C:72 MAP12A:282 MAP12B:26 MAP12C:26 MAPARENA:26 MAPISLAND:26 MAPTSAVO:26 HUNTMAP1:26 HUNTMAP2:26 HUNTMAP3:26 HUNTMAP4:26 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:8` `AddStep("crouchwalk/backward", 457, 914, 0, 0);` |
+| `AddStep` | yes | 1678 | MAP1:26 MAP2A:26 MAP2B:26 MAP2C:26 MAP3A:212 MAP3B:72 MAP3C:212 MAP4A:72 MAP4B:26 MAP5:26 MAP6:26 MAP7:72 MAP8:72 MAP9:26 MAP10:26 MAP11A:72 MAP11B:72 MAP11C:72 MAP12A:282 MAP12B:26 MAP12C:26 MAPARENA:26 MAPISLAND:26 MAPTSAVO:26 HUNTMAP1:26 HUNTMAP2:26 HUNTMAP3:26 HUNTMAP4:26 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:8` `AddStep("crouchwalk/backward", 457, 914, 0, 0);` |
 | `setidx` | no | 1610 | MAP1:52 MAP2A:69 MAP2B:73 MAP2C:51 MAP3A:88 MAP3B:55 MAP3C:78 MAP4A:64 MAP4B:65 MAP5:50 MAP6:63 MAP7:83 MAP8:96 MAP9:53 MAP10:100 MAP11A:79 MAP11B:60 MAP11C:78 MAP12A:105 MAP12B:45 MAP12C:30 MAPARENA:33 MAPISLAND:20 MAPTSAVO:23 MAPMENU:1 HUNTMAP1:24 HUNTMAP2:24 HUNTMAP3:24 HUNTMAP4:24 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:65` `setidx(obj, FindEntScrObject(name));` |
 | `trace` | no | 1340 | MAP1:35 MAP2A:26 MAP2B:26 MAP2C:27 MAP3A:57 MAP3B:49 MAP3C:56 MAP4A:52 MAP4B:26 MAP5:19 MAP6:25 MAP7:59 MAP8:54 MAP9:52 MAP10:24 MAP11A:62 MAP11B:51 MAP11C:62 MAP12A:65 MAP12B:67 MAP12C:40 MAPARENA:25 MAPISLAND:18 MAPTSAVO:23 HUNTMAP1:86 HUNTMAP2:84 HUNTMAP3:86 HUNTMAP4:84 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:15` `trace("Enabled stealth control\n");` |
 | `FindEntScrObject` | yes | 1081 | MAP1:44 MAP2A:63 MAP2B:67 MAP2C:45 MAP3A:47 MAP3B:18 MAP3C:37 MAP4A:27 MAP4B:59 MAP5:44 MAP6:56 MAP7:45 MAP8:59 MAP9:37 MAP10:94 MAP11A:41 MAP11B:23 MAP11C:40 MAP12A:62 MAP12B:22 MAP12C:20 MAPARENA:26 MAPISLAND:16 MAPTSAVO:16 MAPMENU:1 HUNTMAP1:18 HUNTMAP2:18 HUNTMAP3:18 HUNTMAP4:18 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:65` `setidx(obj, FindEntScrObject(name));` |
 | `isvalid` | no | 699 | MAP1:15 MAP2A:11 MAP2B:11 MAP2C:13 MAP3A:47 MAP3B:43 MAP3C:47 MAP4A:43 MAP4B:11 MAP5:9 MAP6:13 MAP7:44 MAP8:51 MAP9:26 MAP10:12 MAP11A:43 MAP11B:42 MAP11C:43 MAP12A:48 MAP12B:36 MAP12C:18 MAPARENA:14 MAPISLAND:8 MAPTSAVO:14 MAPMENU:1 HUNTMAP1:9 HUNTMAP2:9 HUNTMAP3:9 HUNTMAP4:9 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:66` `if(!isvalid(obj))` |
 | `Phys_SetMass` | yes | 355 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:36 MAP3B:32 MAP3C:36 MAP4A:33 MAP4B:1 MAP5:1 MAP6:1 MAP7:32 MAP8:32 MAP9:1 MAP10:1 MAP11A:33 MAP11B:32 MAP11C:33 MAP12A:38 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:6` `Phys_SetMass(80.0);` |
-| `SetHumanSize` | no | 355 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:36 MAP3B:32 MAP3C:36 MAP4A:33 MAP4B:1 MAP5:1 MAP6:1 MAP7:32 MAP8:32 MAP9:1 MAP10:1 MAP11A:33 MAP11B:32 MAP11C:33 MAP12A:38 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:5` `SetHumanSize(1.80, 1.4, 1.25);` |
+| `SetHumanSize` | yes | 355 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:36 MAP3B:32 MAP3C:36 MAP4A:33 MAP4B:1 MAP5:1 MAP6:1 MAP7:32 MAP8:32 MAP9:1 MAP10:1 MAP11A:33 MAP11B:32 MAP11C:33 MAP12A:38 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:5` `SetHumanSize(1.80, 1.4, 1.25);` |
 | `AddLensFlare` | yes | 345 | MAP1:15 MAP3A:15 MAP3B:15 MAP3C:15 MAP4A:15 MAP4B:15 MAP5:15 MAP8:15 MAP9:15 MAP10:15 MAP11A:15 MAP11B:15 MAP11C:15 MAP12A:15 MAP12B:15 MAP12C:15 MAPARENA:15 MAPISLAND:15 MAPTSAVO:15 HUNTMAP1:15 HUNTMAP2:15 HUNTMAP3:15 HUNTMAP4:15 | `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:20` `AddLensFlare(0.0);` |
-| `SetColor` | no | 345 | MAP1:15 MAP3A:15 MAP3B:15 MAP3C:15 MAP4A:15 MAP4B:15 MAP5:15 MAP8:15 MAP9:15 MAP10:15 MAP11A:15 MAP11B:15 MAP11C:15 MAP12A:15 MAP12B:15 MAP12C:15 MAPARENA:15 MAPISLAND:15 MAPTSAVO:15 HUNTMAP1:15 HUNTMAP2:15 HUNTMAP3:15 HUNTMAP4:15 | `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:23` `SetColor(105, 105, 57);` |
+| `SetColor` | yes | 345 | MAP1:15 MAP3A:15 MAP3B:15 MAP3C:15 MAP4A:15 MAP4B:15 MAP5:15 MAP8:15 MAP9:15 MAP10:15 MAP11A:15 MAP11B:15 MAP11C:15 MAP12A:15 MAP12B:15 MAP12C:15 MAPARENA:15 MAPISLAND:15 MAPTSAVO:15 HUNTMAP1:15 HUNTMAP2:15 HUNTMAP3:15 HUNTMAP4:15 | `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:23` `SetColor(105, 105, 57);` |
 | `SetFlags` | yes | 345 | MAP1:15 MAP3A:15 MAP3B:15 MAP3C:15 MAP4A:15 MAP4B:15 MAP5:15 MAP8:15 MAP9:15 MAP10:15 MAP11A:15 MAP11B:15 MAP11C:15 MAP12A:15 MAP12B:15 MAP12C:15 MAPARENA:15 MAPISLAND:15 MAPTSAVO:15 HUNTMAP1:15 HUNTMAP2:15 HUNTMAP3:15 HUNTMAP4:15 | `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:25` `SetFlags(FLARE_FADEBYPOWER \| FLARE_FADEBYOCCLUDER );` |
-| `SetMap` | no | 345 | MAP1:15 MAP3A:15 MAP3B:15 MAP3C:15 MAP4A:15 MAP4B:15 MAP5:15 MAP8:15 MAP9:15 MAP10:15 MAP11A:15 MAP11B:15 MAP11C:15 MAP12A:15 MAP12B:15 MAP12C:15 MAPARENA:15 MAPISLAND:15 MAPTSAVO:15 HUNTMAP1:15 HUNTMAP2:15 HUNTMAP3:15 HUNTMAP4:15 | `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:22` `SetMap(0, 0.5, 0.5, 1);` |
+| `SetMap` | yes | 345 | MAP1:15 MAP3A:15 MAP3B:15 MAP3C:15 MAP4A:15 MAP4B:15 MAP5:15 MAP8:15 MAP9:15 MAP10:15 MAP11A:15 MAP11B:15 MAP11C:15 MAP12A:15 MAP12B:15 MAP12C:15 MAPARENA:15 MAPISLAND:15 MAPTSAVO:15 HUNTMAP1:15 HUNTMAP2:15 HUNTMAP3:15 HUNTMAP4:15 | `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:22` `SetMap(0, 0.5, 0.5, 1);` |
 | `SetShader` | yes | 345 | MAP1:15 MAP3A:15 MAP3B:15 MAP3C:15 MAP4A:15 MAP4B:15 MAP5:15 MAP8:15 MAP9:15 MAP10:15 MAP11A:15 MAP11B:15 MAP11C:15 MAP12A:15 MAP12B:15 MAP12C:15 MAPARENA:15 MAPISLAND:15 MAPTSAVO:15 HUNTMAP1:15 HUNTMAP2:15 HUNTMAP3:15 HUNTMAP4:15 | `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:24` `SetShader("fx_lensflare");` |
 | `SetSize` | yes | 345 | MAP1:15 MAP3A:15 MAP3B:15 MAP3C:15 MAP4A:15 MAP4B:15 MAP5:15 MAP8:15 MAP9:15 MAP10:15 MAP11A:15 MAP11B:15 MAP11C:15 MAP12A:15 MAP12B:15 MAP12C:15 MAPARENA:15 MAPISLAND:15 MAPTSAVO:15 HUNTMAP1:15 HUNTMAP2:15 HUNTMAP3:15 HUNTMAP4:15 | `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:21` `SetSize(500.0, 500.0);` |
-| `Add_Senses` | no | 324 | MAP3A:35 MAP3B:31 MAP3C:35 MAP4A:31 MAP7:31 MAP8:31 MAP11A:31 MAP11B:31 MAP11C:31 MAP12A:37 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:120` `brain.Add_Senses(1.0, 1.0, 1.0);` |
+| `Add_Senses` | yes | 324 | MAP3A:35 MAP3B:31 MAP3C:35 MAP4A:31 MAP7:31 MAP8:31 MAP11A:31 MAP11B:31 MAP11C:31 MAP12A:37 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:120` `brain.Add_Senses(1.0, 1.0, 1.0);` |
 | `SetHelloDistance` | yes | 324 | MAP3A:35 MAP3B:31 MAP3C:35 MAP4A:31 MAP7:31 MAP8:31 MAP11A:31 MAP11B:31 MAP11C:31 MAP12A:37 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:113` `brain.SetHelloDistance(15.0);` |
-| `SetLeftEyeRelAngles` | no | 314 | MAP3A:34 MAP3B:30 MAP3C:34 MAP4A:30 MAP7:30 MAP8:30 MAP11A:30 MAP11B:30 MAP11C:30 MAP12A:36 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:189` `SetLeftEyeRelAngles(0.057940, -0.057938, 0.704728, -0.704730);` |
-| `SetRightEyeRelAngles` | no | 314 | MAP3A:34 MAP3B:30 MAP3C:34 MAP4A:30 MAP7:30 MAP8:30 MAP11A:30 MAP11B:30 MAP11C:30 MAP12A:36 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:187` `SetRightEyeRelAngles(0.057940, -0.057938, 0.704728, -0.704730);` |
-| `SetIconCoords` | no | 312 | MAP3A:34 MAP3B:30 MAP3C:34 MAP4A:30 MAP7:30 MAP8:30 MAP11A:30 MAP11B:30 MAP11C:30 MAP12A:34 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:139` `SetIconCoords(2.0, 98.0, 28.0, 124.0, 256.0);` |
+| `SetLeftEyeRelAngles` | yes | 314 | MAP3A:34 MAP3B:30 MAP3C:34 MAP4A:30 MAP7:30 MAP8:30 MAP11A:30 MAP11B:30 MAP11C:30 MAP12A:36 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:189` `SetLeftEyeRelAngles(0.057940, -0.057938, 0.704728, -0.704730);` |
+| `SetRightEyeRelAngles` | yes | 314 | MAP3A:34 MAP3B:30 MAP3C:34 MAP4A:30 MAP7:30 MAP8:30 MAP11A:30 MAP11B:30 MAP11C:30 MAP12A:36 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:187` `SetRightEyeRelAngles(0.057940, -0.057938, 0.704728, -0.704730);` |
+| `SetIconCoords` | yes | 312 | MAP3A:34 MAP3B:30 MAP3C:34 MAP4A:30 MAP7:30 MAP8:30 MAP11A:30 MAP11B:30 MAP11C:30 MAP12A:34 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:139` `SetIconCoords(2.0, 98.0, 28.0, 124.0, 256.0);` |
 | `SetName` | yes | 292 | MAP1:12 MAP2A:14 MAP2B:22 MAP2C:7 MAP3A:16 MAP3B:7 MAP3C:5 MAP4A:10 MAP4B:20 MAP5:20 MAP6:12 MAP7:19 MAP8:29 MAP9:16 MAP10:22 MAP11A:9 MAP11B:11 MAP11C:10 MAP12A:15 MAP12B:2 MAP12C:2 MAPARENA:1 MAPISLAND:2 MAPTSAVO:1 HUNTMAP1:2 HUNTMAP2:2 HUNTMAP3:2 HUNTMAP4:2 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:5` `SetName("cScrTask01");` |
 | `GetScrObjIdx` | yes | 281 | MAP1:16 MAP2A:31 MAP2B:10 MAP2C:4 MAP3A:2 MAP3C:2 MAP4B:9 MAP5:2 MAP6:8 MAP7:9 MAP8:13 MAP9:20 MAP10:10 MAP11B:2 MAP12A:6 MAP12B:16 MAP12C:9 MAPARENA:4 MAPISLAND:4 MAPTSAVO:4 HUNTMAP1:25 HUNTMAP2:25 HUNTMAP3:25 HUNTMAP4:25 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/WEAPON.SCR:76` `if(m_pWeapon.Attach(m_pOwner.GetScrObjIdx(),"BipLHand"))` |
 | `SetDotFactor` | yes | 253 | MAP1:11 MAP3A:11 MAP3B:11 MAP3C:11 MAP4A:11 MAP4B:11 MAP5:11 MAP8:11 MAP9:11 MAP10:11 MAP11A:11 MAP11B:11 MAP11C:11 MAP12A:11 MAP12B:11 MAP12C:11 MAPARENA:11 MAPISLAND:11 MAPTSAVO:11 HUNTMAP1:11 HUNTMAP2:11 HUNTMAP3:11 HUNTMAP4:11 | `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:42` `SetDotFactor(2.0); */` |
-| `SetLeftEyeRelPos` | no | 134 | MAP3A:14 MAP3B:13 MAP3C:14 MAP4A:13 MAP7:13 MAP8:13 MAP11A:13 MAP11B:13 MAP11C:13 MAP12A:15 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:188` `SetLeftEyeRelPos(0.105033, 0.028231, 0.056899);` |
-| `SetRightEyeRelPos` | no | 134 | MAP3A:14 MAP3B:13 MAP3C:14 MAP4A:13 MAP7:13 MAP8:13 MAP11A:13 MAP11B:13 MAP11C:13 MAP12A:15 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:186` `SetRightEyeRelPos(0.105033, -0.030247, 0.056899);` |
-| `SetDiffProps` | no | 116 | MAP1:4 MAP2A:4 MAP2B:4 MAP2C:4 MAP3A:4 MAP3B:4 MAP3C:4 MAP4A:8 MAP4B:4 MAP5:4 MAP6:4 MAP7:4 MAP8:4 MAP9:4 MAP10:4 MAP11A:4 MAP11B:4 MAP11C:4 MAP12A:4 MAP12B:4 MAP12C:4 MAPARENA:4 MAPISLAND:4 MAPTSAVO:4 HUNTMAP1:4 HUNTMAP2:4 HUNTMAP3:4 HUNTMAP4:4 | `re/extracted/SCRIPTS/LEVELS/MAPWORLDBASE.SCR:5` `SetDiffProps(DMG_RECEIVED_ANIMAL, 12, 10, 8); //easy, mediu, hard` |
+| `SetLeftEyeRelPos` | yes | 134 | MAP3A:14 MAP3B:13 MAP3C:14 MAP4A:13 MAP7:13 MAP8:13 MAP11A:13 MAP11B:13 MAP11C:13 MAP12A:15 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:188` `SetLeftEyeRelPos(0.105033, 0.028231, 0.056899);` |
+| `SetRightEyeRelPos` | yes | 134 | MAP3A:14 MAP3B:13 MAP3C:14 MAP4A:13 MAP7:13 MAP8:13 MAP11A:13 MAP11B:13 MAP11C:13 MAP12A:15 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:186` `SetRightEyeRelPos(0.105033, -0.030247, 0.056899);` |
+| `SetDiffProps` | yes | 116 | MAP1:4 MAP2A:4 MAP2B:4 MAP2C:4 MAP3A:4 MAP3B:4 MAP3C:4 MAP4A:8 MAP4B:4 MAP5:4 MAP6:4 MAP7:4 MAP8:4 MAP9:4 MAP10:4 MAP11A:4 MAP11B:4 MAP11C:4 MAP12A:4 MAP12B:4 MAP12C:4 MAPARENA:4 MAPISLAND:4 MAPTSAVO:4 HUNTMAP1:4 HUNTMAP2:4 HUNTMAP3:4 HUNTMAP4:4 | `re/extracted/SCRIPTS/LEVELS/MAPWORLDBASE.SCR:5` `SetDiffProps(DMG_RECEIVED_ANIMAL, 12, 10, 8); //easy, mediu, hard` |
 | `DeactivateAIHuntAreaPoint` | yes | 113 | MAP2A:10 MAP2B:49 MAP2C:5 MAP4B:7 MAP5:3 MAP7:5 MAP8:26 MAP11B:3 MAP12A:5 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02A.SCR:13` `DeactivateAIHuntAreaPoint("escapemlion1");` |
 | `SetAnimSmooth` | no | 112 | MAP1:4 MAP2A:4 MAP2B:4 MAP2C:4 MAP3A:4 MAP3B:4 MAP3C:4 MAP4A:4 MAP4B:4 MAP5:4 MAP6:4 MAP7:4 MAP8:4 MAP9:4 MAP10:4 MAP11A:4 MAP11B:4 MAP11C:4 MAP12A:4 MAP12B:4 MAP12C:4 MAPARENA:4 MAPISLAND:4 MAPTSAVO:4 HUNTMAP1:4 HUNTMAP2:4 HUNTMAP3:4 HUNTMAP4:4 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:228` `SetAnimSmooth(current_anim);` |
 | `TestBodyCmdOr` | no | 109 | MAP1:6 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:13 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:23 MAP12C:8 MAPARENA:6 MAPISLAND:6 MAPTSAVO:6 HUNTMAP1:6 HUNTMAP2:6 HUNTMAP3:6 HUNTMAP4:6 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:691` `else if (TestBodyCmdOr(BODYCMD_PLAYER_ONGROUND \| BODYCMD_PLAYER_INWATER))` |
@@ -943,12 +1041,12 @@ Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is count
 | `SetFadeOutSndValue` | yes | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:62` `SetFadeOutSndValue(20.0);//value in percents for the level of sound after the initial ear damage (the player still has ear damage on)` |
 | `SetMaxSpringTime` | yes | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:67` `SetMaxSpringTime(30.0);//max time player can spring in seconds` |
 | `SetMinStaminaForRunning` | yes | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:66` `SetMinStaminaForRunning(0.2);//min level of stamina for running (between 0.0 ... 1.0)` |
-| `SetPoisonColor` | no | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:40` `SetPoisonColor(71, 168, 0);//color in r,g,b components` |
+| `SetPoisonColor` | yes | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:40` `SetPoisonColor(71, 168, 0);//color in r,g,b components` |
 | `SetPoisonIntensity` | yes | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:41` `SetPoisonIntensity(20);//max alpha for fadein/out PC differs from PS2 - much higher level of alpha` |
-| `SetStaminaRecoverSpeedOnIdle` | no | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:68` `SetStaminaRecoverSpeedOnIdle(20.0);//time (in seconds) elapsed before stamina is 100% recoverd when player is IDLE` |
+| `SetStaminaRecoverSpeedOnIdle` | yes | 31 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:2 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:2 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:68` `SetStaminaRecoverSpeedOnIdle(20.0);//time (in seconds) elapsed before stamina is 100% recoverd when player is IDLE` |
 | `SetCanBeHited` | yes | 30 | MAP3A:3 MAP3B:3 MAP3C:3 MAP4A:3 MAP7:3 MAP8:3 MAP11A:3 MAP11B:3 MAP11C:3 MAP12A:3 | `re/extracted/SCRIPTS/MODELS/NPC/GUIDE/GUIDE.SCR:716` `SetCanBeHited(0);` |
 | `SetTimeBeforeFade` | yes | 30 | MAP2B:26 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:45` `::globals.wolf3.SetTimeBeforeFade(1.5);` |
-| `GetDistBetween2Ais` | no | 28 | MAP1:2 MAP2C:2 MAP4B:2 MAP12A:2 HUNTMAP1:5 HUNTMAP2:5 HUNTMAP3:5 HUNTMAP4:5 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:193` `fDistance = GetDistBetween2Ais(::globals.szStealthCenter, "hunter");` |
+| `GetDistBetween2Ais` | yes | 28 | MAP1:2 MAP2C:2 MAP4B:2 MAP12A:2 HUNTMAP1:5 HUNTMAP2:5 HUNTMAP3:5 HUNTMAP4:5 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:193` `fDistance = GetDistBetween2Ais(::globals.szStealthCenter, "hunter");` |
 | `IsInVehicle` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:648` `if(TRUE == player.IsInVehicle())` |
 | `LoadEventMat` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:155` `LoadEventMat("Typemap/event_map1.mat");` |
 | `LoadMat` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:154` `LoadMat("Typemap/map1.mat");` |
@@ -956,16 +1054,16 @@ Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is count
 | `SetAIType` | yes | 28 | MAP3A:4 MAP3C:3 MAP8:9 MAP9:3 MAP10:4 MAP12A:5 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION03A.SCR:32` `::globals.abby.SetAIType(AITYPE_GUIDE\|AITYPE_COVERSTAY,""); //crouch_sau_lie` |
 | `SetControllerInertia` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:81` `SetControllerInertia(0.3);` |
 | `SetControllerInfluence` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:80` `SetControllerInfluence(3.7);` |
-| `SetDeathBloom` | no | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:45` `SetDeathBloom(0.0, 0.0, 0.0, 0.0, 0.4, 0.0, 0.0, 0.0, 3.0);` |
+| `SetDeathBloom` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:45` `SetDeathBloom(0.0, 0.0, 0.0, 0.0, 0.4, 0.0, 0.0, 0.0, 3.0);` |
 | `SetIceCrackTime` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:85` `SetIceCrackTime(75.0);` |
 | `SetIceFallTime` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:86` `SetIceFallTime(40.0);` |
-| `SetIceModelsOffsets` | no | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:88` `SetIceModelsOffsets(-1.6, -2.7, 1.3, -1.12, 2.1, 2.47, -1.6, 0.9); //x1, z1, x2, z2, x3, z3, x4,z4 no sign required` |
+| `SetIceModelsOffsets` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:88` `SetIceModelsOffsets(-1.6, -2.7, 1.3, -1.12, 2.1, 2.47, -1.6, 0.9); //x1, z1, x2, z2, x3, z3, x4,z4 no sign required` |
 | `SetIceSpeedFallForPlayer` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:87` `SetIceSpeedFallForPlayer(0.8);` |
 | `SetIceWalkRunMultiplier` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:89` `SetIceWalkRunMultiplier(1.2);` |
 | `SetSandFallSpeed` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:76` `SetSandFallSpeed(0.3);` |
 | `SetSandGetoutSpeed` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:77` `SetSandGetoutSpeed(0.1);` |
 | `SetSpeedFromAnim` | no | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:665` `SetSpeedFromAnim(current_anim);` |
-| `SetStaminaRecoverSpeedOnWalk` | no | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:69` `SetStaminaRecoverSpeedOnWalk(30.0);//time (in seconds) elapsed before stamina is 100% recoverd when player isn't IDLE` |
+| `SetStaminaRecoverSpeedOnWalk` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:69` `SetStaminaRecoverSpeedOnWalk(30.0);//time (in seconds) elapsed before stamina is 100% recoverd when player isn't IDLE` |
 | `SetVisible` | yes | 28 | MAP1:2 MAP9:4 MAP12B:5 MAP12C:3 MAPARENA:2 MAPISLAND:2 MAPTSAVO:2 HUNTMAP1:2 HUNTMAP2:2 HUNTMAP3:2 HUNTMAP4:2 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/WEAPON.SCR:104` `m_pWeapon.SetVisible(true);` |
 | `SetWaterCurrentInfluence` | yes | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMAN.SCR:79` `SetWaterCurrentInfluence(0.6);` |
 | `cScrMapGlobals` | no | 28 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:111` `new cScrMapGlobals(globals)` |
@@ -973,19 +1071,19 @@ Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is count
 | `UnlinkWithPhysics` | yes | 23 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPTSAVO:1 | `re/extracted/SCRIPTS/MODELS/ANIMALS/SNAKE/SNAKE.SCR:95` `pSnake.UnlinkWithPhysics();` |
 | `DropObject` | yes | 21 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 | `re/extracted/SCRIPTS/MODELS/WORLD/TRAP/TRAP.SCR:110` `pTrap.DropObject();` |
 | `SecFire` | yes | 18 | MAP1:1 MAP9:3 MAP12B:5 MAP12C:2 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/WEAPON.SCR:377` `m_pWeapon.SecFire();` |
-| `SetCamOffsetsInAim` | no | 18 | MAP9:6 MAP12B:12 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/HGUN/HGUN.SCR:74` `m_pWeapon.SetCamOffsetsInAim(0.08, -0.05, 0.15);` |
+| `SetCamOffsetsInAim` | yes | 18 | MAP9:6 MAP12B:12 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/HGUN/HGUN.SCR:74` `m_pWeapon.SetCamOffsetsInAim(0.08, -0.05, 0.15);` |
 | `Fire` | yes | 17 | MAP1:1 MAP9:3 MAP12B:3 MAP12C:3 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/WEAPON.SCR:326` `m_pWeapon.Fire();` |
 | `GetScrObjIdxParent` | yes | 17 | MAP1:1 MAP9:3 MAP12B:4 MAP12C:2 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/WEAPON.SCR:67` `setidx(m_pOwner,m_pWeapon.GetScrObjIdxParent());` |
 | `IsDead` | yes | 17 | MAP2B:9 HUNTMAP1:2 HUNTMAP2:2 HUNTMAP3:2 HUNTMAP4:2 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:89` `if (TRUE==(::globals.wolf1.IsDead()))` |
 | `Reload` | yes | 17 | MAP1:1 MAP9:2 MAP12B:6 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/WEAPON.SCR:498` `m_pWeapon.Reload();` |
 | `getidx` | no | 17 | MAP1:1 MAP9:3 MAP12B:4 MAP12C:2 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/WEAPON.SCR:73` `settarget(getidx(m_pWeapon));` |
 | `settarget` | no | 17 | MAP1:1 MAP9:3 MAP12B:4 MAP12C:2 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/WEAPON.SCR:73` `settarget(getidx(m_pWeapon));` |
-| `SetLightBloom` | no | 15 | MAP1:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP8:1 MAP10:1 MAPARENA:1 MAPISLAND:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:128` `SetLightBloom(0.35, 0.35, 0.35, 1.0, 0.15, 0.15, 0.15, 1.0, 3);` |
-| `SetShadowBloom` | no | 15 | MAP1:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP8:1 MAP10:1 MAPARENA:1 MAPISLAND:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:129` `SetShadowBloom(0.35, 0.35, 0.35, 1.0, 0.15, 0.15, 0.15, 1.0, 3);` |
+| `SetLightBloom` | yes | 15 | MAP1:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP8:1 MAP10:1 MAPARENA:1 MAPISLAND:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:128` `SetLightBloom(0.35, 0.35, 0.35, 1.0, 0.15, 0.15, 0.15, 1.0, 3);` |
+| `SetShadowBloom` | yes | 15 | MAP1:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP5:1 MAP8:1 MAP10:1 MAPARENA:1 MAPISLAND:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:129` `SetShadowBloom(0.35, 0.35, 0.35, 1.0, 0.15, 0.15, 0.15, 1.0, 3);` |
 | `BSMGoToState` | yes | 14 | MAP11A:7 MAP11C:7 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION11A.SCR:17` `::globals.helicopter.BSMGoToState("Ani1");` |
 | `SetCharacterModel` | yes | 14 | MAP1:1 MAP2A:1 MAP2B:1 MAP2C:1 MAP8:1 MAP9:1 MAP10:1 MAP11A:2 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 | `re/extracted/SCRIPTS/LEVELS/MAP1/WORLD.SCR:133` `SetCharacterModel(AUTUMN_CHARACTER_MODEL);` |
 | `CustomProps` | yes | 13 | MAP2B:5 MAP4A:8 | `re/extracted/SCRIPTS/LEVELS/MAP2B/WORLD.SCR:234` `::globals.gbear.CustomProps("Make_Scared");` |
-| `SetWaterFog` | no | 13 | MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP12C:1 | `re/extracted/SCRIPTS/LEVELS/MAP2A/WORLD.SCR:106` `SetWaterFog(7,39,54,-10,10);` |
+| `SetWaterFog` | yes | 13 | MAP2A:1 MAP2B:1 MAP2C:1 MAP3A:1 MAP3B:1 MAP3C:1 MAP4A:1 MAP4B:1 MAP6:1 MAP7:1 MAP8:1 MAP9:1 MAP12C:1 | `re/extracted/SCRIPTS/LEVELS/MAP2A/WORLD.SCR:106` `SetWaterFog(7,39,54,-10,10);` |
 | `SetState` | yes | 12 | HUNTMAP1:3 HUNTMAP2:3 HUNTMAP3:3 HUNTMAP4:3 | `re/extracted/SCRIPTS/LEVELS/HUNTMAPBASE.SCR:313` `SetState(szLastState);` |
 | `BeginAim` | yes | 11 | MAP1:1 MAP9:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/WEAPON.SCR:309` `m_pWeapon.BeginAim();` |
 | `Detach` | yes | 11 | MAP1:1 MAP9:1 MAP12B:1 MAP12C:1 MAPARENA:1 MAPISLAND:1 MAPTSAVO:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/WEAPON.SCR:534` `m_pWeapon.Detach();` |
@@ -994,7 +1092,7 @@ Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is count
 | `SetAnimStatus` | no | 9 | MAP11A:3 MAP11C:3 MAP12C:3 | `re/extracted/SCRIPTS/MODELS/WORLD/HELICOPTER/HELICOPTER.SCR:52` `SetAnimStatus(0.0);` |
 | `SetCanBeClaimed` | yes | 9 | MAP2C:1 HUNTMAP1:2 HUNTMAP2:2 HUNTMAP3:2 HUNTMAP4:2 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02C.SCR:166` `::globals.wildboar1.SetCanBeClaimed(TRUE);` |
 | `SetCompleteCondition` | yes | 9 | MAP1:2 MAP11A:3 MAP11C:4 | `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:40` `m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE);` |
-| `SetStealthLevels` | no | 9 | MAP1:1 MAP2C:1 MAP4B:2 MAP12A:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:198` `::globals.player.SetStealthLevels(0.2, 0.25, 0.30, 0.35);` |
+| `SetStealthLevels` | yes | 9 | MAP1:1 MAP2C:1 MAP4B:2 MAP12A:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:198` `::globals.player.SetStealthLevels(0.2, 0.25, 0.30, 0.35);` |
 | `CanZoom` | yes | 8 | MAP9:2 MAP12B:6 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/HGUN/HGUN.SCR:296` `if(!m_pWeapon.CanZoom())` |
 | `GetZoomPowerMax` | yes | 8 | MAP9:2 MAP12B:6 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/HGUN/HGUN.SCR:300` `if(m_pWeapon.GetCurrentZoom() >= m_pWeapon.GetZoomPowerMax())` |
 | `RestoreLight` | yes | 7 | MAP2B:7 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:939` `::globals.fire1.RestoreLight();` |
@@ -1004,11 +1102,11 @@ Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is count
 | `GetInCar` | yes | 6 | MAP4A:2 MAP5:4 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION04A.SCR:22` `::globals.tleader4a.GetInCar(1);` |
 | `RemoveAIToBeProtected` | yes | 6 | MAP2A:1 MAP2B:1 MAP2C:1 MAP5:1 MAP7:1 MAP12A:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02A.SCR:131` `RemoveAIToBeProtected("hugs2a");` |
 | `SetBreathFxVisible` | yes | 6 | MAP11A:1 MAP11B:1 MAP11C:1 MAP12A:1 MAP12B:1 MAP12C:1 | `re/extracted/SCRIPTS/LEVELS/MAP11A/WORLD.SCR:107` `SetBreathFxVisible(1);` |
-| `AddIgnoredStimulus` | no | 5 | MAP8:3 MAP12A:2 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:633` `::globals.tribesman1.AddIgnoredStimulus("cObjAnimal", 0);` |
+| `AddIgnoredStimulus` | yes | 5 | MAP8:3 MAP12A:2 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:633` `::globals.tribesman1.AddIgnoredStimulus("cObjAnimal", 0);` |
 | `SetMaxAttackerNo` | yes | 5 | MAP3C:1 MAP4A:1 MAP8:1 MAP11A:1 MAP11C:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION03C.SCR:37` `SetMaxAttackerNo(2);` |
-| `SetScrClaimCallback` | no | 5 | MAP2C:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02C.SCR:168` `::globals.wildboar1.SetScrClaimCallback(trigger_05IDx, "ClaimCallback");` |
-| `GetClosestMatchingEntity` | no | 4 | HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/LEVELS/HUNTMAPBASE.SCR:162` `szPredatorSpawnPoint = GetClosestMatchingEntity(szAnimalActorName, "predator", "hunt_area_point");` |
-| `GetDistFromClosestStimulusTo` | no | 4 | HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/LEVELS/HUNTMAPBASE.SCR:865` `bullet_dist = GetDistFromClosestStimulusTo(szActorName);` |
+| `SetScrClaimCallback` | yes | 5 | MAP2C:1 HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02C.SCR:168` `::globals.wildboar1.SetScrClaimCallback(trigger_05IDx, "ClaimCallback");` |
+| `GetClosestMatchingEntity` | yes | 4 | HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/LEVELS/HUNTMAPBASE.SCR:162` `szPredatorSpawnPoint = GetClosestMatchingEntity(szAnimalActorName, "predator", "hunt_area_point");` |
+| `GetDistFromClosestStimulusTo` | yes | 4 | HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/LEVELS/HUNTMAPBASE.SCR:865` `bullet_dist = GetDistFromClosestStimulusTo(szActorName);` |
 | `GetStealthLevel` | yes | 4 | HUNTMAP1:1 HUNTMAP2:1 HUNTMAP3:1 HUNTMAP4:1 | `re/extracted/SCRIPTS/LEVELS/HUNTMAPBASE.SCR:823` `fInstStealth = ::globals.player.GetStealthLevel();` |
 | `GetZoomFromBkp` | yes | 4 | MAP9:1 MAP12B:3 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/HGUN/HGUN.SCR:268` `m_pWeapon.SetCurrentZoom(m_pWeapon.GetZoomFromBkp());` |
 | `DriveTo` | yes | 3 | MAP4A:1 MAP5:2 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION04A.SCR:25` `::globals.tleader4a.DriveTo("startcar1");` |
@@ -1016,13 +1114,13 @@ Counts are call sites in each map's `MAIN.SPJ` closure (a shared script is count
 | `MakeBoss` | yes | 3 | MAP11B:1 MAP12B:1 MAP12C:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION11B.SCR:176` `::globals.hogzilla1.MakeBoss(TRUE, "HOGZILLA");` |
 | `SetDenySATime` | yes | 3 | MAP2A:1 MAP8:2 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02A.SCR:19` `::globals.player.SetDenySATime(25.0);` |
 | `IsTranq` | yes | 2 | MAP9:1 MAP12B:1 | `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/HGUN/HGUN.SCR:455` `m_pWeapon.IsTranq();` |
-| `ActivateBulletWarning` | no | 1 | MAP11A:1 | `re/extracted/SCRIPTS/LEVELS/MAP11A/WORLD.SCR:99` `ActivateBulletWarning(1, 5, "M11RD02");` |
+| `ActivateBulletWarning` | yes | 1 | MAP11A:1 | `re/extracted/SCRIPTS/LEVELS/MAP11A/WORLD.SCR:99` `ActivateBulletWarning(1, 5, "M11RD02");` |
 | `Fly` | yes | 1 | MAP9:1 | `re/extracted/SCRIPTS/CUTSCENE/MAP9/CUTSCENE2.SCR:58` `bats1.Fly();` |
 | `LoadRiverMat` | yes | 1 | MAP2A:1 | `re/extracted/SCRIPTS/LEVELS/MAP2A/WORLD.SCR:142` `LoadRiverMat("Typemap/map2a_rivermask.mat");` |
 | `NextTrig` | yes | 1 | MAP4A:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION04A.SCR:184` `NextTrig("cScrTask09");` |
 | `SetDangerTime` | yes | 1 | MAP1:1 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:383` `::globals.hugsm1.SetDangerTime(0.0);` |
 
-`Sites` in the tables above is the sum of per-map counts, so a line in a shared script (for example `MAPWORLDBASE.SCR`) is counted once per map that includes it.
+A line in a shared script (for example `MAPWORLDBASE.SCR`) is counted once per map that includes it, so the sum is larger than the number of source lines.
 
 Identifiers that are both script-defined and called are excluded above. Script-defined names collected: 94. None of the excluded names are listed here by construction.
 
@@ -2789,32 +2887,34 @@ Quoted start (`re/extracted/SCRIPTS/CUTSCENE/MAP1/CUTSCENE1.SCR`): `player.SetPF
 
 ### QTE / struggle / melee / button / fight / knife
 
-Case-insensitive search of every `.scr`/`.spl`/`.lua` under `re/extracted/SCRIPTS` for `QTE`, `Struggle`, `Melee`, `Button`, `Fight`, `CloseCombat`, `Knife`, `Mash`, `QuickTime`. Hits: 22.
+Case-insensitive search of every `.scr`/`.spl`/`.lua` under `re/extracted/SCRIPTS` for `QTE`, `Struggle`, `Melee`, `Button`, `Fight`, `CloseCombat`, `Knife`, `Mash`, `QuickTime`. `where` is `comment`, `string` (the match sits inside quotes), or `code`.
 
-| File:line | In comment | Line |
-|---|---|---|
-| `re/extracted/SCRIPTS/CUTSCENE/MAP9/CUTSCENE1.SCR:53` | no | `reggie9.PlayMessage("Oh, this is bleak.<key_time:1> This is just the sort of cave\|where dingoes like to roam. <key_time:4>It'd be nice if we had some sort of...` |
-| `re/extracted/SCRIPTS/LEVELS/MAP10/WORLD.SCR:84` | no | `player.SetMaxKnifeDistance(2.0);` |
-| `re/extracted/SCRIPTS/LEVELS/MAP3A/WORLD.SCR:88` | no | `player.SetMaxKnifeDistance(2.0);` |
-| `re/extracted/SCRIPTS/LEVELS/MAP3B/WORLD.SCR:60` | no | `player.SetMaxKnifeDistance(2.0);` |
-| `re/extracted/SCRIPTS/LEVELS/MAP3C/WORLD.SCR:72` | no | `player.SetMaxKnifeDistance(2.0);` |
-| `re/extracted/SCRIPTS/LEVELS/MAP4A/WORLD.SCR:68` | no | `player.SetMaxKnifeDistance(1.3);` |
-| `re/extracted/SCRIPTS/LEVELS/MAP4A/WORLD.SCR:109` | no | `EquipAIWith("hunter", "knife1_1st");` |
-| `re/extracted/SCRIPTS/LEVELS/MAP4B/WORLD.SCR:167` | no | `EquipAIWith("hunter", "knife1_1st");` |
-| `re/extracted/SCRIPTS/LEVELS/MAP9/WORLD.SCR:113` | no | `EquipAIWith("hunter", "knife1_1st");` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:122` | no | `player.SetMaxKnifeDistance(2.0);` |
-| `re/extracted/SCRIPTS/LEVELS/MAPTSAVO/WORLD.SCR:73` | no | `player.SetMaxKnifeDistance(2.0);` |
-| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/KNIFE/KNIFE.SCR:1` | no | `class cBodyKnife extends cBodyWeapon` |
-| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/KNIFE/KNIFE.SPL:1` | no | `Scripts\Models\Items\Weapons\knife\knife.scr` |
-| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/MBRANCH/MBRANCH.SCR:1` | no | `class cBodyMbranch extends cBodyKnife` |
-| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/MBRANCH/MBRANCH.SCR:63` | no | `class cBodyMacheta extends cBodyKnife` |
-| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/MBRANCH/MBRANCH.SPL:1` | no | `Scripts\Models\Items\Weapons\Knife\knife.scr` |
-| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/MBRANCH/MBRANCHNPC.SCR:1895` | yes | `// Pumafight state //` |
-| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/MBRANCH/MBRANCHNPC.SCR:1898` | no | `state Pumafight` |
-| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/MBRANCH/MBRANCHNPC.SCR:1903` | no | `SetAnim("cs_pumafight");` |
-| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/RADIO/RADIONPC.SCR:1895` | yes | `// Pumafight state //` |
-| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/RADIO/RADIONPC.SCR:1898` | no | `state Pumafight` |
-| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/RADIO/RADIONPC.SCR:1903` | no | `SetAnim("cs_pumafight");` |
+Hits: 22. In code: 14. In strings: 6. In comments: 2.
+
+| File:line | Where | Match | Line |
+|---|---|---|---|
+| `re/extracted/SCRIPTS/CUTSCENE/MAP9/CUTSCENE1.SCR:53` | string | `knife` | `reggie9.PlayMessage("Oh, this is bleak.<key_time:1> This is just the sort of cave\|where dingoes like to roam. <key_time:4>It'd be nice if we had some sort of...` |
+| `re/extracted/SCRIPTS/LEVELS/MAP10/WORLD.SCR:84` | code | `Knife` | `player.SetMaxKnifeDistance(2.0);` |
+| `re/extracted/SCRIPTS/LEVELS/MAP3A/WORLD.SCR:88` | code | `Knife` | `player.SetMaxKnifeDistance(2.0);` |
+| `re/extracted/SCRIPTS/LEVELS/MAP3B/WORLD.SCR:60` | code | `Knife` | `player.SetMaxKnifeDistance(2.0);` |
+| `re/extracted/SCRIPTS/LEVELS/MAP3C/WORLD.SCR:72` | code | `Knife` | `player.SetMaxKnifeDistance(2.0);` |
+| `re/extracted/SCRIPTS/LEVELS/MAP4A/WORLD.SCR:68` | code | `Knife` | `player.SetMaxKnifeDistance(1.3);` |
+| `re/extracted/SCRIPTS/LEVELS/MAP4A/WORLD.SCR:109` | string | `knife` | `EquipAIWith("hunter", "knife1_1st");` |
+| `re/extracted/SCRIPTS/LEVELS/MAP4B/WORLD.SCR:167` | string | `knife` | `EquipAIWith("hunter", "knife1_1st");` |
+| `re/extracted/SCRIPTS/LEVELS/MAP9/WORLD.SCR:113` | string | `knife` | `EquipAIWith("hunter", "knife1_1st");` |
+| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:122` | code | `Knife` | `player.SetMaxKnifeDistance(2.0);` |
+| `re/extracted/SCRIPTS/LEVELS/MAPTSAVO/WORLD.SCR:73` | code | `Knife` | `player.SetMaxKnifeDistance(2.0);` |
+| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/KNIFE/KNIFE.SCR:1` | code | `Knife` | `class cBodyKnife extends cBodyWeapon` |
+| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/KNIFE/KNIFE.SPL:1` | code | `knife` | `Scripts\Models\Items\Weapons\knife\knife.scr` |
+| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/MBRANCH/MBRANCH.SCR:1` | code | `Knife` | `class cBodyMbranch extends cBodyKnife` |
+| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/MBRANCH/MBRANCH.SCR:63` | code | `Knife` | `class cBodyMacheta extends cBodyKnife` |
+| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/MBRANCH/MBRANCH.SPL:1` | code | `Knife` | `Scripts\Models\Items\Weapons\Knife\knife.scr` |
+| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/MBRANCH/MBRANCHNPC.SCR:1895` | comment | `fight` | `// Pumafight state //` |
+| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/MBRANCH/MBRANCHNPC.SCR:1898` | code | `fight` | `state Pumafight` |
+| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/MBRANCH/MBRANCHNPC.SCR:1903` | string | `fight` | `SetAnim("cs_pumafight");` |
+| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/RADIO/RADIONPC.SCR:1895` | comment | `fight` | `// Pumafight state //` |
+| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/RADIO/RADIONPC.SCR:1898` | code | `fight` | `state Pumafight` |
+| `re/extracted/SCRIPTS/MODELS/ITEMS/WEAPONS/RADIO/RADIONPC.SCR:1903` | string | `fight` | `SetAnim("cs_pumafight");` |
 
 ExportFnc names matching the same words (native exists even if scripts do not call it):
 
@@ -2828,12 +2928,12 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - SetMission `re/extracted/SCRIPTS/MISSIONS/MISSION01.SCR:15` `SetMission(1);`
 - Task blocks: 6
-  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE);; 19:m_pMission.SetTaskId(1);; 20:m_pMission.BeginTaskMsg("mis1task1_1_0");; 21:m_pMission.EndTaskMsg("mis1task1_1_1");; 22:m_pMission.SetTaskTimeLimit(0);; 23:m_pMission.EndCreateTask();
-  - task 2 (starts line 25): 25:m_pMission.CreateTask(TASK_FIND);; 26:m_pMission.SetTaskId(2);; 27:m_pMission.SetTaskObjToFind(AI_GUIDE_ID,1);; 28:m_pMission.BeginTaskMsg("mis1task2_2_0");; 29:m_pMission.EndTaskMsg("mis1task2_2_1");; 31:m_pMission.SetTaskTimeLimit(0);; 32:m_pMission.EndCreateTask();
-  - task 3 (starts line 35): 35:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 36:m_pMission.SetTaskId(3);; 37:m_pMission.BeginTaskMsg("mis1task3_3_0");; 38:m_pMission.EndTaskMsg("mis1task3_3_1");; 39:m_pMission.SetTaskAnimalToShoot(TARGET_CAN, ANIMAL_KILL,4);; 40:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE);; 41:m_pMission.ActivateTriggerOnEnd("cScrTask05");; 42:m_pMission.EndCreateTask();
-  - task 4 (starts line 45): 45:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 46:m_pMission.SetTaskId(4);; 47:m_pMission.IsBonusTask();; 48:m_pMission.SetTaskAnimalToShoot(ANIMAL_WHITETAIL,ANIMAL_KILL,2);; 49:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_LOSE_TARGET);; 50:m_pMission.SetCompleteCondition(NEED_ANIMAL_FOR_COMPLETE);; 51:m_pMission.SetTaskAvailableTarget(2);; 52:m_pMission.ActivateTriggerOnEnd("cScrTask10");; 53:m_pMission.ActivateTriggerOnFail("cScrTask10");; 54:m_pMission.EndCreateTask();
-  - task 5 (starts line 56): 56:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 57:m_pMission.SetTaskId(5);; 58:m_pMission.BeginTaskMsg("mis1task4_4_0");; 59:m_pMission.EndTaskMsg("mis1task4_4_1");; 60:m_pMission.SetTaskAnimalToShoot(ANIMAL_MOUNTAINLION,ANIMAL_KILL,1);; 61:m_pMission.SetSoundToBePlayed("attack2");; 62:m_pMission.EndCreateTask();
-  - task 6 (starts line 64): 64:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 65:m_pMission.SetTaskId(6);; 66:m_pMission.BeginTaskMsg("mis1task5_5_0");; 67:m_pMission.EndTaskMsg("mis1task5_5_1");; 68:m_pMission.SetTaskAnimalToShoot(ANIMAL_BBEAR,ANIMAL_KILL,1);; 69:m_pMission.ActivateTriggerOnEnd("cScrTask09");; 70:m_pMission.SetSoundToBePlayed("attack2");; 71:m_pMission.EndCreateTask();
+  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE); | 19:m_pMission.SetTaskId(1); | 20:m_pMission.BeginTaskMsg("mis1task1_1_0"); | 21:m_pMission.EndTaskMsg("mis1task1_1_1"); | 22:m_pMission.SetTaskTimeLimit(0); | 23:m_pMission.EndCreateTask();
+  - task 2 (starts line 25): 25:m_pMission.CreateTask(TASK_FIND); | 26:m_pMission.SetTaskId(2); | 27:m_pMission.SetTaskObjToFind(AI_GUIDE_ID,1); | 28:m_pMission.BeginTaskMsg("mis1task2_2_0"); | 29:m_pMission.EndTaskMsg("mis1task2_2_1"); | 31:m_pMission.SetTaskTimeLimit(0); | 32:m_pMission.EndCreateTask();
+  - task 3 (starts line 35): 35:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 36:m_pMission.SetTaskId(3); | 37:m_pMission.BeginTaskMsg("mis1task3_3_0"); | 38:m_pMission.EndTaskMsg("mis1task3_3_1"); | 39:m_pMission.SetTaskAnimalToShoot(TARGET_CAN, ANIMAL_KILL,4); | 40:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE); | 41:m_pMission.ActivateTriggerOnEnd("cScrTask05"); | 42:m_pMission.EndCreateTask();
+  - task 4 (starts line 45): 45:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 46:m_pMission.SetTaskId(4); | 47:m_pMission.IsBonusTask(); | 48:m_pMission.SetTaskAnimalToShoot(ANIMAL_WHITETAIL,ANIMAL_KILL,2); | 49:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_LOSE_TARGET); | 50:m_pMission.SetCompleteCondition(NEED_ANIMAL_FOR_COMPLETE); | 51:m_pMission.SetTaskAvailableTarget(2); | 52:m_pMission.ActivateTriggerOnEnd("cScrTask10"); | 53:m_pMission.ActivateTriggerOnFail("cScrTask10"); | 54:m_pMission.EndCreateTask();
+  - task 5 (starts line 56): 56:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 57:m_pMission.SetTaskId(5); | 58:m_pMission.BeginTaskMsg("mis1task4_4_0"); | 59:m_pMission.EndTaskMsg("mis1task4_4_1"); | 60:m_pMission.SetTaskAnimalToShoot(ANIMAL_MOUNTAINLION,ANIMAL_KILL,1); | 61:m_pMission.SetSoundToBePlayed("attack2"); | 62:m_pMission.EndCreateTask();
+  - task 6 (starts line 64): 64:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 65:m_pMission.SetTaskId(6); | 66:m_pMission.BeginTaskMsg("mis1task5_5_0"); | 67:m_pMission.EndTaskMsg("mis1task5_5_1"); | 68:m_pMission.SetTaskAnimalToShoot(ANIMAL_BBEAR,ANIMAL_KILL,1); | 69:m_pMission.ActivateTriggerOnEnd("cScrTask09"); | 70:m_pMission.SetSoundToBePlayed("attack2"); | 71:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:81` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 1);`
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:126` `UpdateMissionStatus(MISSION_ACTION_FIND_SOMETHING, AI_GUIDE_ID);`
@@ -2848,12 +2948,12 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - SetMission `re/extracted/SCRIPTS/MISSIONS/MISSION02A.SCR:14` `SetMission(2);`
 - Task blocks: 6
-  - task 1 (starts line 17): 17:m_pMission.CreateTask(TASK_RACE);; 18:m_pMission.SetTaskId(1);; 19:m_pMission.BeginTaskMsg("mis2task1_1_0");; 20:m_pMission.SetTaskTimeLimit(0);; 21:m_pMission.EndCreateTask();
-  - task 2 (starts line 32): 32:m_pMission.CreateTask(TASK_RACE);; 33:m_pMission.SetTaskId(2);; 34:m_pMission.BeginTaskMsg("mis2task2_2_0");; 35:m_pMission.EndTaskMsg("mis2task2_2_1");; 36:m_pMission.SetTaskTimeLimit(0);; 37:m_pMission.EndCreateTask();
-  - task 3 (starts line 41): 41:m_pMission.CreateTask(TASK_RACE);; 42:m_pMission.SetTaskId(3);; 43:m_pMission.BeginTaskMsg("mis2task3_3_0");; 44:m_pMission.EndTaskMsg("mis2task3_3_1");; 45:m_pMission.SetTaskTimeLimit(0);; 46:m_pMission.EndCreateTask();
-  - task 4 (starts line 50): 50:m_pMission.CreateTask(TASK_RACE);; 51:m_pMission.SetTaskId(4);; 52:m_pMission.BeginTaskMsg("mis2task4_4_0");; 53:m_pMission.EndTaskMsg("mis2task4_4_1");; 54:m_pMission.SetTaskTimeLimit(0);; 55:m_pMission.EndCreateTask();
-  - task 5 (starts line 58): 58:m_pMission.CreateTask(TASK_SHOOT);; 59:m_pMission.SetTaskId(5);; 60:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,3);; 61:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL);; 62:m_pMission.SetSoundToBePlayed("attack2");; 63:m_pMission.ActivateTriggerOnEnd("cScrTask07");; 64:m_pMission.EndCreateTask();
-  - task 6 (starts line 67): 67:m_pMission.CreateTask(TASK_RACE);; 68:m_pMission.SetTaskId(6);; 69:m_pMission.SetTaskTimeLimit(0);; 70:m_pMission.EndCreateTask();
+  - task 1 (starts line 17): 17:m_pMission.CreateTask(TASK_RACE); | 18:m_pMission.SetTaskId(1); | 19:m_pMission.BeginTaskMsg("mis2task1_1_0"); | 20:m_pMission.SetTaskTimeLimit(0); | 21:m_pMission.EndCreateTask();
+  - task 2 (starts line 32): 32:m_pMission.CreateTask(TASK_RACE); | 33:m_pMission.SetTaskId(2); | 34:m_pMission.BeginTaskMsg("mis2task2_2_0"); | 35:m_pMission.EndTaskMsg("mis2task2_2_1"); | 36:m_pMission.SetTaskTimeLimit(0); | 37:m_pMission.EndCreateTask();
+  - task 3 (starts line 41): 41:m_pMission.CreateTask(TASK_RACE); | 42:m_pMission.SetTaskId(3); | 43:m_pMission.BeginTaskMsg("mis2task3_3_0"); | 44:m_pMission.EndTaskMsg("mis2task3_3_1"); | 45:m_pMission.SetTaskTimeLimit(0); | 46:m_pMission.EndCreateTask();
+  - task 4 (starts line 50): 50:m_pMission.CreateTask(TASK_RACE); | 51:m_pMission.SetTaskId(4); | 52:m_pMission.BeginTaskMsg("mis2task4_4_0"); | 53:m_pMission.EndTaskMsg("mis2task4_4_1"); | 54:m_pMission.SetTaskTimeLimit(0); | 55:m_pMission.EndCreateTask();
+  - task 5 (starts line 58): 58:m_pMission.CreateTask(TASK_SHOOT); | 59:m_pMission.SetTaskId(5); | 60:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,3); | 61:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL); | 62:m_pMission.SetSoundToBePlayed("attack2"); | 63:m_pMission.ActivateTriggerOnEnd("cScrTask07"); | 64:m_pMission.EndCreateTask();
+  - task 6 (starts line 67): 67:m_pMission.CreateTask(TASK_RACE); | 68:m_pMission.SetTaskId(6); | 69:m_pMission.SetTaskTimeLimit(0); | 70:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02A.SCR:75` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 1);`
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02A.SCR:160` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 2);`
@@ -2867,14 +2967,14 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - No `SetMission` call in the mission script.
 - Task blocks: 8
-  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE);; 19:m_pMission.SetTaskId(1);; 20:m_pMission.SetTaskTimeLimit(0);; 21:m_pMission.EndCreateTask();
-  - task 2 (starts line 23): 23:m_pMission.CreateTask(TASK_SHOOT);; 24:m_pMission.SetTaskId(2);; 25:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,1);; 26:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL);; 27:m_pMission.SetSoundToBePlayed("attack2");; 28:m_pMission.EndCreateTask();
-  - task 3 (starts line 31): 31:m_pMission.CreateTask(TASK_SHOOT);; 32:m_pMission.SetTaskId(3);; 33:m_pMission.SetTaskAnimalToShoot(ANIMAL_GBEAR,ANIMAL_KILL,1);; 34:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL);; 35:m_pMission.ForceActivateTriggerOnEnd("cScrTask04");; 36:m_pMission.SetSoundToBePlayed("attack3");; 37:m_pMission.EndCreateTask();
-  - task 4 (starts line 39): 39:m_pMission.CreateTask(TASK_RACE);; 40:m_pMission.SetTaskId(4);; 41:m_pMission.BeginTaskMsg("mis2task5_5_0");; 42:m_pMission.EndTaskMsg("mis2task5_5_1");; 43:m_pMission.SetTaskTimeLimit(0);; 44:m_pMission.EndCreateTask();
-  - task 5 (starts line 47): 47:m_pMission.CreateTask(TASK_SHOOT);; 48:m_pMission.SetTaskId(5);; 49:m_pMission.SetTaskAnimalToShoot(ANIMAL_MOUNTAINLION,ANIMAL_KILL,1);; 50:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL);; 51:m_pMission.SetSoundToBePlayed("attack2");; 52:m_pMission.EndCreateTask();
-  - task 6 (starts line 54): 54:m_pMission.CreateTask(TASK_SHOOT);; 55:m_pMission.SetTaskId(6);; 56:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,10);; 57:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL);; 58:m_pMission.BeginTaskMsg("mis2task6_6_0");; 59:m_pMission.EndTaskMsg("mis2task6_6_1");; 60:m_pMission.ForceActivateTriggerOnEnd("cScrTask13");; 61:m_pMission.SetSoundToBePlayed("attack_Hugh");; 62:m_pMission.EndCreateTask();
-  - task 7 (starts line 65): 65:m_pMission.CreateTask(TASK_RACE);; 66:m_pMission.SetTaskId(7);; 67:m_pMission.BeginTaskMsg("mis2task7_7_0");; 68:m_pMission.EndTaskMsg("mis2task7_7_1");; 69:m_pMission.SetTaskTimeLimit(0);; 70:m_pMission.EndCreateTask();
-  - task 8 (starts line 73): 73:m_pMission.CreateTask(TASK_RACE);; 74:m_pMission.SetTaskId(8);; 75:m_pMission.SetTaskTimeLimit(0);; 76:m_pMission.EndCreateTask();
+  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE); | 19:m_pMission.SetTaskId(1); | 20:m_pMission.SetTaskTimeLimit(0); | 21:m_pMission.EndCreateTask();
+  - task 2 (starts line 23): 23:m_pMission.CreateTask(TASK_SHOOT); | 24:m_pMission.SetTaskId(2); | 25:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,1); | 26:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL); | 27:m_pMission.SetSoundToBePlayed("attack2"); | 28:m_pMission.EndCreateTask();
+  - task 3 (starts line 31): 31:m_pMission.CreateTask(TASK_SHOOT); | 32:m_pMission.SetTaskId(3); | 33:m_pMission.SetTaskAnimalToShoot(ANIMAL_GBEAR,ANIMAL_KILL,1); | 34:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL); | 35:m_pMission.ForceActivateTriggerOnEnd("cScrTask04"); | 36:m_pMission.SetSoundToBePlayed("attack3"); | 37:m_pMission.EndCreateTask();
+  - task 4 (starts line 39): 39:m_pMission.CreateTask(TASK_RACE); | 40:m_pMission.SetTaskId(4); | 41:m_pMission.BeginTaskMsg("mis2task5_5_0"); | 42:m_pMission.EndTaskMsg("mis2task5_5_1"); | 43:m_pMission.SetTaskTimeLimit(0); | 44:m_pMission.EndCreateTask();
+  - task 5 (starts line 47): 47:m_pMission.CreateTask(TASK_SHOOT); | 48:m_pMission.SetTaskId(5); | 49:m_pMission.SetTaskAnimalToShoot(ANIMAL_MOUNTAINLION,ANIMAL_KILL,1); | 50:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL); | 51:m_pMission.SetSoundToBePlayed("attack2"); | 52:m_pMission.EndCreateTask();
+  - task 6 (starts line 54): 54:m_pMission.CreateTask(TASK_SHOOT); | 55:m_pMission.SetTaskId(6); | 56:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,10); | 57:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL); | 58:m_pMission.BeginTaskMsg("mis2task6_6_0"); | 59:m_pMission.EndTaskMsg("mis2task6_6_1"); | 60:m_pMission.ForceActivateTriggerOnEnd("cScrTask13"); | 61:m_pMission.SetSoundToBePlayed("attack_Hugh"); | 62:m_pMission.EndCreateTask();
+  - task 7 (starts line 65): 65:m_pMission.CreateTask(TASK_RACE); | 66:m_pMission.SetTaskId(7); | 67:m_pMission.BeginTaskMsg("mis2task7_7_0"); | 68:m_pMission.EndTaskMsg("mis2task7_7_1"); | 69:m_pMission.SetTaskTimeLimit(0); | 70:m_pMission.EndCreateTask();
+  - task 8 (starts line 73): 73:m_pMission.CreateTask(TASK_RACE); | 74:m_pMission.SetTaskId(8); | 75:m_pMission.SetTaskTimeLimit(0); | 76:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:186` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 1);`
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:643` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 4);`
@@ -2886,13 +2986,13 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - No `SetMission` call in the mission script.
 - Task blocks: 7
-  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE);; 19:m_pMission.SetTaskId(1);; 20:m_pMission.EndTaskMsg("mis2task1_1_1");; 21:m_pMission.SetTaskTimeLimit(0);; 22:m_pMission.EndCreateTask();
-  - task 2 (starts line 25): 25:m_pMission.CreateTask(TASK_SHOOT);; 26:m_pMission.SetTaskId(2);; 27:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,2);; 28:m_pMission.SetSoundToBePlayed("attack2");; 29:m_pMission.EndCreateTask();
-  - task 3 (starts line 31): 31:m_pMission.CreateTask(TASK_RACE);; 32:m_pMission.SetTaskId(3);; 33:m_pMission.BeginTaskMsg("mis2task8_8_0");; 34:m_pMission.EndTaskMsg("mis2task8_8_1");; 35:m_pMission.SetTaskTimeLimit(0);; 36:m_pMission.EndCreateTask();
-  - task 4 (starts line 38): 38:m_pMission.CreateTask(TASK_SHOOT);; 39:m_pMission.SetTaskId(4);; 40:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,1);; 41:m_pMission.BeginTaskMsg("mis2task9_9_0");; 42:m_pMission.ForceActivateTriggerOnEnd("cScrTask07");; 44:m_pMission.EndCreateTask();
-  - task 5 (starts line 46): 46:m_pMission.CreateTask(TASK_RACE);; 47:m_pMission.SetTaskId(5);; 48:m_pMission.BeginTaskMsg("mis2task9_9_1");; 49:m_pMission.SetTaskTimeLimit(0);; 50:m_pMission.EndCreateTask();
-  - task 6 (starts line 53): 53:m_pMission.CreateTask(TASK_RACE);; 54:m_pMission.SetTaskId(6);; 55:m_pMission.BeginTaskMsg("mis2task10_10_0");; 56:m_pMission.EndTaskMsg("mis2task10_10_1");; 57:m_pMission.SetTaskTimeLimit(0);; 58:m_pMission.EndCreateTask();
-  - task 7 (starts line 61): 61:m_pMission.CreateTask(TASK_SHOOT);; 62:m_pMission.SetTaskId(7);; 63:m_pMission.SetTaskAnimalToShoot(ANIMAL_GBEAR,ANIMAL_KILL,1);; 64:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL);; 65:m_pMission.BeginTaskMsg("mis2task11_11_0");; 66:m_pMission.EndTaskMsg("mis2task11_11_1");; 67:m_pMission.ActivateTriggerOnEnd("cScrTask09");; 68:m_pMission.SetSoundToBePlayed("attack2");; 69:m_pMission.EndCreateTask();
+  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE); | 19:m_pMission.SetTaskId(1); | 20:m_pMission.EndTaskMsg("mis2task1_1_1"); | 21:m_pMission.SetTaskTimeLimit(0); | 22:m_pMission.EndCreateTask();
+  - task 2 (starts line 25): 25:m_pMission.CreateTask(TASK_SHOOT); | 26:m_pMission.SetTaskId(2); | 27:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,2); | 28:m_pMission.SetSoundToBePlayed("attack2"); | 29:m_pMission.EndCreateTask();
+  - task 3 (starts line 31): 31:m_pMission.CreateTask(TASK_RACE); | 32:m_pMission.SetTaskId(3); | 33:m_pMission.BeginTaskMsg("mis2task8_8_0"); | 34:m_pMission.EndTaskMsg("mis2task8_8_1"); | 35:m_pMission.SetTaskTimeLimit(0); | 36:m_pMission.EndCreateTask();
+  - task 4 (starts line 38): 38:m_pMission.CreateTask(TASK_SHOOT); | 39:m_pMission.SetTaskId(4); | 40:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,1); | 41:m_pMission.BeginTaskMsg("mis2task9_9_0"); | 42:m_pMission.ForceActivateTriggerOnEnd("cScrTask07"); | 44:m_pMission.EndCreateTask();
+  - task 5 (starts line 46): 46:m_pMission.CreateTask(TASK_RACE); | 47:m_pMission.SetTaskId(5); | 48:m_pMission.BeginTaskMsg("mis2task9_9_1"); | 49:m_pMission.SetTaskTimeLimit(0); | 50:m_pMission.EndCreateTask();
+  - task 6 (starts line 53): 53:m_pMission.CreateTask(TASK_RACE); | 54:m_pMission.SetTaskId(6); | 55:m_pMission.BeginTaskMsg("mis2task10_10_0"); | 56:m_pMission.EndTaskMsg("mis2task10_10_1"); | 57:m_pMission.SetTaskTimeLimit(0); | 58:m_pMission.EndCreateTask();
+  - task 7 (starts line 61): 61:m_pMission.CreateTask(TASK_SHOOT); | 62:m_pMission.SetTaskId(7); | 63:m_pMission.SetTaskAnimalToShoot(ANIMAL_GBEAR,ANIMAL_KILL,1); | 64:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL); | 65:m_pMission.BeginTaskMsg("mis2task11_11_0"); | 66:m_pMission.EndTaskMsg("mis2task11_11_1"); | 67:m_pMission.ActivateTriggerOnEnd("cScrTask09"); | 68:m_pMission.SetSoundToBePlayed("attack2"); | 69:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02C.SCR:86` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION ,1);`
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02C.SCR:105` `CompleteTask(2);`
@@ -2912,15 +3012,15 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - SetMission `re/extracted/SCRIPTS/MISSIONS/MISSION03A.SCR:15` `SetMission(3);`
 - Task blocks: 9
-  - task 1 (starts line 19): 19:m_pMission.CreateTask(TASK_FIND);; 20:m_pMission.SetTaskId(1);; 21:m_pMission.SetTaskObjToFind(AI_GUIDE_ID,3);; 22:m_pMission.BeginTaskMsg("mis3task1_1_0");; 23:m_pMission.EndTaskMsg("mis3task1_1_1");; 24:m_pMission.ActivateTriggerOnEnd("cScrTask08");; 25:m_pMission.SetTaskTimeLimit(0);; 26:m_pMission.EndCreateTask();
-  - task 2 (starts line 28): 28:m_pMission.CreateTask(TASK_SHOOT);; 29:m_pMission.SetTaskId(2);; 30:m_pMission.SetTaskAnimalToShoot(ANIMAL_HYENA,ANIMAL_KILL,2);; 31:m_pMission.SetSoundToBePlayed("attack1");; 32:m_pMission.EndCreateTask();
-  - task 3 (starts line 34): 34:m_pMission.CreateTask(TASK_SHOOT);; 35:m_pMission.SetTaskId(3);; 36:m_pMission.SetTaskAnimalToShoot(ANIMAL_HYENA,ANIMAL_KILL,2);; 37:m_pMission.SetSoundToBePlayed("attack2");; 38:m_pMission.EndCreateTask();
-  - task 4 (starts line 40): 40:m_pMission.CreateTask(TASK_SHOOT);; 41:m_pMission.SetTaskId(4);; 42:m_pMission.SetTaskAnimalToShoot(ANIMAL_HYENA,ANIMAL_KILL,2);; 43:m_pMission.SetSoundToBePlayed("attack3");; 44:m_pMission.EndCreateTask();
-  - task 5 (starts line 46): 46:m_pMission.CreateTask(TASK_RACE);; 47:m_pMission.SetTaskId(5);; 48:m_pMission.BeginTaskMsg("mis3task2_2_0");; 49:m_pMission.EndTaskMsg("mis3task2_2_1");; 50:m_pMission.SetTaskTimeLimit(0);; 51:m_pMission.EndCreateTask();
-  - task 6 (starts line 53): 53:m_pMission.CreateTask(TASK_SHOOT);; 54:m_pMission.SetTaskId(6);; 55:m_pMission.SetTaskAnimalToShoot(ANIMAL_HYENA,ANIMAL_KILL,3);; 56:m_pMission.SetSoundToBePlayed("attack1");; 57:m_pMission.EndCreateTask();
-  - task 7 (starts line 59): 59:m_pMission.CreateTask(TASK_RACE);; 60:m_pMission.SetTaskId(7);; 61:m_pMission.BeginTaskMsg("mis3task3_3_0");; 62:m_pMission.EndTaskMsg("mis3task3_3_1");; 63:m_pMission.SetTaskTimeLimit(0);; 64:m_pMission.EndCreateTask();
-  - task 8 (starts line 66): 66:m_pMission.CreateTask(TASK_SHOOT);; 67:m_pMission.SetTaskId(8);; 68:m_pMission.SetTaskAnimalToShoot(ANIMAL_LEOPARD,ANIMAL_KILL,2);; 69:m_pMission.SetSoundToBePlayed("attack3");; 70:m_pMission.EndCreateTask();
-  - task 9 (starts line 72): 72:m_pMission.CreateTask(TASK_RACE);; 73:m_pMission.SetTaskId(9);; 74:m_pMission.BeginTaskMsg("mis3task4_4_0");; 75:m_pMission.SetTaskTimeLimit(0);; 76:m_pMission.EndCreateTask();
+  - task 1 (starts line 19): 19:m_pMission.CreateTask(TASK_FIND); | 20:m_pMission.SetTaskId(1); | 21:m_pMission.SetTaskObjToFind(AI_GUIDE_ID,3); | 22:m_pMission.BeginTaskMsg("mis3task1_1_0"); | 23:m_pMission.EndTaskMsg("mis3task1_1_1"); | 24:m_pMission.ActivateTriggerOnEnd("cScrTask08"); | 25:m_pMission.SetTaskTimeLimit(0); | 26:m_pMission.EndCreateTask();
+  - task 2 (starts line 28): 28:m_pMission.CreateTask(TASK_SHOOT); | 29:m_pMission.SetTaskId(2); | 30:m_pMission.SetTaskAnimalToShoot(ANIMAL_HYENA,ANIMAL_KILL,2); | 31:m_pMission.SetSoundToBePlayed("attack1"); | 32:m_pMission.EndCreateTask();
+  - task 3 (starts line 34): 34:m_pMission.CreateTask(TASK_SHOOT); | 35:m_pMission.SetTaskId(3); | 36:m_pMission.SetTaskAnimalToShoot(ANIMAL_HYENA,ANIMAL_KILL,2); | 37:m_pMission.SetSoundToBePlayed("attack2"); | 38:m_pMission.EndCreateTask();
+  - task 4 (starts line 40): 40:m_pMission.CreateTask(TASK_SHOOT); | 41:m_pMission.SetTaskId(4); | 42:m_pMission.SetTaskAnimalToShoot(ANIMAL_HYENA,ANIMAL_KILL,2); | 43:m_pMission.SetSoundToBePlayed("attack3"); | 44:m_pMission.EndCreateTask();
+  - task 5 (starts line 46): 46:m_pMission.CreateTask(TASK_RACE); | 47:m_pMission.SetTaskId(5); | 48:m_pMission.BeginTaskMsg("mis3task2_2_0"); | 49:m_pMission.EndTaskMsg("mis3task2_2_1"); | 50:m_pMission.SetTaskTimeLimit(0); | 51:m_pMission.EndCreateTask();
+  - task 6 (starts line 53): 53:m_pMission.CreateTask(TASK_SHOOT); | 54:m_pMission.SetTaskId(6); | 55:m_pMission.SetTaskAnimalToShoot(ANIMAL_HYENA,ANIMAL_KILL,3); | 56:m_pMission.SetSoundToBePlayed("attack1"); | 57:m_pMission.EndCreateTask();
+  - task 7 (starts line 59): 59:m_pMission.CreateTask(TASK_RACE); | 60:m_pMission.SetTaskId(7); | 61:m_pMission.BeginTaskMsg("mis3task3_3_0"); | 62:m_pMission.EndTaskMsg("mis3task3_3_1"); | 63:m_pMission.SetTaskTimeLimit(0); | 64:m_pMission.EndCreateTask();
+  - task 8 (starts line 66): 66:m_pMission.CreateTask(TASK_SHOOT); | 67:m_pMission.SetTaskId(8); | 68:m_pMission.SetTaskAnimalToShoot(ANIMAL_LEOPARD,ANIMAL_KILL,2); | 69:m_pMission.SetSoundToBePlayed("attack3"); | 70:m_pMission.EndCreateTask();
+  - task 9 (starts line 72): 72:m_pMission.CreateTask(TASK_RACE); | 73:m_pMission.SetTaskId(9); | 74:m_pMission.BeginTaskMsg("mis3task4_4_0"); | 75:m_pMission.SetTaskTimeLimit(0); | 76:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION03A.SCR:98` `UpdateMissionStatus(MISSION_ACTION_FIND_SOMETHING, AI_GUIDE_ID);`
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION03A.SCR:152` `UpdateMissionStatus(MISSION_ACTION_FIND_SOMETHING, AI_GUIDE_ID);`
@@ -2935,8 +3035,8 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - No `SetMission` call in the mission script.
 - Task blocks: 2
-  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE);; 19:m_pMission.SetTaskId(1);; 20:m_pMission.SetTaskTimeLimit(0);; 21:m_pMission.ActivateTriggerOnEnd("cScrTask03");; 22:m_pMission.EndCreateTask();
-  - task 2 (starts line 24): 24:m_pMission.CreateTask(TASK_SHOOT);; 25:m_pMission.SetTaskId(2);; 26:m_pMission.SetTaskAnimalToShoot(ANIMAL_LEOPARD,ANIMAL_KILL,1);; 27:m_pMission.SetSoundToBePlayed("attack2");; 28:m_pMission.EndCreateTask();
+  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE); | 19:m_pMission.SetTaskId(1); | 20:m_pMission.SetTaskTimeLimit(0); | 21:m_pMission.ActivateTriggerOnEnd("cScrTask03"); | 22:m_pMission.EndCreateTask();
+  - task 2 (starts line 24): 24:m_pMission.CreateTask(TASK_SHOOT); | 25:m_pMission.SetTaskId(2); | 26:m_pMission.SetTaskAnimalToShoot(ANIMAL_LEOPARD,ANIMAL_KILL,1); | 27:m_pMission.SetSoundToBePlayed("attack2"); | 28:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION03B.SCR:51` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 1);`
   - `re/extracted/SCRIPTS/MISSIONS/MISSION03B.SCR:21` `m_pMission.ActivateTriggerOnEnd("cScrTask03");`
@@ -2945,9 +3045,9 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - No `SetMission` call in the mission script.
 - Task blocks: 3
-  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE);; 19:m_pMission.SetTaskId(1);; 20:m_pMission.EndTaskMsg("mis3task4_4_1");; 21:m_pMission.SetTaskTimeLimit(0);; 22:m_pMission.EndCreateTask();
-  - task 2 (starts line 24): 24:m_pMission.CreateTask(TASK_SHOOT);; 25:m_pMission.SetTaskId(2);; 26:m_pMission.BeginTaskMsg("mis3task5_5_0");; 27:m_pMission.SetTaskAnimalToShoot(ANIMAL_LIONESSE,ANIMAL_KILL,2);; 28:m_pMission.ActivateTriggerOnEnd("cScrTask04");; 29:m_pMission.SetSoundToBePlayed("attack2");; 30:m_pMission.EndCreateTask();
-  - task 3 (starts line 32): 32:m_pMission.CreateTask(TASK_SHOOT);; 33:m_pMission.SetTaskId(3);; 34:m_pMission.EndTaskMsg("mis3task5_5_1");; 35:m_pMission.SetTaskAnimalToShoot(ANIMAL_LION,ANIMAL_KILL,1);; 36:m_pMission.ActivateTriggerOnEnd("cScrTask05");; 37:m_pMission.SetSoundToBePlayed("attack3");; 38:m_pMission.EndCreateTask();
+  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE); | 19:m_pMission.SetTaskId(1); | 20:m_pMission.EndTaskMsg("mis3task4_4_1"); | 21:m_pMission.SetTaskTimeLimit(0); | 22:m_pMission.EndCreateTask();
+  - task 2 (starts line 24): 24:m_pMission.CreateTask(TASK_SHOOT); | 25:m_pMission.SetTaskId(2); | 26:m_pMission.BeginTaskMsg("mis3task5_5_0"); | 27:m_pMission.SetTaskAnimalToShoot(ANIMAL_LIONESSE,ANIMAL_KILL,2); | 28:m_pMission.ActivateTriggerOnEnd("cScrTask04"); | 29:m_pMission.SetSoundToBePlayed("attack2"); | 30:m_pMission.EndCreateTask();
+  - task 3 (starts line 32): 32:m_pMission.CreateTask(TASK_SHOOT); | 33:m_pMission.SetTaskId(3); | 34:m_pMission.EndTaskMsg("mis3task5_5_1"); | 35:m_pMission.SetTaskAnimalToShoot(ANIMAL_LION,ANIMAL_KILL,1); | 36:m_pMission.ActivateTriggerOnEnd("cScrTask05"); | 37:m_pMission.SetSoundToBePlayed("attack3"); | 38:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION03C.SCR:78` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 1);`
   - `re/extracted/SCRIPTS/MISSIONS/MISSION03C.SCR:28` `m_pMission.ActivateTriggerOnEnd("cScrTask04");`
@@ -2957,9 +3057,9 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - SetMission `re/extracted/SCRIPTS/MISSIONS/MISSION04A.SCR:15` `SetMission(4);`
 - Task blocks: 3
-  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE);; 19:m_pMission.SetTaskId(1);; 20:m_pMission.BeginTaskMsg("mis4task1_1_0");; 21:m_pMission.SetTaskTimeLimit(0);; 22:m_pMission.SetSoundToBePlayed("track_map4");; 23:m_pMission.EndCreateTask();
-  - task 2 (starts line 25): 25:m_pMission.CreateTask(TASK_RACE);; 26:m_pMission.SetTaskId(2);; 27:m_pMission.BeginTaskMsg("mis4task2_2_0");; 28:m_pMission.EndTaskMsg("mis4task2_2_1");; 29:m_pMission.SetTaskTimeLimit(0);; 30:m_pMission.EndCreateTask();
-  - task 3 (starts line 32): 32:m_pMission.CreateTask(TASK_SHOOT);; 33:m_pMission.SetTaskId(3);; 34:m_pMission.SetTaskAnimalToShoot(ANIMAL_LION,ANIMAL_KILL,1);; 36:m_pMission.EndCreateTask();
+  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE); | 19:m_pMission.SetTaskId(1); | 20:m_pMission.BeginTaskMsg("mis4task1_1_0"); | 21:m_pMission.SetTaskTimeLimit(0); | 22:m_pMission.SetSoundToBePlayed("track_map4"); | 23:m_pMission.EndCreateTask();
+  - task 2 (starts line 25): 25:m_pMission.CreateTask(TASK_RACE); | 26:m_pMission.SetTaskId(2); | 27:m_pMission.BeginTaskMsg("mis4task2_2_0"); | 28:m_pMission.EndTaskMsg("mis4task2_2_1"); | 29:m_pMission.SetTaskTimeLimit(0); | 30:m_pMission.EndCreateTask();
+  - task 3 (starts line 32): 32:m_pMission.CreateTask(TASK_SHOOT); | 33:m_pMission.SetTaskId(3); | 34:m_pMission.SetTaskAnimalToShoot(ANIMAL_LION,ANIMAL_KILL,1); | 36:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION04A.SCR:268` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 2);`
 
@@ -2967,10 +3067,10 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - No `SetMission` call in the mission script.
 - Task blocks: 4
-  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE);; 19:m_pMission.SetTaskId(1);; 20:m_pMission.SetTaskTimeLimit(0);; 21:m_pMission.EndCreateTask();
-  - task 2 (starts line 23): 23:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 24:m_pMission.SetTaskId(2);; 25:m_pMission.SetTaskAnimalToShoot(ANIMAL_PANTELOPE,ANIMAL_KILL,4);; 26:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL);; 27:m_pMission.IsBonusTask();; 28:m_pMission.EndCreateTask();
-  - task 3 (starts line 30): 30:m_pMission.CreateTask(TASK_SHOOT);; 31:m_pMission.SetTaskId(3);; 32:m_pMission.SetTaskAnimalToShoot(ANIMAL_LIONESSE,ANIMAL_KILL,2);; 33:m_pMission.ActivateTriggerOnEnd("cScrTask19");; 34:m_pMission.SetSoundToBePlayed("attack2");; 35:m_pMission.EndCreateTask();
-  - task 4 (starts line 37): 37:m_pMission.CreateTask(TASK_SHOOT);; 38:m_pMission.SetTaskId(4);; 39:m_pMission.SetTaskAnimalToShoot(ANIMAL_LION,ANIMAL_KILL,1);; 40:m_pMission.EndTaskMsg("mis4task1_1_1");; 41:m_pMission.ActivateTriggerOnEnd("cScrTask20");; 42:m_pMission.SetSoundToBePlayed("attack2");; 43:m_pMission.EndCreateTask();
+  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE); | 19:m_pMission.SetTaskId(1); | 20:m_pMission.SetTaskTimeLimit(0); | 21:m_pMission.EndCreateTask();
+  - task 2 (starts line 23): 23:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 24:m_pMission.SetTaskId(2); | 25:m_pMission.SetTaskAnimalToShoot(ANIMAL_PANTELOPE,ANIMAL_KILL,4); | 26:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL); | 27:m_pMission.IsBonusTask(); | 28:m_pMission.EndCreateTask();
+  - task 3 (starts line 30): 30:m_pMission.CreateTask(TASK_SHOOT); | 31:m_pMission.SetTaskId(3); | 32:m_pMission.SetTaskAnimalToShoot(ANIMAL_LIONESSE,ANIMAL_KILL,2); | 33:m_pMission.ActivateTriggerOnEnd("cScrTask19"); | 34:m_pMission.SetSoundToBePlayed("attack2"); | 35:m_pMission.EndCreateTask();
+  - task 4 (starts line 37): 37:m_pMission.CreateTask(TASK_SHOOT); | 38:m_pMission.SetTaskId(4); | 39:m_pMission.SetTaskAnimalToShoot(ANIMAL_LION,ANIMAL_KILL,1); | 40:m_pMission.EndTaskMsg("mis4task1_1_1"); | 41:m_pMission.ActivateTriggerOnEnd("cScrTask20"); | 42:m_pMission.SetSoundToBePlayed("attack2"); | 43:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION04B.SCR:643` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 1);`
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION04B.SCR:670` `CompleteTask(1);`
@@ -2984,9 +3084,9 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - SetMission `re/extracted/SCRIPTS/MISSIONS/MISSION05.SCR:15` `SetMission(5);`
 - Task blocks: 3
-  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE);; 19:m_pMission.SetTaskId(1);; 20:m_pMission.BeginTaskMsg("mis5task1_1_0");; 21:m_pMission.EndTaskMsg("mis5task1_1_1");; 22:m_pMission.SetTaskTimeLimit(0);; 23:m_pMission.EndCreateTask();
-  - task 2 (starts line 26): 26:m_pMission.CreateTask(TASK_SHOOT);; 27:m_pMission.SetTaskId(2);; 28:m_pMission.SetTaskAnimalToShoot(ANIMAL_HYENA,ANIMAL_KILL,1);; 29:m_pMission.SetSoundToBePlayed("attack2");; 30:m_pMission.EndCreateTask();
-  - task 3 (starts line 32): 32:m_pMission.CreateTask(TASK_RACE);; 33:m_pMission.SetTaskId(3);; 34:m_pMission.BeginTaskMsg("mis5task2_2_0");; 35:m_pMission.EndTaskMsg("mis5task2_2_1");; 36:m_pMission.SetTaskTimeLimit(0);; 37:m_pMission.SetSoundToBePlayed("track_map4");; 38:m_pMission.EndCreateTask();
+  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE); | 19:m_pMission.SetTaskId(1); | 20:m_pMission.BeginTaskMsg("mis5task1_1_0"); | 21:m_pMission.EndTaskMsg("mis5task1_1_1"); | 22:m_pMission.SetTaskTimeLimit(0); | 23:m_pMission.EndCreateTask();
+  - task 2 (starts line 26): 26:m_pMission.CreateTask(TASK_SHOOT); | 27:m_pMission.SetTaskId(2); | 28:m_pMission.SetTaskAnimalToShoot(ANIMAL_HYENA,ANIMAL_KILL,1); | 29:m_pMission.SetSoundToBePlayed("attack2"); | 30:m_pMission.EndCreateTask();
+  - task 3 (starts line 32): 32:m_pMission.CreateTask(TASK_RACE); | 33:m_pMission.SetTaskId(3); | 34:m_pMission.BeginTaskMsg("mis5task2_2_0"); | 35:m_pMission.EndTaskMsg("mis5task2_2_1"); | 36:m_pMission.SetTaskTimeLimit(0); | 37:m_pMission.SetSoundToBePlayed("track_map4"); | 38:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION05.SCR:219` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 1);`
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION05.SCR:273` `CompleteTask(2);`
@@ -2999,14 +3099,14 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - SetMission `re/extracted/SCRIPTS/MISSIONS/MISSION06.SCR:15` `SetMission(6);`
 - Task blocks: 8
-  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE);; 19:m_pMission.SetTaskId(1);; 20:m_pMission.BeginTaskMsg("mis6task1_1_0");; 21:m_pMission.SetTaskTimeLimit(0);; 22:m_pMission.EndCreateTask();
-  - task 2 (starts line 25): 25:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 26:m_pMission.SetTaskId(2);; 27:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,1);; 28:m_pMission.SetSoundToBePlayed("attack1");; 29:m_pMission.EndCreateTask();
-  - task 3 (starts line 32): 32:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 33:m_pMission.SetTaskId(3);; 34:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,2);; 35:m_pMission.SetSoundToBePlayed("attack1");; 36:m_pMission.EndCreateTask();
-  - task 4 (starts line 39): 39:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 40:m_pMission.SetTaskId(4);; 41:m_pMission.SetTaskAnimalToShoot(ANIMAL_ABEAR,ANIMAL_KILL,1);; 42:m_pMission.SetSoundToBePlayed("attack1");; 43:m_pMission.EndCreateTask();
-  - task 5 (starts line 46): 46:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 47:m_pMission.SetTaskId(5);; 48:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,2);; 49:m_pMission.SetSoundToBePlayed("attack1");; 50:m_pMission.EndCreateTask();
-  - task 6 (starts line 53): 53:m_pMission.CreateTask(TASK_RACE);; 54:m_pMission.SetTaskId(6);; 55:m_pMission.BeginTaskMsg("mis6task2_2_0");; 56:m_pMission.EndTaskMsg("mis6task2_2_1");; 57:m_pMission.SetTaskTimeLimit(0);; 58:m_pMission.EndCreateTask();
-  - task 7 (starts line 61): 61:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 62:m_pMission.SetTaskId(7);; 63:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,4);; 64:m_pMission.EndTaskMsg("mis6task1_1_1");; 67:m_pMission.EndCreateTask();
-  - task 8 (starts line 70): 70:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 71:m_pMission.SetTaskId(8);; 72:m_pMission.SetTaskAnimalToShoot(ANIMAL_ABEAR,ANIMAL_KILL,1);; 73:m_pMission.BeginTaskMsg("mis6task3_3_0");; 74:m_pMission.EndTaskMsg("mis6task3_3_1");; 76:m_pMission.SetSoundToBePlayed("attack1");; 77:m_pMission.EndCreateTask();
+  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE); | 19:m_pMission.SetTaskId(1); | 20:m_pMission.BeginTaskMsg("mis6task1_1_0"); | 21:m_pMission.SetTaskTimeLimit(0); | 22:m_pMission.EndCreateTask();
+  - task 2 (starts line 25): 25:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 26:m_pMission.SetTaskId(2); | 27:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,1); | 28:m_pMission.SetSoundToBePlayed("attack1"); | 29:m_pMission.EndCreateTask();
+  - task 3 (starts line 32): 32:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 33:m_pMission.SetTaskId(3); | 34:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,2); | 35:m_pMission.SetSoundToBePlayed("attack1"); | 36:m_pMission.EndCreateTask();
+  - task 4 (starts line 39): 39:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 40:m_pMission.SetTaskId(4); | 41:m_pMission.SetTaskAnimalToShoot(ANIMAL_ABEAR,ANIMAL_KILL,1); | 42:m_pMission.SetSoundToBePlayed("attack1"); | 43:m_pMission.EndCreateTask();
+  - task 5 (starts line 46): 46:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 47:m_pMission.SetTaskId(5); | 48:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,2); | 49:m_pMission.SetSoundToBePlayed("attack1"); | 50:m_pMission.EndCreateTask();
+  - task 6 (starts line 53): 53:m_pMission.CreateTask(TASK_RACE); | 54:m_pMission.SetTaskId(6); | 55:m_pMission.BeginTaskMsg("mis6task2_2_0"); | 56:m_pMission.EndTaskMsg("mis6task2_2_1"); | 57:m_pMission.SetTaskTimeLimit(0); | 58:m_pMission.EndCreateTask();
+  - task 7 (starts line 61): 61:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 62:m_pMission.SetTaskId(7); | 63:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,4); | 64:m_pMission.EndTaskMsg("mis6task1_1_1"); | 67:m_pMission.EndCreateTask();
+  - task 8 (starts line 70): 70:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 71:m_pMission.SetTaskId(8); | 72:m_pMission.SetTaskAnimalToShoot(ANIMAL_ABEAR,ANIMAL_KILL,1); | 73:m_pMission.BeginTaskMsg("mis6task3_3_0"); | 74:m_pMission.EndTaskMsg("mis6task3_3_1"); | 76:m_pMission.SetSoundToBePlayed("attack1"); | 77:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION06.SCR:105` `CompleteTask(2);`
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION06.SCR:142` `CompleteTask(3);`
@@ -3028,15 +3128,15 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - SetMission `re/extracted/SCRIPTS/MISSIONS/MISSION07.SCR:14` `SetMission(7);`
 - Task blocks: 9
-  - task 1 (starts line 17): 17:m_pMission.CreateTask(TASK_FIND);; 18:m_pMission.SetTaskId(1);; 19:m_pMission.SetTaskObjToFind(AI_CHILD_ID,1);; 20:m_pMission.BeginTaskMsg("mis7task1_1_0");; 21:m_pMission.EndTaskMsg("mis7task1_1_1");; 22:m_pMission.SetTaskTimeLimit(0);; 23:m_pMission.EndCreateTask();
-  - task 2 (starts line 26): 26:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 27:m_pMission.SetTaskId(2);; 28:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,1);; 29:m_pMission.SetSoundToBePlayed("attack1");; 30:m_pMission.EndCreateTask();
-  - task 3 (starts line 33): 33:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 34:m_pMission.SetTaskId(3);; 35:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,2);; 36:m_pMission.SetSoundToBePlayed("attack1");; 37:m_pMission.EndCreateTask(); //insert task - ALWAYS last
-  - task 4 (starts line 40): 40:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 41:m_pMission.SetTaskId(4);; 42:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,1);; 43:m_pMission.SetSoundToBePlayed("attack1");; 44:m_pMission.EndCreateTask();
-  - task 5 (starts line 47): 47:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 48:m_pMission.SetTaskId(5);; 49:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,2);; 50:m_pMission.SetSoundToBePlayed("attack1");; 51:m_pMission.EndCreateTask();
-  - task 6 (starts line 54): 54:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 55:m_pMission.SetTaskId(6);; 56:m_pMission.SetTaskAnimalToShoot(ANIMAL_COBRA,ANIMAL_KILL,1);; 57:m_pMission.ActivateTriggerOnEnd("cScrTask08");; 58:m_pMission.EndCreateTask();
-  - task 7 (starts line 61): 61:m_pMission.CreateTask(TASK_RACE);; 62:m_pMission.SetTaskId(7);; 63:m_pMission.BeginTaskMsg("mis7task2_2_0");; 64:m_pMission.SetTaskTimeLimit(0);; 65:m_pMission.EndCreateTask();
-  - task 8 (starts line 68): 68:m_pMission.CreateTask(TASK_SHOOT); //describe a task; 69:m_pMission.SetTaskId(8);; 70:m_pMission.BeginTaskMsg("mis7task3_3_0");; 71:m_pMission.EndTaskMsg("mis7task3_3_1");; 72:m_pMission.SetTaskAnimalToShoot(ANIMAL_RHINO,ANIMAL_KILL,1);; 73:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL);; 74:m_pMission.ActivateTriggerOnEnd("cScrTask10");; 75:m_pMission.SetSoundToBePlayed("attack1");; 76:m_pMission.EndCreateTask();
-  - task 9 (starts line 79): 79:m_pMission.CreateTask(TASK_RACE);; 80:m_pMission.SetTaskId(9);; 81:m_pMission.EndTaskMsg("mis7task2_2_1");; 82:m_pMission.SetTaskTimeLimit(0);; 83:m_pMission.EndCreateTask();
+  - task 1 (starts line 17): 17:m_pMission.CreateTask(TASK_FIND); | 18:m_pMission.SetTaskId(1); | 19:m_pMission.SetTaskObjToFind(AI_CHILD_ID,1); | 20:m_pMission.BeginTaskMsg("mis7task1_1_0"); | 21:m_pMission.EndTaskMsg("mis7task1_1_1"); | 22:m_pMission.SetTaskTimeLimit(0); | 23:m_pMission.EndCreateTask();
+  - task 2 (starts line 26): 26:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 27:m_pMission.SetTaskId(2); | 28:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,1); | 29:m_pMission.SetSoundToBePlayed("attack1"); | 30:m_pMission.EndCreateTask();
+  - task 3 (starts line 33): 33:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 34:m_pMission.SetTaskId(3); | 35:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,2); | 36:m_pMission.SetSoundToBePlayed("attack1"); | 37:m_pMission.EndCreateTask(); //insert task - ALWAYS last
+  - task 4 (starts line 40): 40:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 41:m_pMission.SetTaskId(4); | 42:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,1); | 43:m_pMission.SetSoundToBePlayed("attack1"); | 44:m_pMission.EndCreateTask();
+  - task 5 (starts line 47): 47:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 48:m_pMission.SetTaskId(5); | 49:m_pMission.SetTaskAnimalToShoot(ANIMAL_BTIGER,ANIMAL_KILL,2); | 50:m_pMission.SetSoundToBePlayed("attack1"); | 51:m_pMission.EndCreateTask();
+  - task 6 (starts line 54): 54:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 55:m_pMission.SetTaskId(6); | 56:m_pMission.SetTaskAnimalToShoot(ANIMAL_COBRA,ANIMAL_KILL,1); | 57:m_pMission.ActivateTriggerOnEnd("cScrTask08"); | 58:m_pMission.EndCreateTask();
+  - task 7 (starts line 61): 61:m_pMission.CreateTask(TASK_RACE); | 62:m_pMission.SetTaskId(7); | 63:m_pMission.BeginTaskMsg("mis7task2_2_0"); | 64:m_pMission.SetTaskTimeLimit(0); | 65:m_pMission.EndCreateTask();
+  - task 8 (starts line 68): 68:m_pMission.CreateTask(TASK_SHOOT); //describe a task | 69:m_pMission.SetTaskId(8); | 70:m_pMission.BeginTaskMsg("mis7task3_3_0"); | 71:m_pMission.EndTaskMsg("mis7task3_3_1"); | 72:m_pMission.SetTaskAnimalToShoot(ANIMAL_RHINO,ANIMAL_KILL,1); | 73:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL); | 74:m_pMission.ActivateTriggerOnEnd("cScrTask10"); | 75:m_pMission.SetSoundToBePlayed("attack1"); | 76:m_pMission.EndCreateTask();
+  - task 9 (starts line 79): 79:m_pMission.CreateTask(TASK_RACE); | 80:m_pMission.SetTaskId(9); | 81:m_pMission.EndTaskMsg("mis7task2_2_1"); | 82:m_pMission.SetTaskTimeLimit(0); | 83:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION07.SCR:89` `CompleteTask(2);`
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION07.SCR:150` `CompleteTask(3);`
@@ -3054,16 +3154,16 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - SetMission `re/extracted/SCRIPTS/MISSIONS/MISSION08.SCR:15` `SetMission(8);`
 - Task blocks: 10
-  - task 1 (starts line 19): 19:m_pMission.CreateTask(TASK_FIND);; 20:m_pMission.SetTaskId(1);; 21:m_pMission.SetTaskObjToFind(AI_GUIDE_ID,1);; 22:m_pMission.BeginTaskMsg("mis8task1_1_0");; 23:m_pMission.EndTaskMsg("mis8task1_1_1");; 24:m_pMission.SetTaskTimeLimit(0);; 25:m_pMission.EndCreateTask();
-  - task 2 (starts line 27): 27:m_pMission.CreateTask(TASK_SHOOT);; 28:m_pMission.SetTaskId(2);; 29:m_pMission.SetTaskAnimalToShoot(ANIMAL_SCRUBBULL,ANIMAL_KILL,1);; 30:m_pMission.SetSoundToBePlayed("attack2");; 31:m_pMission.EndCreateTask();
-  - task 3 (starts line 33): 33:m_pMission.CreateTask(TASK_SHOOT);; 34:m_pMission.SetTaskId(3);; 35:m_pMission.SetTaskAnimalToShoot(ANIMAL_SCRUBBULL,ANIMAL_KILL,1);; 36:m_pMission.SetSoundToBePlayed("attack1");; 37:m_pMission.EndCreateTask();
-  - task 4 (starts line 40): 40:m_pMission.CreateTask(TASK_SHOOT);; 41:m_pMission.SetTaskId(4);; 42:m_pMission.SetTaskAnimalToShoot(ANIMAL_SCRUBBULL,ANIMAL_KILL,1);; 43:m_pMission.SetSoundToBePlayed("attack3");; 44:m_pMission.EndCreateTask();
-  - task 5 (starts line 46): 46:m_pMission.CreateTask(TASK_SHOOT);; 47:m_pMission.SetTaskId(5);; 48:m_pMission.SetTaskAnimalToShoot(ANIMAL_SCRUBBULL,ANIMAL_KILL,1);; 49:m_pMission.SetSoundToBePlayed("attack3");; 50:m_pMission.EndCreateTask();
-  - task 6 (starts line 52): 52:m_pMission.CreateTask(TASK_RACE);; 53:m_pMission.SetTaskId(6);; 54:m_pMission.BeginTaskMsg("mis8task2_2_0");; 55:m_pMission.EndTaskMsg("mis8task2_2_1");; 56:m_pMission.SetTaskTimeLimit(0);; 57:m_pMission.EndCreateTask();
-  - task 7 (starts line 59): 59:m_pMission.CreateTask(TASK_SHOOT);; 60:m_pMission.SetTaskId(7);; 61:m_pMission.SetTaskAnimalToShoot(ANIMAL_SCRUBBULL,ANIMAL_KILL,1);; 62:m_pMission.SetSoundToBePlayed("attack1");; 63:m_pMission.EndCreateTask();
-  - task 8 (starts line 66): 66:m_pMission.CreateTask(TASK_SHOOT);; 67:m_pMission.SetTaskId(8);; 68:m_pMission.SetTaskAnimalToShoot(ANIMAL_SCRUBBULL,ANIMAL_KILL,1);; 69:m_pMission.SetSoundToBePlayed("attack2");; 70:m_pMission.EndCreateTask();
-  - task 9 (starts line 72): 72:m_pMission.CreateTask(TASK_SHOOT);; 73:m_pMission.SetTaskId(9);; 74:m_pMission.SetTaskAnimalToShoot(ANIMAL_SCRUBBULL,ANIMAL_KILL,1);; 75:m_pMission.SetSoundToBePlayed("attack3");; 76:m_pMission.EndCreateTask();
-  - task 10 (starts line 78): 78:m_pMission.CreateTask(TASK_RACE);; 79:m_pMission.SetTaskId(10);; 80:m_pMission.SetTaskTimeLimit(0);; 81:m_pMission.SetSoundToBePlayed("attack2");; 82:m_pMission.EndCreateTask();
+  - task 1 (starts line 19): 19:m_pMission.CreateTask(TASK_FIND); | 20:m_pMission.SetTaskId(1); | 21:m_pMission.SetTaskObjToFind(AI_GUIDE_ID,1); | 22:m_pMission.BeginTaskMsg("mis8task1_1_0"); | 23:m_pMission.EndTaskMsg("mis8task1_1_1"); | 24:m_pMission.SetTaskTimeLimit(0); | 25:m_pMission.EndCreateTask();
+  - task 2 (starts line 27): 27:m_pMission.CreateTask(TASK_SHOOT); | 28:m_pMission.SetTaskId(2); | 29:m_pMission.SetTaskAnimalToShoot(ANIMAL_SCRUBBULL,ANIMAL_KILL,1); | 30:m_pMission.SetSoundToBePlayed("attack2"); | 31:m_pMission.EndCreateTask();
+  - task 3 (starts line 33): 33:m_pMission.CreateTask(TASK_SHOOT); | 34:m_pMission.SetTaskId(3); | 35:m_pMission.SetTaskAnimalToShoot(ANIMAL_SCRUBBULL,ANIMAL_KILL,1); | 36:m_pMission.SetSoundToBePlayed("attack1"); | 37:m_pMission.EndCreateTask();
+  - task 4 (starts line 40): 40:m_pMission.CreateTask(TASK_SHOOT); | 41:m_pMission.SetTaskId(4); | 42:m_pMission.SetTaskAnimalToShoot(ANIMAL_SCRUBBULL,ANIMAL_KILL,1); | 43:m_pMission.SetSoundToBePlayed("attack3"); | 44:m_pMission.EndCreateTask();
+  - task 5 (starts line 46): 46:m_pMission.CreateTask(TASK_SHOOT); | 47:m_pMission.SetTaskId(5); | 48:m_pMission.SetTaskAnimalToShoot(ANIMAL_SCRUBBULL,ANIMAL_KILL,1); | 49:m_pMission.SetSoundToBePlayed("attack3"); | 50:m_pMission.EndCreateTask();
+  - task 6 (starts line 52): 52:m_pMission.CreateTask(TASK_RACE); | 53:m_pMission.SetTaskId(6); | 54:m_pMission.BeginTaskMsg("mis8task2_2_0"); | 55:m_pMission.EndTaskMsg("mis8task2_2_1"); | 56:m_pMission.SetTaskTimeLimit(0); | 57:m_pMission.EndCreateTask();
+  - task 7 (starts line 59): 59:m_pMission.CreateTask(TASK_SHOOT); | 60:m_pMission.SetTaskId(7); | 61:m_pMission.SetTaskAnimalToShoot(ANIMAL_SCRUBBULL,ANIMAL_KILL,1); | 62:m_pMission.SetSoundToBePlayed("attack1"); | 63:m_pMission.EndCreateTask();
+  - task 8 (starts line 66): 66:m_pMission.CreateTask(TASK_SHOOT); | 67:m_pMission.SetTaskId(8); | 68:m_pMission.SetTaskAnimalToShoot(ANIMAL_SCRUBBULL,ANIMAL_KILL,1); | 69:m_pMission.SetSoundToBePlayed("attack2"); | 70:m_pMission.EndCreateTask();
+  - task 9 (starts line 72): 72:m_pMission.CreateTask(TASK_SHOOT); | 73:m_pMission.SetTaskId(9); | 74:m_pMission.SetTaskAnimalToShoot(ANIMAL_SCRUBBULL,ANIMAL_KILL,1); | 75:m_pMission.SetSoundToBePlayed("attack3"); | 76:m_pMission.EndCreateTask();
+  - task 10 (starts line 78): 78:m_pMission.CreateTask(TASK_RACE); | 79:m_pMission.SetTaskId(10); | 80:m_pMission.SetTaskTimeLimit(0); | 81:m_pMission.SetSoundToBePlayed("attack2"); | 82:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:342` `CompleteTask(2);`
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:343` `CompleteTask(3);`
@@ -3087,12 +3187,12 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - SetMission `re/extracted/SCRIPTS/MISSIONS/MISSION09.SCR:15` `SetMission(9);`
 - Task blocks: 6
-  - task 1 (starts line 19): 19:m_pMission.CreateTask(TASK_RACE);; 20:m_pMission.SetTaskId(1);; 21:m_pMission.BeginTaskMsg("mis9task1_1_0");; 22:m_pMission.EndTaskMsg("mis9task1_1_1");; 23:m_pMission.SetTaskTimeLimit(0);; 24:m_pMission.EndCreateTask();
-  - task 2 (starts line 27): 27:m_pMission.CreateTask(TASK_SHOOT);; 28:m_pMission.SetTaskId(2);; 29:m_pMission.SetTaskAnimalToShoot(ANIMAL_DINGO,ANIMAL_KILL,2);; 30:m_pMission.SetSoundToBePlayed("attack1");; 31:m_pMission.EndCreateTask();
-  - task 3 (starts line 34): 34:m_pMission.CreateTask(TASK_SHOOT);; 35:m_pMission.SetTaskId(3);; 36:m_pMission.SetTaskAnimalToShoot(ANIMAL_DINGO,ANIMAL_KILL,2);; 37:m_pMission.SetSoundToBePlayed("attack1");; 38:m_pMission.EndCreateTask();
-  - task 4 (starts line 48): 48:m_pMission.CreateTask(TASK_SHOOT);; 49:m_pMission.SetTaskId(4);; 50:m_pMission.SetTaskAnimalToShoot(ANIMAL_DINGO,ANIMAL_KILL,2);; 51:m_pMission.SetSoundToBePlayed("attack1");; 52:m_pMission.EndCreateTask();
-  - task 5 (starts line 55): 55:m_pMission.CreateTask(TASK_SHOOT);; 56:m_pMission.SetTaskId(5);; 57:m_pMission.SetTaskAnimalToShoot(ANIMAL_DINGO,ANIMAL_KILL,3);; 58:m_pMission.SetSoundToBePlayed("attack1");; 59:m_pMission.EndCreateTask();
-  - task 6 (starts line 61): 61:m_pMission.CreateTask(TASK_SHOOT);; 62:m_pMission.SetTaskId(6);; 63:m_pMission.SetTaskAnimalToShoot(ANIMAL_DINGO,ANIMAL_KILL,2);; 64:m_pMission.SetSoundToBePlayed("attack1");; 65:m_pMission.EndCreateTask();
+  - task 1 (starts line 19): 19:m_pMission.CreateTask(TASK_RACE); | 20:m_pMission.SetTaskId(1); | 21:m_pMission.BeginTaskMsg("mis9task1_1_0"); | 22:m_pMission.EndTaskMsg("mis9task1_1_1"); | 23:m_pMission.SetTaskTimeLimit(0); | 24:m_pMission.EndCreateTask();
+  - task 2 (starts line 27): 27:m_pMission.CreateTask(TASK_SHOOT); | 28:m_pMission.SetTaskId(2); | 29:m_pMission.SetTaskAnimalToShoot(ANIMAL_DINGO,ANIMAL_KILL,2); | 30:m_pMission.SetSoundToBePlayed("attack1"); | 31:m_pMission.EndCreateTask();
+  - task 3 (starts line 34): 34:m_pMission.CreateTask(TASK_SHOOT); | 35:m_pMission.SetTaskId(3); | 36:m_pMission.SetTaskAnimalToShoot(ANIMAL_DINGO,ANIMAL_KILL,2); | 37:m_pMission.SetSoundToBePlayed("attack1"); | 38:m_pMission.EndCreateTask();
+  - task 4 (starts line 48): 48:m_pMission.CreateTask(TASK_SHOOT); | 49:m_pMission.SetTaskId(4); | 50:m_pMission.SetTaskAnimalToShoot(ANIMAL_DINGO,ANIMAL_KILL,2); | 51:m_pMission.SetSoundToBePlayed("attack1"); | 52:m_pMission.EndCreateTask();
+  - task 5 (starts line 55): 55:m_pMission.CreateTask(TASK_SHOOT); | 56:m_pMission.SetTaskId(5); | 57:m_pMission.SetTaskAnimalToShoot(ANIMAL_DINGO,ANIMAL_KILL,3); | 58:m_pMission.SetSoundToBePlayed("attack1"); | 59:m_pMission.EndCreateTask();
+  - task 6 (starts line 61): 61:m_pMission.CreateTask(TASK_SHOOT); | 62:m_pMission.SetTaskId(6); | 63:m_pMission.SetTaskAnimalToShoot(ANIMAL_DINGO,ANIMAL_KILL,2); | 64:m_pMission.SetSoundToBePlayed("attack1"); | 65:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION09.SCR:397` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 1);`
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION09.SCR:420` `CompleteTask(2);`
@@ -3105,17 +3205,17 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - SetMission `re/extracted/SCRIPTS/MISSIONS/MISSION10.SCR:15` `SetMission(10);`
 - Task blocks: 11
-  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE);; 19:m_pMission.SetTaskId(1);; 20:m_pMission.BeginTaskMsg("mis10task1_1_0");; 21:m_pMission.EndTaskMsg("mis10task1_1_1");; 22:m_pMission.SetTaskTimeLimit(0);; 23:m_pMission.EndCreateTask();
-  - task 2 (starts line 26): 26:m_pMission.CreateTask(TASK_SHOOT);; 27:m_pMission.SetTaskId(2);; 28:m_pMission.SetTaskAnimalToShoot(ANIMAL_PUMA,ANIMAL_KILL,1);; 29:m_pMission.SetSoundToBePlayed("attack2");; 30:m_pMission.EndCreateTask();
-  - task 3 (starts line 32): 32:m_pMission.CreateTask(TASK_SHOOT);; 33:m_pMission.SetTaskId(3);; 34:m_pMission.SetTaskAnimalToShoot(ANIMAL_PUMA,ANIMAL_KILL,1);; 35:m_pMission.SetSoundToBePlayed("attack3");; 36:m_pMission.EndCreateTask();
-  - task 4 (starts line 38): 38:m_pMission.CreateTask(TASK_SHOOT);; 39:m_pMission.SetTaskId(4);; 40:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR3,ANIMAL_KILL,2);; 41:m_pMission.SetSoundToBePlayed("attack1");; 42:m_pMission.EndCreateTask();
-  - task 5 (starts line 44): 44:m_pMission.CreateTask(TASK_SHOOT);; 45:m_pMission.SetTaskId(5);; 46:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR3,ANIMAL_KILL,2);; 47:m_pMission.SetSoundToBePlayed("attack2");; 48:m_pMission.EndCreateTask();
-  - task 6 (starts line 50): 50:m_pMission.CreateTask(TASK_SHOOT);; 51:m_pMission.SetTaskId(6);; 52:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR3,ANIMAL_KILL,2);; 53:m_pMission.SetSoundToBePlayed("attack1");; 54:m_pMission.EndCreateTask();
-  - task 7 (starts line 56): 56:m_pMission.CreateTask(TASK_SHOOT);; 57:m_pMission.SetTaskId(7);; 58:m_pMission.SetTaskAnimalToShoot(ANIMAL_PUMA,ANIMAL_KILL,2);; 59:m_pMission.SetSoundToBePlayed("attack3");; 60:m_pMission.EndCreateTask();
-  - task 8 (starts line 62): 62:m_pMission.CreateTask(TASK_SHOOT);; 63:m_pMission.SetTaskId(8);; 64:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR3,ANIMAL_KILL,2);; 65:m_pMission.SetSoundToBePlayed("attack1");; 66:m_pMission.EndCreateTask();
-  - task 9 (starts line 68): 68:m_pMission.CreateTask(TASK_RACE);; 69:m_pMission.SetTaskId(9);; 70:m_pMission.BeginTaskMsg("mis10task2_2_0");; 71:m_pMission.EndTaskMsg("mis10task2_2_1");; 72:m_pMission.SetTaskTimeLimit(0);; 73:m_pMission.EndCreateTask();
-  - task 10 (starts line 75): 75:m_pMission.CreateTask(TASK_SHOOT);; 76:m_pMission.SetTaskId(10);; 77:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR3,ANIMAL_KILL,3);; 78:m_pMission.SetSoundToBePlayed("attack2");; 79:m_pMission.EndCreateTask();
-  - task 11 (starts line 81): 81:m_pMission.CreateTask(TASK_SHOOT);; 82:m_pMission.SetTaskId(11);; 83:m_pMission.SetTaskAnimalToShoot(ANIMAL_PUMA,ANIMAL_KILL,2);; 84:m_pMission.SetSoundToBePlayed("attack1");; 85:m_pMission.ActivateTriggerOnEnd("cScrTask17");; 86:m_pMission.EndCreateTask();
+  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE); | 19:m_pMission.SetTaskId(1); | 20:m_pMission.BeginTaskMsg("mis10task1_1_0"); | 21:m_pMission.EndTaskMsg("mis10task1_1_1"); | 22:m_pMission.SetTaskTimeLimit(0); | 23:m_pMission.EndCreateTask();
+  - task 2 (starts line 26): 26:m_pMission.CreateTask(TASK_SHOOT); | 27:m_pMission.SetTaskId(2); | 28:m_pMission.SetTaskAnimalToShoot(ANIMAL_PUMA,ANIMAL_KILL,1); | 29:m_pMission.SetSoundToBePlayed("attack2"); | 30:m_pMission.EndCreateTask();
+  - task 3 (starts line 32): 32:m_pMission.CreateTask(TASK_SHOOT); | 33:m_pMission.SetTaskId(3); | 34:m_pMission.SetTaskAnimalToShoot(ANIMAL_PUMA,ANIMAL_KILL,1); | 35:m_pMission.SetSoundToBePlayed("attack3"); | 36:m_pMission.EndCreateTask();
+  - task 4 (starts line 38): 38:m_pMission.CreateTask(TASK_SHOOT); | 39:m_pMission.SetTaskId(4); | 40:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR3,ANIMAL_KILL,2); | 41:m_pMission.SetSoundToBePlayed("attack1"); | 42:m_pMission.EndCreateTask();
+  - task 5 (starts line 44): 44:m_pMission.CreateTask(TASK_SHOOT); | 45:m_pMission.SetTaskId(5); | 46:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR3,ANIMAL_KILL,2); | 47:m_pMission.SetSoundToBePlayed("attack2"); | 48:m_pMission.EndCreateTask();
+  - task 6 (starts line 50): 50:m_pMission.CreateTask(TASK_SHOOT); | 51:m_pMission.SetTaskId(6); | 52:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR3,ANIMAL_KILL,2); | 53:m_pMission.SetSoundToBePlayed("attack1"); | 54:m_pMission.EndCreateTask();
+  - task 7 (starts line 56): 56:m_pMission.CreateTask(TASK_SHOOT); | 57:m_pMission.SetTaskId(7); | 58:m_pMission.SetTaskAnimalToShoot(ANIMAL_PUMA,ANIMAL_KILL,2); | 59:m_pMission.SetSoundToBePlayed("attack3"); | 60:m_pMission.EndCreateTask();
+  - task 8 (starts line 62): 62:m_pMission.CreateTask(TASK_SHOOT); | 63:m_pMission.SetTaskId(8); | 64:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR3,ANIMAL_KILL,2); | 65:m_pMission.SetSoundToBePlayed("attack1"); | 66:m_pMission.EndCreateTask();
+  - task 9 (starts line 68): 68:m_pMission.CreateTask(TASK_RACE); | 69:m_pMission.SetTaskId(9); | 70:m_pMission.BeginTaskMsg("mis10task2_2_0"); | 71:m_pMission.EndTaskMsg("mis10task2_2_1"); | 72:m_pMission.SetTaskTimeLimit(0); | 73:m_pMission.EndCreateTask();
+  - task 10 (starts line 75): 75:m_pMission.CreateTask(TASK_SHOOT); | 76:m_pMission.SetTaskId(10); | 77:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR3,ANIMAL_KILL,3); | 78:m_pMission.SetSoundToBePlayed("attack2"); | 79:m_pMission.EndCreateTask();
+  - task 11 (starts line 81): 81:m_pMission.CreateTask(TASK_SHOOT); | 82:m_pMission.SetTaskId(11); | 83:m_pMission.SetTaskAnimalToShoot(ANIMAL_PUMA,ANIMAL_KILL,2); | 84:m_pMission.SetSoundToBePlayed("attack1"); | 85:m_pMission.ActivateTriggerOnEnd("cScrTask17"); | 86:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION10.SCR:119` `CompleteTask(2);`
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION10.SCR:152` `CompleteTask(2);`
@@ -3145,10 +3245,10 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - SetMission `re/extracted/SCRIPTS/MISSIONS/MISSION11A.SCR:14` `SetMission(11);`
 - Task blocks: 4
-  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE);; 19:m_pMission.SetTaskId(1);; 20:m_pMission.BeginTaskMsg("mis11task1_1_0");; 21:m_pMission.ActivateTriggerOnFail("cScrFailed");; 22:m_pMission.SetTaskTimeLimit(0);; 23:m_pMission.EndCreateTask();
-  - task 2 (starts line 25): 25:m_pMission.CreateTask(TASK_SHOOT);; 26:m_pMission.SetTaskId(2);; 27:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,1);; 28:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE);; 29:m_pMission.ActivateTriggerOnEnd("cScrTask06");; 30:m_pMission.ActivateTriggerOnFail("cScrFailed");; 31:m_pMission.SetSoundToBePlayed("attack1");; 32:m_pMission.EndCreateTask();
-  - task 3 (starts line 34): 34:m_pMission.CreateTask(TASK_SHOOT);; 35:m_pMission.SetTaskId(3);; 36:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,3);; 37:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE);; 38:m_pMission.ActivateTriggerOnEnd("cScrTask07");; 39:m_pMission.ActivateTriggerOnFail("cScrFailed");; 40:m_pMission.SetSoundToBePlayed("attack1");; 41:m_pMission.EndCreateTask();
-  - task 4 (starts line 43): 43:m_pMission.CreateTask(TASK_SHOOT);; 44:m_pMission.SetTaskId(4);; 45:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,3);; 46:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE);; 47:m_pMission.ActivateTriggerOnEnd("cScrTask08");; 48:m_pMission.ActivateTriggerOnFail("cScrFailed");; 49:m_pMission.SetSoundToBePlayed("attack1");; 50:m_pMission.EndCreateTask();
+  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_RACE); | 19:m_pMission.SetTaskId(1); | 20:m_pMission.BeginTaskMsg("mis11task1_1_0"); | 21:m_pMission.ActivateTriggerOnFail("cScrFailed"); | 22:m_pMission.SetTaskTimeLimit(0); | 23:m_pMission.EndCreateTask();
+  - task 2 (starts line 25): 25:m_pMission.CreateTask(TASK_SHOOT); | 26:m_pMission.SetTaskId(2); | 27:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,1); | 28:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE); | 29:m_pMission.ActivateTriggerOnEnd("cScrTask06"); | 30:m_pMission.ActivateTriggerOnFail("cScrFailed"); | 31:m_pMission.SetSoundToBePlayed("attack1"); | 32:m_pMission.EndCreateTask();
+  - task 3 (starts line 34): 34:m_pMission.CreateTask(TASK_SHOOT); | 35:m_pMission.SetTaskId(3); | 36:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,3); | 37:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE); | 38:m_pMission.ActivateTriggerOnEnd("cScrTask07"); | 39:m_pMission.ActivateTriggerOnFail("cScrFailed"); | 40:m_pMission.SetSoundToBePlayed("attack1"); | 41:m_pMission.EndCreateTask();
+  - task 4 (starts line 43): 43:m_pMission.CreateTask(TASK_SHOOT); | 44:m_pMission.SetTaskId(4); | 45:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,3); | 46:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE); | 47:m_pMission.ActivateTriggerOnEnd("cScrTask08"); | 48:m_pMission.ActivateTriggerOnFail("cScrFailed"); | 49:m_pMission.SetSoundToBePlayed("attack1"); | 50:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/MODELS/WORLD/HELICOPTER/HELICOPTER.SCR:25` `m_pHelicopter.UncompleteTask();`
   - `re/extracted/SCRIPTS/MODELS/WORLD/HELICOPTER/HELICOPTER.SCR:59` `m_pHelicopter.UncompleteTask();`
@@ -3175,13 +3275,13 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - No `SetMission` call in the mission script.
 - Task blocks: 7
-  - task 1 (starts line 19): 19:m_pMission.CreateTask(TASK_RACE);; 20:m_pMission.SetTaskId(1);; 21:m_pMission.BeginTaskMsg("mis11task2_2_0");; 22:m_pMission.EndTaskMsg("mis11task2_2_1");; 23:m_pMission.SetTaskTimeLimit(0);; 24:m_pMission.EndCreateTask();
-  - task 2 (starts line 26): 26:m_pMission.CreateTask(TASK_SHOOT);; 27:m_pMission.SetTaskId(2);; 28:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,3);; 30:m_pMission.SetSoundToBePlayed("attack1");; 31:m_pMission.EndCreateTask();
-  - task 3 (starts line 33): 33:m_pMission.CreateTask(TASK_SHOOT);; 34:m_pMission.SetTaskId(3);; 35:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,3);; 36:m_pMission.SetSoundToBePlayed("attack1");; 37:m_pMission.EndCreateTask();
-  - task 4 (starts line 44): 44:m_pMission.CreateTask(TASK_RACE);; 45:m_pMission.SetTaskId(4);; 46:m_pMission.BeginTaskMsg("mis11task3_3_0");; 47:m_pMission.EndTaskMsg("mis11task3_3_1");; 48:m_pMission.SetTaskTimeLimit(0);; 49:m_pMission.EndCreateTask();
-  - task 5 (starts line 51): 51:m_pMission.CreateTask(TASK_SHOOT);; 52:m_pMission.SetTaskId(5);; 53:m_pMission.SetTaskAnimalToShoot(ANIMAL_HOGZILLA,ANIMAL_KILL,1);; 54:m_pMission.BeginTaskMsg("mis11task4_4_0");; 55:m_pMission.EndTaskMsg("mis11task4_4_1");; 56:m_pMission.SetSoundToBePlayed("attack1");; 57:m_pMission.ActivateTriggerOnEnd("cScrTask11");; 58:m_pMission.EndCreateTask();
-  - task 6 (starts line 60): 60:m_pMission.CreateTask(TASK_SHOOT);; 61:m_pMission.SetTaskId(6);; 62:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,3);; 63:m_pMission.SetSoundToBePlayed("attack1");; 64:m_pMission.EndCreateTask();
-  - task 7 (starts line 66): 66:m_pMission.CreateTask(TASK_SHOOT);; 67:m_pMission.SetTaskId(7);; 68:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,2);; 69:m_pMission.SetSoundToBePlayed("attack1");; 70:m_pMission.EndCreateTask();
+  - task 1 (starts line 19): 19:m_pMission.CreateTask(TASK_RACE); | 20:m_pMission.SetTaskId(1); | 21:m_pMission.BeginTaskMsg("mis11task2_2_0"); | 22:m_pMission.EndTaskMsg("mis11task2_2_1"); | 23:m_pMission.SetTaskTimeLimit(0); | 24:m_pMission.EndCreateTask();
+  - task 2 (starts line 26): 26:m_pMission.CreateTask(TASK_SHOOT); | 27:m_pMission.SetTaskId(2); | 28:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,3); | 30:m_pMission.SetSoundToBePlayed("attack1"); | 31:m_pMission.EndCreateTask();
+  - task 3 (starts line 33): 33:m_pMission.CreateTask(TASK_SHOOT); | 34:m_pMission.SetTaskId(3); | 35:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,3); | 36:m_pMission.SetSoundToBePlayed("attack1"); | 37:m_pMission.EndCreateTask();
+  - task 4 (starts line 44): 44:m_pMission.CreateTask(TASK_RACE); | 45:m_pMission.SetTaskId(4); | 46:m_pMission.BeginTaskMsg("mis11task3_3_0"); | 47:m_pMission.EndTaskMsg("mis11task3_3_1"); | 48:m_pMission.SetTaskTimeLimit(0); | 49:m_pMission.EndCreateTask();
+  - task 5 (starts line 51): 51:m_pMission.CreateTask(TASK_SHOOT); | 52:m_pMission.SetTaskId(5); | 53:m_pMission.SetTaskAnimalToShoot(ANIMAL_HOGZILLA,ANIMAL_KILL,1); | 54:m_pMission.BeginTaskMsg("mis11task4_4_0"); | 55:m_pMission.EndTaskMsg("mis11task4_4_1"); | 56:m_pMission.SetSoundToBePlayed("attack1"); | 57:m_pMission.ActivateTriggerOnEnd("cScrTask11"); | 58:m_pMission.EndCreateTask();
+  - task 6 (starts line 60): 60:m_pMission.CreateTask(TASK_SHOOT); | 61:m_pMission.SetTaskId(6); | 62:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,3); | 63:m_pMission.SetSoundToBePlayed("attack1"); | 64:m_pMission.EndCreateTask();
+  - task 7 (starts line 66): 66:m_pMission.CreateTask(TASK_SHOOT); | 67:m_pMission.SetTaskId(7); | 68:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,2); | 69:m_pMission.SetSoundToBePlayed("attack1"); | 70:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION11B.SCR:137` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 1);`
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION11B.SCR:296` `UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 4);`
@@ -3191,11 +3291,11 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - No `SetMission` call in the mission script.
 - Task blocks: 5
-  - task 1 (starts line 19): 19:m_pMission.CreateTask(TASK_RACE);; 20:m_pMission.SetTaskId(1);; 21:m_pMission.SetTaskTimeLimit(0);; 22:m_pMission.EndCreateTask();
-  - task 2 (starts line 24): 24:m_pMission.CreateTask(TASK_SHOOT);; 25:m_pMission.SetTaskId(2);; 26:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,3);; 27:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE);; 28:m_pMission.ActivateTriggerOnEnd("cScrTask06");; 30:m_pMission.SetSoundToBePlayed("attack1");; 31:m_pMission.EndCreateTask();
-  - task 3 (starts line 33): 33:m_pMission.CreateTask(TASK_SHOOT);; 34:m_pMission.SetTaskId(3);; 35:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,3);; 36:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE);; 37:m_pMission.ActivateTriggerOnEnd("cScrTask07");; 39:m_pMission.SetSoundToBePlayed("attack1");; 40:m_pMission.EndCreateTask();
-  - task 4 (starts line 42): 42:m_pMission.CreateTask(TASK_SHOOT);; 43:m_pMission.SetTaskId(4);; 44:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,4);; 45:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE);; 46:m_pMission.ActivateTriggerOnEnd("cScrTask09");; 48:m_pMission.SetSoundToBePlayed("attack1");; 49:m_pMission.EndCreateTask();
-  - task 5 (starts line 51): 51:m_pMission.CreateTask(TASK_SHOOT);; 52:m_pMission.SetTaskId(5);; 53:m_pMission.EndTaskMsg("mis11task1_1_1");; 54:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,2);; 55:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE);; 56:m_pMission.ActivateTriggerOnEnd("cScrTask08");; 58:m_pMission.SetSoundToBePlayed("attack1");; 59:m_pMission.EndCreateTask();
+  - task 1 (starts line 19): 19:m_pMission.CreateTask(TASK_RACE); | 20:m_pMission.SetTaskId(1); | 21:m_pMission.SetTaskTimeLimit(0); | 22:m_pMission.EndCreateTask();
+  - task 2 (starts line 24): 24:m_pMission.CreateTask(TASK_SHOOT); | 25:m_pMission.SetTaskId(2); | 26:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,3); | 27:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE); | 28:m_pMission.ActivateTriggerOnEnd("cScrTask06"); | 30:m_pMission.SetSoundToBePlayed("attack1"); | 31:m_pMission.EndCreateTask();
+  - task 3 (starts line 33): 33:m_pMission.CreateTask(TASK_SHOOT); | 34:m_pMission.SetTaskId(3); | 35:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,3); | 36:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE); | 37:m_pMission.ActivateTriggerOnEnd("cScrTask07"); | 39:m_pMission.SetSoundToBePlayed("attack1"); | 40:m_pMission.EndCreateTask();
+  - task 4 (starts line 42): 42:m_pMission.CreateTask(TASK_SHOOT); | 43:m_pMission.SetTaskId(4); | 44:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,4); | 45:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE); | 46:m_pMission.ActivateTriggerOnEnd("cScrTask09"); | 48:m_pMission.SetSoundToBePlayed("attack1"); | 49:m_pMission.EndCreateTask();
+  - task 5 (starts line 51): 51:m_pMission.CreateTask(TASK_SHOOT); | 52:m_pMission.SetTaskId(5); | 53:m_pMission.EndTaskMsg("mis11task1_1_1"); | 54:m_pMission.SetTaskAnimalToShoot(ANIMAL_WILDBOAR,ANIMAL_KILL,2); | 55:m_pMission.SetCompleteCondition(NEED_AMMO_FOR_COMPLETE); | 56:m_pMission.ActivateTriggerOnEnd("cScrTask08"); | 58:m_pMission.SetSoundToBePlayed("attack1"); | 59:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/MODELS/WORLD/HELICOPTER/HELICOPTER.SCR:25` `m_pHelicopter.UncompleteTask();`
   - `re/extracted/SCRIPTS/MODELS/WORLD/HELICOPTER/HELICOPTER.SCR:59` `m_pHelicopter.UncompleteTask();`
@@ -3222,14 +3322,14 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - SetMission `re/extracted/SCRIPTS/MISSIONS/MISSION12A.SCR:14` `SetMission(12);`
 - Task blocks: 8
-  - task 1 (starts line 17): 17:m_pMission.CreateTask(TASK_RACE);; 18:m_pMission.SetTaskId(1);; 19:m_pMission.BeginTaskMsg("mis12task1_1_0");; 20:m_pMission.EndTaskMsg("mis12task1_1_1");; 21:m_pMission.SetTaskTimeLimit(0);; 22:m_pMission.EndCreateTask();
-  - task 2 (starts line 25): 25:m_pMission.CreateTask(TASK_SHOOT);; 26:m_pMission.SetTaskId(2);; 27:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,2);; 28:m_pMission.SetSoundToBePlayed("attack1");; 29:m_pMission.EndCreateTask();
-  - task 3 (starts line 31): 31:m_pMission.CreateTask(TASK_SHOOT);; 32:m_pMission.SetTaskId(3);; 33:m_pMission.SetTaskAnimalToShoot(ANIMAL_PBEAR,ANIMAL_KILL,1);; 34:m_pMission.SetSoundToBePlayed("attack1");; 35:m_pMission.EndCreateTask();
-  - task 4 (starts line 37): 37:m_pMission.CreateTask(TASK_SHOOT);; 38:m_pMission.SetTaskId(4);; 39:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,2);; 40:m_pMission.SetSoundToBePlayed("attack1");; 41:m_pMission.EndCreateTask();
-  - task 5 (starts line 43): 43:m_pMission.CreateTask(TASK_SHOOT);; 44:m_pMission.SetTaskId(5);; 45:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,1);; 46:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL);; 47:m_pMission.SetSoundToBePlayed("attack1");; 48:m_pMission.ActivateTriggerOnEnd("cScrTask10");; 49:m_pMission.EndCreateTask();
-  - task 6 (starts line 51): 51:m_pMission.CreateTask(TASK_SHOOT);; 52:m_pMission.SetTaskId(6);; 53:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,2);; 54:m_pMission.SetSoundToBePlayed("attack1");; 55:m_pMission.EndCreateTask();
-  - task 7 (starts line 58): 58:m_pMission.CreateTask(TASK_SHOOT);; 59:m_pMission.SetTaskId(7);; 60:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,2);; 61:m_pMission.SetSoundToBePlayed("attack1");; 62:m_pMission.EndCreateTask();
-  - task 8 (starts line 64): 64:m_pMission.CreateTask(TASK_SHOOT);; 65:m_pMission.SetTaskId(8);; 66:m_pMission.SetTaskAnimalToShoot(ANIMAL_PBEAR,ANIMAL_KILL,1);; 67:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL);; 68:m_pMission.SetSoundToBePlayed("attack1");; 69:m_pMission.ActivateTriggerOnEnd("cScrTask13");; 70:m_pMission.EndCreateTask();
+  - task 1 (starts line 17): 17:m_pMission.CreateTask(TASK_RACE); | 18:m_pMission.SetTaskId(1); | 19:m_pMission.BeginTaskMsg("mis12task1_1_0"); | 20:m_pMission.EndTaskMsg("mis12task1_1_1"); | 21:m_pMission.SetTaskTimeLimit(0); | 22:m_pMission.EndCreateTask();
+  - task 2 (starts line 25): 25:m_pMission.CreateTask(TASK_SHOOT); | 26:m_pMission.SetTaskId(2); | 27:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,2); | 28:m_pMission.SetSoundToBePlayed("attack1"); | 29:m_pMission.EndCreateTask();
+  - task 3 (starts line 31): 31:m_pMission.CreateTask(TASK_SHOOT); | 32:m_pMission.SetTaskId(3); | 33:m_pMission.SetTaskAnimalToShoot(ANIMAL_PBEAR,ANIMAL_KILL,1); | 34:m_pMission.SetSoundToBePlayed("attack1"); | 35:m_pMission.EndCreateTask();
+  - task 4 (starts line 37): 37:m_pMission.CreateTask(TASK_SHOOT); | 38:m_pMission.SetTaskId(4); | 39:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,2); | 40:m_pMission.SetSoundToBePlayed("attack1"); | 41:m_pMission.EndCreateTask();
+  - task 5 (starts line 43): 43:m_pMission.CreateTask(TASK_SHOOT); | 44:m_pMission.SetTaskId(5); | 45:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,1); | 46:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL); | 47:m_pMission.SetSoundToBePlayed("attack1"); | 48:m_pMission.ActivateTriggerOnEnd("cScrTask10"); | 49:m_pMission.EndCreateTask();
+  - task 6 (starts line 51): 51:m_pMission.CreateTask(TASK_SHOOT); | 52:m_pMission.SetTaskId(6); | 53:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,2); | 54:m_pMission.SetSoundToBePlayed("attack1"); | 55:m_pMission.EndCreateTask();
+  - task 7 (starts line 58): 58:m_pMission.CreateTask(TASK_SHOOT); | 59:m_pMission.SetTaskId(7); | 60:m_pMission.SetTaskAnimalToShoot(ANIMAL_GWOLF,ANIMAL_KILL,2); | 61:m_pMission.SetSoundToBePlayed("attack1"); | 62:m_pMission.EndCreateTask();
+  - task 8 (starts line 64): 64:m_pMission.CreateTask(TASK_SHOOT); | 65:m_pMission.SetTaskId(8); | 66:m_pMission.SetTaskAnimalToShoot(ANIMAL_PBEAR,ANIMAL_KILL,1); | 67:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL); | 68:m_pMission.SetSoundToBePlayed("attack1"); | 69:m_pMission.ActivateTriggerOnEnd("cScrTask13"); | 70:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION12A.SCR:96` `CompleteTask(2);`
   - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION12A.SCR:127` `CompleteTask(3);`
@@ -3246,7 +3346,7 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - No `SetMission` call in the mission script.
 - Task blocks: 1
-  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_SHOOT);; 19:m_pMission.SetTaskId(1);; 20:m_pMission.BeginTaskMsg("mis12task2_2_0");; 21:m_pMission.EndTaskMsg("mis12task2_2_1");; 22:m_pMission.SetTaskAnimalToShoot(ANIMAL_BIGGRIM,ANIMAL_KILL,1);; 23:m_pMission.ActivateTriggerOnEnd("cScrTask02");; 24:m_pMission.SetSoundToBePlayed("attack1");; 25:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL);; 26:m_pMission.EndCreateTask();
+  - task 1 (starts line 18): 18:m_pMission.CreateTask(TASK_SHOOT); | 19:m_pMission.SetTaskId(1); | 20:m_pMission.BeginTaskMsg("mis12task2_2_0"); | 21:m_pMission.EndTaskMsg("mis12task2_2_1"); | 22:m_pMission.SetTaskAnimalToShoot(ANIMAL_BIGGRIM,ANIMAL_KILL,1); | 23:m_pMission.ActivateTriggerOnEnd("cScrTask02"); | 24:m_pMission.SetSoundToBePlayed("attack1"); | 25:m_pMission.SetMissionOnFleePointReachedAction(MISSION_ACTION_KILL); | 26:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/MISSIONS/MISSION12B.SCR:23` `m_pMission.ActivateTriggerOnEnd("cScrTask02");`
 
@@ -3254,7 +3354,7 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - No `SetMission` call in the mission script.
 - Task blocks: 1
-  - task 1 (starts line 17): 17:m_pMission.CreateTask(TASK_SHOOT);; 18:m_pMission.SetTaskId(1);; 19:m_pMission.BeginTaskMsg("mis12task3_3_0");; 20:m_pMission.EndTaskMsg("mis12task3_3_1");; 21:m_pMission.SetTaskAnimalToShoot(ANIMAL_YETI,ANIMAL_KILL,1);; 22:m_pMission.ActivateTriggerOnEnd("cScrTask02");; 23:m_pMission.SetSoundToBePlayed("attack1");; 24:m_pMission.EndCreateTask();
+  - task 1 (starts line 17): 17:m_pMission.CreateTask(TASK_SHOOT); | 18:m_pMission.SetTaskId(1); | 19:m_pMission.BeginTaskMsg("mis12task3_3_0"); | 20:m_pMission.EndTaskMsg("mis12task3_3_1"); | 21:m_pMission.SetTaskAnimalToShoot(ANIMAL_YETI,ANIMAL_KILL,1); | 22:m_pMission.ActivateTriggerOnEnd("cScrTask02"); | 23:m_pMission.SetSoundToBePlayed("attack1"); | 24:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/MODELS/WORLD/HELICOPTER/HELICOPTER.SCR:25` `m_pHelicopter.UncompleteTask();`
   - `re/extracted/SCRIPTS/MODELS/WORLD/HELICOPTER/HELICOPTER.SCR:59` `m_pHelicopter.UncompleteTask();`
@@ -3269,7 +3369,7 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - SetMission `re/extracted/SCRIPTS/MISSIONS/MISSIONMAPARENA.SCR:14` `SetMission(17);`
 - Task blocks: 1
-  - task 1 (starts line 15): 15:m_pMission.CreateTask(TASK_RACE);; 16:m_pMission.SetTaskId(1);; 17:m_pMission.IsBonusTask();; 18:m_pMission.BeginTaskMsg("mis17task1_1_0");; 19:m_pMission.EndTaskMsg("mis17task1_1_1");; 20:m_pMission.SetTaskTimeLimit(0);; 21:m_pMission.EndCreateTask();
+  - task 1 (starts line 15): 15:m_pMission.CreateTask(TASK_RACE); | 16:m_pMission.SetTaskId(1); | 17:m_pMission.IsBonusTask(); | 18:m_pMission.BeginTaskMsg("mis17task1_1_0"); | 19:m_pMission.EndTaskMsg("mis17task1_1_1"); | 20:m_pMission.SetTaskTimeLimit(0); | 21:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:695` `case 2: {::globals.player.PlayHint("PERFECT!"); UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 1);Pause(1.0);EndArena(); break;}`
 
@@ -3277,7 +3377,7 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - SetMission `re/extracted/SCRIPTS/MISSIONS/MISSIONMAPISLAND.SCR:14` `SetMission(18);`
 - Task blocks: 1
-  - task 1 (starts line 15): 15:m_pMission.CreateTask(TASK_RACE);; 16:m_pMission.SetTaskId(1);; 17:m_pMission.IsBonusTask();; 18:m_pMission.BeginTaskMsg("mis18task1_1_0");; 19:m_pMission.EndTaskMsg("mis18task1_1_1");; 20:m_pMission.SetTaskTimeLimit(0);; 21:m_pMission.EndCreateTask();
+  - task 1 (starts line 15): 15:m_pMission.CreateTask(TASK_RACE); | 16:m_pMission.SetTaskId(1); | 17:m_pMission.IsBonusTask(); | 18:m_pMission.BeginTaskMsg("mis18task1_1_0"); | 19:m_pMission.EndTaskMsg("mis18task1_1_1"); | 20:m_pMission.SetTaskTimeLimit(0); | 21:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/LEVELS/MAPISLAND/WORLD.SCR:296` `case 4: {::globals.player.PlayHint("PERFECT!"); Pause(2.0);UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 1);Pause(1.0);EndArena(); break;}`
 
@@ -3285,7 +3385,7 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 - SetMission `re/extracted/SCRIPTS/MISSIONS/MISSIONMAPTSAVO.SCR:14` `SetMission(19);`
 - Task blocks: 1
-  - task 1 (starts line 15): 15:m_pMission.CreateTask(TASK_RACE);; 16:m_pMission.SetTaskId(1);; 17:m_pMission.IsBonusTask();; 18:m_pMission.BeginTaskMsg("mis19task1_1_0");; 19:m_pMission.EndTaskMsg("mis19task1_1_1");; 20:m_pMission.SetTaskTimeLimit(0);; 21:m_pMission.EndCreateTask();
+  - task 1 (starts line 15): 15:m_pMission.CreateTask(TASK_RACE); | 16:m_pMission.SetTaskId(1); | 17:m_pMission.IsBonusTask(); | 18:m_pMission.BeginTaskMsg("mis19task1_1_0"); | 19:m_pMission.EndTaskMsg("mis19task1_1_1"); | 20:m_pMission.SetTaskTimeLimit(0); | 21:m_pMission.EndCreateTask();
 - Complete / fail / status calls:
   - `re/extracted/SCRIPTS/LEVELS/MAPTSAVO/WORLD.SCR:316` `case 4: {::globals.player.PlayHint("PERFECT!"); Pause(2.0);UpdateMissionStatus(MISSION_ACTION_REACHED_POSITION, 1);Pause(1.0);EndArena(); break;}`
 
@@ -3298,117 +3398,98 @@ Tasks are the `CreateTask` … `EndCreateTask` blocks in `MISSIONS\*.SCR` (calls
 
 ## 7. Map transitions, checkpoints, saves, death
 
-Search of every file in story, bonus, and hunt `MAIN.SPJ` closures (each file once) for `LoadMap`, `NextMap`, `ChangeLevel`, `ChangeMap`, `Restart`, `Checkpoint`, `SaveGame`, `LoadGame`, `Respawn`, `OnDeath`, `PlayerDeath`, `KillPlayer`, `OpenMenu`, `LoadLevel`, `EndGame`, `GameOver`, `spmap`, `SetMap`, `MissionComplete`, `GoToMenu`, `ReturnToMenu`, or a quoted map token `MAP*`, `HUNTMAP*`, `MAPMENU`, `MAPARENA`, `MAPISLAND`, `MAPTSAVO`.
+Searched every file in story, bonus, and hunt `MAIN.SPJ` closures (each file once). A call that loads another map, restarts the mission, saves, loads a checkpoint, or handles player death is quoted below. Keyword collisions are listed separately so they are not read as those calls.
+
+### Restart(
+
+No matches in the script closures.
+
+### RestartMission(
+
+No matches in the script closures.
+
+### save/load/checkpoint
+
+No matches in the script closures.
+
+### map-load or end name
+
+No matches in the script closures.
+
+### player death name
+
+No matches in the script closures.
+
+### OpenMenu(
 
 | File:line | Line |
 |---|---|
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:17` | `void SetMapLensFlare()` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:22` | `SetMap(0, 0.5, 0.5, 1);` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:30` | `SetMap(0.20, 0.2, 0.80, 0.8);` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:38` | `SetMap(0.0, 0.0, 1, 1);` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:47` | `SetMap(0, 0, 1, 1);` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:55` | `SetMap(0.5, 0.5, 1, 1);` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:63` | `SetMap(0.5, 0, 1, 0.5);` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:72` | `SetMap(0, 0, 0.5, 0.5);` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:81` | `SetMap(0.5, 0, 1, 0.5);` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:90` | `SetMap(0.5, 0, 1, 0.5);` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:98` | `SetMap(0.5, 0, 1, 0.5);` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:106` | `SetMap(0.5, 0, 1, 0.5);` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:114` | `SetMap(0, 0, 0.5, 0.5);` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:122` | `SetMap(0.5, 0, 1, 0.5);` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:130` | `SetMap(0.5, 0, 1, 0.5);` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:138` | `SetMap(0.5, 0, 1, 0.5);` |
-| `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:151` | `void SetMapLensFlare()` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:16` | `OpenMenuPage(1);` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:76` | `OpenMenuPage(2);` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:130` | `OpenMenuPage(3);` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:194` | `OpenMenuPage(4);` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:270` | `OpenMenuPage(5);` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:320` | `OpenMenuPage(6);` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:341` | `OpenMenuPage(7);` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:427` | `OpenMenuPage(12 );` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02A.SCR:397` | `if (TRUE==::globals.wolf3.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:541` | `if(TRUE == ::globals.wolf1.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:566` | `if(TRUE == ::globals.wolf2.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:595` | `if(TRUE == ::globals.wolf3.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:659` | `if ((TRUE == ::globals.wolf1.CanBeRespawned()) &&` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:660` | `(TRUE == ::globals.wolf2.CanBeRespawned()) &&` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:661` | `(TRUE == ::globals.wolf3.CanBeRespawned())) setstate(NoChange);` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02C.SCR:172` | `setstate(wildboarrespawn);` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02C.SCR:185` | `state wildboarrespawn` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02C.SCR:193` | `if (TRUE == ::globals.wildboar1.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION03A.SCR:81` | `OpenMenuPage(8);` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION03B.SCR:143` | `OpenMenuPage(9);` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION03B.SCR:162` | `OpenMenuPage(10);` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION05.SCR:162` | `if (TRUE==::globals.hyena2.CanBeRespawned()) {} else {::globals.hyena2.SetTaskParam("time", "8.0");}` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION05.SCR:345` | `if(TRUE == ::globals.elephant1.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION05.SCR:359` | `if(TRUE == ::globals.elephant2.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION06.SCR:58` | `OpenMenuPage(11);` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:17` | `void StampedeRespawn(string szSpawnName)` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:33` | `if(TRUE == ::globals.scrubbul1.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:49` | `if(TRUE == ::globals.scrubbul2.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:64` | `if(TRUE == ::globals.scrubbul3.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:79` | `if(TRUE == ::globals.scrubbul4.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:94` | `if(TRUE == ::globals.scrubbul5.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:111` | `void RandomStampedeRespawn(string szSpawnName1, string szSpawnName2, string szSpawnName3)` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:122` | `case 0: {StampedeRespawn(szSpawnName1);break;}` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:123` | `case 1: {StampedeRespawn(szSpawnName2);break;}` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:124` | `case 2: {StampedeRespawn(szSpawnName3);break;}` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:429` | `if (TRUE==::globals.croco1.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:438` | `if (TRUE==::globals.croco2.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:446` | `if (TRUE==::globals.croco3.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:741` | `RandomStampedeRespawn("scrubbulls_sq1_1", "scrubbulls_sq1_2", "scrubbulls_sq1_3");` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:780` | `RandomStampedeRespawn("scrubbulls_sq2_1", "scrubbulls_sq2_2", "scrubbulls_sq2_3");` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:820` | `RandomStampedeRespawn("scrubbulls_sq3_1", "scrubbulls_sq3_2", "scrubbulls_sq3_3");` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:859` | `RandomStampedeRespawn("scrubbulls_sq4_1", "scrubbulls_sq4_2", "scrubbulls_sq4_3");` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION08.SCR:896` | `RandomStampedeRespawn("scrubbulls_sq5_1", "scrubbulls_sq5_2", "scrubbulls_sq5_3");` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:309` | `if (TRUE==::globals.leopard1.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:318` | `if (TRUE==::globals.leopard2.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:341` | `if ((TRUE ==::globals.leopard1.CanBeRespawned()) &&` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:342` | `(TRUE ==::globals.leopard2.CanBeRespawned()) /* &&` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:343` | `(TRUE ==::globals.leopard3.CanBeRespawned()) */)` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:355` | `if (TRUE==::globals.bull1.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:363` | `if (TRUE==::globals.bull2.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:387` | `if ((TRUE ==::globals.bull1.CanBeRespawned()) &&` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:388` | `(TRUE ==::globals.bull2.CanBeRespawned()) /* &&` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:389` | `(TRUE ==::globals.bull3.CanBeRespawned()) */)` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:400` | `if (TRUE==::globals.wolf1.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:408` | `if (TRUE==::globals.wolf2.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:416` | `if (TRUE==::globals.wolf3.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:483` | `if ((TRUE ==::globals.wolf1.CanBeRespawned()) &&` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:484` | `(TRUE ==::globals.wolf2.CanBeRespawned()) &&` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:485` | `(TRUE ==::globals.wolf3.CanBeRespawned()) /* &&` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:486` | `(TRUE ==::globals.wolf4.CanBeRespawned()) */)` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:498` | `if (TRUE==::globals.lion1.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:506` | `if (TRUE==::globals.lion2.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:530` | `if ((TRUE ==::globals.lion1.CanBeRespawned()) &&` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:531` | `(TRUE ==::globals.lion2.CanBeRespawned()) /* &&` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:532` | `(TRUE ==::globals.lion3.CanBeRespawned() )*/)` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:544` | `if (TRUE==::globals.grizzly1.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:569` | `if ((TRUE ==::globals.grizzly1.CanBeRespawned()) /*&&` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:570` | `(TRUE ==::globals.grizzly2.CanBeRespawned()) */)` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:582` | `if (TRUE==::globals.rhino1.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:639` | `if (TRUE==::globals.handgun_ammo.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:649` | `if (TRUE==::globals.shotgun_ammo.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:659` | `if (TRUE==::globals.medkit.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:687` | `(TRUE ==::globals.rhino1.CanBeRespawned()))` |
-| `re/extracted/SCRIPTS/LEVELS/MAPISLAND/WORLD.SCR:202` | `if (TRUE==::globals.btiger1.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPISLAND/WORLD.SCR:212` | `if (TRUE==::globals.btiger2.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPISLAND/WORLD.SCR:252` | `if (TRUE==::globals.tranq_gun_ammo.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPISLAND/WORLD.SCR:262` | `if (TRUE==::globals.medkit.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPISLAND/WORLD.SCR:287` | `if ((nAnimalCount >= nRoundCount) && (TRUE == ::globals.btiger1.CanBeRespawned()) && (TRUE == ::globals.btiger2.CanBeRespawned()))` |
-| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMAPISLAND.SCR:40` | `OpenMenuPage(13);` |
-| `re/extracted/SCRIPTS/LEVELS/MAPTSAVO/WORLD.SCR:218` | `if (TRUE==::globals.lion1.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPTSAVO/WORLD.SCR:231` | `if (TRUE==::globals.lioness1.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPTSAVO/WORLD.SCR:262` | `if (TRUE==::globals.handgun_ammo.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPTSAVO/WORLD.SCR:272` | `if (TRUE==::globals.shotgun_ammo.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPTSAVO/WORLD.SCR:282` | `if (TRUE==::globals.medkit.CanBeRespawned())` |
-| `re/extracted/SCRIPTS/LEVELS/MAPTSAVO/WORLD.SCR:307` | `if ((nAnimalCount >= nRoundCount) && (TRUE == ::globals.lion1.CanBeRespawned()) && (TRUE == ::globals.lioness1.CanBeRespawned()))` |
-| `re/extracted/SCRIPTS/LEVELS/HUNTMAPBASE.SCR:77` | `if (true == the_predator.CanBeRespawned())//the predator is either dead, either not spawned` |
 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERHUNTMAP1.SCR:92` | `OpenMenu("WeaponMenu");` |
 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERHUNTMAP2.SCR:92` | `OpenMenu("WeaponMenu");` |
 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERHUNTMAP3.SCR:92` | `OpenMenu("WeaponMenu");` |
 | `re/extracted/SCRIPTS/TRIGGERS/TRIGGERHUNTMAP4.SCR:92` | `OpenMenu("WeaponMenu");` |
+
+### quoted map token
+
+No matches in the script closures.
+
+### Player damage lines
+
+| File:line | Line |
+|---|---|
+| `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:22` | `if(!player.IsCrouch() && player.IsLegHurt())` |
+| `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:108` | `else if(!player.IsLegHurt())` |
+| `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:166` | `else if(!player.IsLegHurt())` |
+| `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:222` | `if(!player.IsLegHurt())` |
+| `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:279` | `if(!player.IsLegHurt())` |
+| `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:383` | `if(!player.IsLegHurt())` |
+| `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:445` | `if(!player.IsLegHurt())` |
+| `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:508` | `if(!player.IsLegHurt())` |
+| `re/extracted/SCRIPTS/MODELS/CHARACTERS/HUMANLEGS.SCR:567` | `if(!player.IsLegHurt())` |
+| `re/extracted/SCRIPTS/LEVELS/MAPARENA/WORLD.SCR:623` | `if (0.4>::globals.player.GetHealth())` |
+| `re/extracted/SCRIPTS/LEVELS/MAPISLAND/WORLD.SCR:236` | `if (0.4>::globals.player.GetHealth())` |
+| `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMAPISLAND.SCR:63` | `::globals.player.Hurt(-1, 2, 0);` |
+| `re/extracted/SCRIPTS/LEVELS/MAPTSAVO/WORLD.SCR:246` | `if (0.4>::globals.player.GetHealth())` |
+
+`IsLegHurt` and `GetHealth` are queries. `Hurt(` on those lines is the damage call.
+
+### Keyword collisions (not map load, save, checkpoint, or player respawn)
+
+- `SetMap lens-flare rect (not a level load)`: 17 lines.
+  - `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:17` `void SetMapLensFlare()`
+  - `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:22` `SetMap(0, 0.5, 0.5, 1);`
+  - `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:30` `SetMap(0.20, 0.2, 0.80, 0.8);`
+  - `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:38` `SetMap(0.0, 0.0, 1, 1);`
+  - `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:47` `SetMap(0, 0, 1, 1);`
+  - `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:55` `SetMap(0.5, 0.5, 1, 1);`
+  - `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:63` `SetMap(0.5, 0, 1, 0.5);`
+  - `re/extracted/SCRIPTS/LEVELS/LENSFLARE.SCR:72` `SetMap(0, 0, 0.5, 0.5);`
+  - … 9 more
+- `animal CanBeRespawned / StampedeRespawn (not a player respawn)`: 71 lines.
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02A.SCR:397` `if (TRUE==::globals.wolf3.CanBeRespawned())`
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:541` `if(TRUE == ::globals.wolf1.CanBeRespawned())`
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:566` `if(TRUE == ::globals.wolf2.CanBeRespawned())`
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:595` `if(TRUE == ::globals.wolf3.CanBeRespawned())`
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:659` `if ((TRUE == ::globals.wolf1.CanBeRespawned()) &&`
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:660` `(TRUE == ::globals.wolf2.CanBeRespawned()) &&`
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02B.SCR:661` `(TRUE == ::globals.wolf3.CanBeRespawned())) setstate(NoChange);`
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02C.SCR:193` `if (TRUE == ::globals.wildboar1.CanBeRespawned())`
+  - … 63 more
+- `OpenMenuPage (page index)`: 13 lines.
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:16` `OpenMenuPage(1);`
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:76` `OpenMenuPage(2);`
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:130` `OpenMenuPage(3);`
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:194` `OpenMenuPage(4);`
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:270` `OpenMenuPage(5);`
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:320` `OpenMenuPage(6);`
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:341` `OpenMenuPage(7);`
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION01.SCR:427` `OpenMenuPage(12 );`
+  - … 5 more
+- `other keyword`: 2 lines.
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02C.SCR:172` `setstate(wildboarrespawn);`
+  - `re/extracted/SCRIPTS/TRIGGERS/TRIGGERMISSION02C.SCR:185` `state wildboarrespawn`
+
+There is no script call in these closures whose text is `LoadMap`, `NextMap`, `Checkpoint`, `SaveGame`, or `LoadGame`. `Restart` / `RestartMission` / `OpenMenu` / `SaveGame` exist as ExportFnc names (section 2c, GameDll registrar `0xc2d40` and CommonDll `cGuiSaveMan::ScrExport` `0x102270`). Whether a script calls `Restart` is the table above, not an inference from the export.
 
 Candidate C++ exports from `re/exports/*.demangled.txt` whose demangled name matches `Checkpoint`, `Save`, `Load`, `Restart`, `Respawn`, `Death`, `Die`, `NextMap`, or `Level`. These are names only (UNVERIFIED: not tied to a script call).
 
@@ -3905,14 +3986,15 @@ Character `<instance>` members of the globals class (`cScrNPC`, `cScrCustomChara
 
 ## 9. Summary for the lead
 
-- Player-reference lines in story+bonus closures: 1581. By kind: player flags 419, task target 341, trigger tests player 317, camera/cutscene 222, bind player entity 98, player method 98, inventory/weapon 61, damage/health 13, distance check 8, teleport/move 4.
-- Cutscene scripts listed by story+bonus MAIN.SPJ: 74 across 20 maps. Files with `state Skip`: 83.
-- Non-comment QTE/melee/button/fight/knife hits in all extracted scripts: 20. Comment hits: 2.
-- Maps with at least one NPC/custom-character globals instance: 19.
-- Largest player-reference files are the per-map trigger and world scripts (the table in section 4). Shared files inflate section 3 per-map sums.
-- Story maps ordered by fewer cutscene scripts, then fewer NPC instances, then fewer map-local player lines, then fewer task blocks: MAP3B (cs 0, npc 0, local-player-lines 22, tasks 2), MAP12B (cs 1, npc 0, local-player-lines 15, tasks 1), MAP12C (cs 1, npc 1, local-player-lines 13, tasks 1), MAP4A (cs 2, npc 1, local-player-lines 36, tasks 3), MAP11B (cs 2, npc 1, local-player-lines 41, tasks 7), MAP3C (cs 3, npc 1, local-player-lines 36, tasks 3), MAP2B (cs 3, npc 1, local-player-lines 85, tasks 8), MAP5 (cs 3, npc 2, local-player-lines 46, tasks 3), MAP7 (cs 3, npc 2, local-player-lines 130, tasks 9), MAP2C (cs 3, npc 3, local-player-lines 114, tasks 7), MAP11C (cs 3, npc 4, local-player-lines 35, tasks 5), MAP11A (cs 3, npc 4, local-player-lines 38, tasks 4), MAP9 (cs 4, npc 1, local-player-lines 78, tasks 6), MAP3A (cs 4, npc 1, local-player-lines 84, tasks 9), MAP4B (cs 5, npc 1, local-player-lines 100, tasks 4), MAP1 (cs 5, npc 2, local-player-lines 68, tasks 6), MAP8 (cs 5, npc 3, local-player-lines 139, tasks 10), MAP6 (cs 5, npc 4, local-player-lines 132, tasks 8), MAP2A (cs 6, npc 2, local-player-lines 82, tasks 6), MAP10 (cs 6, npc 2, local-player-lines 112, tasks 11), MAP12A (cs 7, npc 2, local-player-lines 98, tasks 8).
-- `ExecuteScript("cScrCutScene…")` is the call that starts a cutscene class; `player.ActivateCutSceneMode` / `PLAYER_INCUTSCENE` / `BeginCamera` run inside the cutscene script (section 5 counts).
-- Mission end calls in scripts are `UpdateMissionStatus`, `CompleteTask`, and `GlobalsCheckMissionStatus` where section 6 lists them. No design applied.
+- Player-reference lines in story+bonus closures: 1581. Kinds: player flags 419, task target 341, trigger tests player 317, camera/cutscene 222, bind player entity 98, player method 98, inventory/weapon 61, damage/health 13, distance check 8, teleport/move 4.
+- Cutscene scripts named by story+bonus MAIN.SPJ: 74 on 20 maps. Cutscene files on disk: 83. Files containing `state Skip`: 83.
+- QTE/Struggle/Melee/Button/CloseCombat/Mash/QuickTime: no code hits. Code hits for the search words: 14 (knife distance, knife equip, `Pumafight` anim state, knife class names). String/comment hits are dialogue or comments (section 5).
+- Maps with a globals NPC or custom-character instance: 19 of 25.
+- No `LoadMap` / `NextMap` / `Checkpoint` / `SaveGame` / `LoadGame` call in the script closures (section 7).
+- Fewest cutscenes, then fewest NPC instances, then fewest map-local player lines: MAP3B (cutscenes 0, npc instances 0, map-local player lines 22, tasks 2); MAP12B (cutscenes 1, npc instances 0, map-local player lines 15, tasks 1); MAP12C (cutscenes 1, npc instances 1, map-local player lines 13, tasks 1); MAP4A (cutscenes 2, npc instances 1, map-local player lines 36, tasks 3); MAP11B (cutscenes 2, npc instances 1, map-local player lines 41, tasks 7).
+- Other end of that order: MAP8 (cutscenes 5, npc instances 3, map-local player lines 139, tasks 10); MAP6 (cutscenes 5, npc instances 4, map-local player lines 132, tasks 8); MAP2A (cutscenes 6, npc instances 2, map-local player lines 82, tasks 6); MAP10 (cutscenes 6, npc instances 2, map-local player lines 112, tasks 11); MAP12A (cutscenes 7, npc instances 2, map-local player lines 98, tasks 8).
+- Cutscenes start with `ExecuteScript("cScrCutScene…")` from trigger scripts. Inside the cutscene script the player calls are `SetPFlags(PLAYER_INCUTSCENE)`, `ActivateCutSceneMode`, `ClearPFlags`, `DeactivateCutSceneMode`, plus camera `BeginCamera` / `EndCamera` (section 5).
+- Task definitions are `m_pMission.CreateTask` blocks in `MISSIONS\*.SCR`. Scripts advance them with `UpdateMissionStatus` and `ActivateTriggerOnEnd` / `ActivateTriggerOnFail` (section 6). `CompleteTask` and `GlobalsCheckMissionStatus` counts are in section 3.
 
 ## Proposed MEMORY facts
 
