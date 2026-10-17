@@ -6,8 +6,10 @@
 
 #include <cstdint>
 #include <cstring>
+#include <cmath>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 #include <spdlog/spdlog.h>
 
@@ -37,6 +39,20 @@ bool g_log = true;
 // without that call (MAP12C cScrTask01, 2026-10-16 22:45): the host fire was then skipped and
 // the client stayed in the opening cutscene camera.
 std::unordered_set<int16_t> g_ran_fire;
+std::vector<net::GameEvent> g_deferred_fires;
+
+// Opening cutscenes put the render camera on a scripted rail, metres from the hunter.
+// Standing play keeps it about 1.7 m above the feet. MAP12C's cScrCutScene1 only calls
+// EndCamera / DeactivateCutSceneMode after the yeti's PlaySA task, so a host fire applied
+// during that wait replaces the task and the camera never releases.
+bool PlayerInCutscene() {
+    const LocalPlayerSample& p = LocalPlayer();
+    if (!p.valid || !p.viewValid) return false;
+    const float dx = p.viewPos.x - p.pos.x;
+    const float dy = p.viewPos.y - p.pos.y;
+    const float dz = p.viewPos.z - p.pos.z;
+    return (dx * dx + dy * dy + dz * dz) > 16.f;
+}
 
 std::string Describe(void* ent) {
     if (!ent) return "null";
@@ -152,18 +168,19 @@ void OnFireRequest(const net::GameEvent& ev) {
     events::Commit(events::kTriggerFire, ev.subjectId, 0, 0.f, ev.key, ev.actorId);
 }
 
-void OnFireCommit(const net::GameEvent& ev) {
+void ApplyFireCommit(const net::GameEvent& ev) {
     void* ent = FindEvent(ev);
     if (!ent) {
         spdlog::warn("story: fire commit id={} '{}': no such trigger here", ev.subjectId, ev.key);
         return;
     }
     if (!IsActive(ent)) Activate(ent);  // arm first if this client missed the arming
-    const int16_t id = IdOf(ent);
-    if (id >= 0 && g_ran_fire.count(id) != 0) {
+    const int16_t id = static_cast<int16_t>(ev.subjectId);
+    if (g_ran_fire.count(id) != 0) {
         spdlog::info("story: host fire '{}' (id {}) already ran here", ev.key, id);
         return;
     }
+    g_ran_fire.insert(id);
     if (HasFired(ent)) {
         int flag = 0;
         core::safe_read(static_cast<char*>(ent) + 0x1fc, flag);
@@ -173,6 +190,26 @@ void OnFireCommit(const net::GameEvent& ev) {
     }
     Fire(ent);
     spdlog::info("story: applied host fire '{}' (id {})", ev.key, ev.subjectId);
+}
+
+void OnFireCommit(const net::GameEvent& ev) {
+    if (PlayerInCutscene()) {
+        for (const net::GameEvent& pending : g_deferred_fires) {
+            if (pending.subjectId == ev.subjectId && pending.key == ev.key) return;
+        }
+        g_deferred_fires.push_back(ev);
+        spdlog::info("story: defer host fire '{}' (id {}) until the local cutscene camera ends", ev.key,
+                     ev.subjectId);
+        return;
+    }
+    ApplyFireCommit(ev);
+}
+
+void PumpDeferredFires() {
+    if (g_deferred_fires.empty() || PlayerInCutscene()) return;
+    const std::vector<net::GameEvent> pending = std::move(g_deferred_fires);
+    g_deferred_fires.clear();
+    for (const net::GameEvent& ev : pending) ApplyFireCommit(ev);
 }
 
 void __fastcall hk_TriggerFire(void* self, void*, void* activator) {
@@ -263,7 +300,12 @@ public:
     const char* Name() const override { return "story"; }
     int Priority() const override { return 47; }
 
-    void OnMapLoaded(const char*) override { g_ran_fire.clear(); }
+    void OnMapLoaded(const char*) override {
+        g_ran_fire.clear();
+        g_deferred_fires.clear();
+    }
+
+    void OnFrame(float) override { PumpDeferredFires(); }
 
     void OnInit() override {
         const std::string ini = (core::self_dir() / "dh2coop.ini").string();

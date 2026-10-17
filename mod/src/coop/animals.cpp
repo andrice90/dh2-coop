@@ -544,6 +544,17 @@ private:
                 *reinterpret_cast<float*>(static_cast<char*>(ent) + kEntHealth) = 0.f;
                 continue;
             }
+            // MAP12C's opening cutscene WaitForTask's the yeti. Freezing that brain, or pinning
+            // the yeti to the host pose, never lets the task finish, so the client stays in the
+            // cutscene camera (player 2 could see their character and could not move, 22:48).
+            if (entity::BodyStateName(ent) == "CutScene") {
+                if (m.frozen) {
+                    entity::FreezeBrain(ent, false);
+                    m.frozen = false;
+                    spdlog::info("animals: mirror thaw id={} while state is CutScene", id);
+                }
+                continue;
+            }
             if (!m.frozen) {
                 const bool ok = entity::FreezeBrain(ent, true);
                 if (!m.freeze_logged) {
