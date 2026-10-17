@@ -217,6 +217,12 @@ struct UnlinkDiag {
     void* sm_vt20 = nullptr;
     bool hid_sm = false;
     void* synced = nullptr;  // the weapon entity the hand was synced with
+    // Sync ring links (cModelPartLink, +4 = owner entity): before and after SetSyncWith(nullptr), all must end null.
+    void* w_back_before = nullptr;  // weapon part +0xf4
+    void* w_back_after = nullptr;
+    void* hand_next_before = nullptr;  // hand part +0x10c
+    void* hand_next_after = nullptr;
+    void* hand_sync_after = nullptr;  // hand part +0x100
 } g_unlink_diag;
 void* g_scripted_sm_vt = nullptr;  // EngineDll7 ??_7cScriptedBodyStateMachine@@6B@
 
@@ -251,7 +257,15 @@ int guarded_unlink_part(void* owner, const char* tag) {
             *sm_slot = nullptr;
             g_unlink_diag.hid_sm = true;
         }
+        void* wpart = nullptr;
+        if (void* wmodel = *reinterpret_cast<void**>(static_cast<char*>(synced) + 0xE4))
+            wpart = reinterpret_cast<GetPartFn>(slot(wmodel, 0xf0))(wmodel, 0);
+        if (wpart) g_unlink_diag.w_back_before = *reinterpret_cast<void**>(static_cast<char*>(wpart) + 0xf4 + 4);
+        g_unlink_diag.hand_next_before = *reinterpret_cast<void**>(static_cast<char*>(ctrl) + 0x10c + 4);
         reinterpret_cast<LinkFn>(slot(ctrl, 0x38))(ctrl, nullptr);
+        if (wpart) g_unlink_diag.w_back_after = *reinterpret_cast<void**>(static_cast<char*>(wpart) + 0xf4 + 4);
+        g_unlink_diag.hand_next_after = *reinterpret_cast<void**>(static_cast<char*>(ctrl) + 0x10c + 4);
+        g_unlink_diag.hand_sync_after = *reinterpret_cast<void**>(static_cast<char*>(ctrl) + 0x100 + 4);
         result = 1;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         result = -1;
@@ -595,6 +609,56 @@ bool PresentDeath(void* animal) {
     return ok;
 }
 
+namespace {
+using SetVisibleFn = void(__thiscall*)(void* self, int visible);
+using PhysToggleFn = void(__thiscall*)(void* phys);
+SetVisibleFn g_set_visible = nullptr;
+PhysToggleFn g_phys_freeze = nullptr;
+PhysToggleFn g_phys_unfreeze = nullptr;
+
+bool guarded_set_visible(void* ent, int visible) {
+    __try {
+        g_set_visible(ent, visible);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+bool guarded_phys_toggle(PhysToggleFn fn, void* phys) {
+    __try {
+        fn(phys);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+}  // namespace
+
+bool SetVisible(void* ent, bool visible) {
+    if (!ent) return false;
+    if (!g_set_visible) {
+        if (HMODULE common = GetModuleHandleA("CommonDll7.dll"))
+            g_set_visible = core::find_export_as<SetVisibleFn>(common, "?SetVisible@cObjScriptedEntity@@UAEXH@Z");
+        if (!g_set_visible) return false;
+    }
+    return guarded_set_visible(ent, visible ? 1 : 0);
+}
+
+bool FreezeBody(void* ent, bool freeze) {
+    if (!ent) return false;
+    if (!g_phys_freeze || !g_phys_unfreeze) {
+        if (HMODULE engine = GetModuleHandleA("EngineDll7.dll")) {
+            g_phys_freeze = core::find_export_as<PhysToggleFn>(engine, "?Freeze@cPhysicsObject@@UAEXXZ");
+            g_phys_unfreeze = core::find_export_as<PhysToggleFn>(engine, "?Unfreeze@cPhysicsObject@@UAEXXZ");
+        }
+        if (!g_phys_freeze || !g_phys_unfreeze) return false;
+    }
+    void* phys = nullptr;
+    if (!core::safe_read(static_cast<char*>(ent) + 0x118, phys) || !phys) return false;
+    return guarded_phys_toggle(freeze ? g_phys_freeze : g_phys_unfreeze, phys);
+}
+
 bool AddAttackTarget(void* ent) {
     if (!ent || !bind_attack_list()) return false;
     void* iface = *g_animal_iface;
@@ -630,11 +694,16 @@ int UnlinkPart(void* owner, const char* tag) {
     }
     (void)w_before;
     spdlog::info("entity_api: UnlinkPart owner={:#x} tag='{}' -> {} (SetSyncWith(nullptr)) ctrl={:#x} sm={:#x} "
-                 "sm_vt={} vt+0x20={} hid_sm={} refs owner {}->{} weapon after {}",
+                 "sm_vt={} vt+0x20={} hid_sm={} refs owner {}->{} weapon after {} ring weapon+0xf4 {:#x}->{:#x} "
+                 "hand+0x10c {:#x}->{:#x} hand+0x100 after {:#x}",
                  reinterpret_cast<uintptr_t>(owner), tag, r, reinterpret_cast<uintptr_t>(g_unlink_diag.ctrl),
                  reinterpret_cast<uintptr_t>(g_unlink_diag.sm), core::describe_address(g_unlink_diag.sm_vt),
                  core::describe_address(g_unlink_diag.sm_vt20), g_unlink_diag.hid_sm, owner_before, owner_after,
-                 w_after);
+                 w_after, reinterpret_cast<uintptr_t>(g_unlink_diag.w_back_before),
+                 reinterpret_cast<uintptr_t>(g_unlink_diag.w_back_after),
+                 reinterpret_cast<uintptr_t>(g_unlink_diag.hand_next_before),
+                 reinterpret_cast<uintptr_t>(g_unlink_diag.hand_next_after),
+                 reinterpret_cast<uintptr_t>(g_unlink_diag.hand_sync_after));
     return r;
 }
 

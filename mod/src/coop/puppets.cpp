@@ -10,6 +10,8 @@
 #include <cstring>
 #include <map>
 #include <string>
+#include <algorithm>
+#include <vector>
 
 #include <spdlog/spdlog.h>
 
@@ -220,6 +222,17 @@ void place(Puppet& p, const entity::Vec3& pos, float yawDeg) {
 
 std::map<uint8_t, Puppet> g_puppets;
 
+// Parked puppet bodies. A puppet is never removed from the manager while the map lives (review M3/M4: a freed puppet
+// leaves stale pointers in rings and lists). A leaving player's puppet is hidden, frozen and moved to y = -10000; the
+// next joiner takes it. The map teardown deletes them (OnMapUnloading forgets the pointers).
+struct Parked {
+    void* entity = nullptr;
+    float rel_box[6] = {};
+    float body_half = 0.f;
+    int model = -1;  // puppet_models index the body was made with; reused only for the same model
+};
+std::vector<Parked> g_free;
+
 // Draw diagnostics: does the engine ever call cObjEntity::Draw (EngineDll7 0xbbd30) for our puppet?
 safetyhook::InlineHook* g_draw_hook = nullptr;
 std::atomic<void*> g_watch_puppet{nullptr};
@@ -281,6 +294,9 @@ void* spawn_human(const char* why, int model_index = -1) {
         // A half-made entity left in the manager was picked up by the tracker as a world NPC (poacher skin, 22:58).
         if (index >= 0) entity::RemoveEntity(mgr, ent);
         spdlog::warn("puppets: spawn incomplete; puppet disabled for this map");
+        // Added but never spawned: it would sit in the manager with an /npc/ model and the host would mirror it as a
+        // world NPC (review L13). Take it out again.
+        if (index >= 0) entity::RemoveEntity(mgr, ent);
         return nullptr;
     }
     if (!g_physics) {
@@ -567,6 +583,53 @@ void unregister_target(Puppet& p) {
                  entity::AttackTargetCount());
 }
 
+// A player's puppet leaves the scene without leaving the manager: off the attack list, weapon taken away, moved to
+// y = -10000 (same box and physics key as place()), body frozen so it does not fall, hidden. take_parked() brings it
+// back for the next remote player.
+void park_puppet(Puppet& p, const char* why) {
+    if (!p.entity) return;
+    unregister_target(p);
+    drop_weapon(p);
+    set_collision(p, true);  // a rider's body has its collision words and gravity zeroed
+    place(p, {0.f, -10000.f, 0.f}, 0.f);
+    const bool frozen = entity::FreezeBody(p.entity, true);
+    const bool hidden = entity::SetVisible(p.entity, false);
+    Parked k;
+    k.entity = p.entity;
+    std::memcpy(k.rel_box, p.rel_box, sizeof k.rel_box);
+    k.body_half = p.body_half;
+    k.model = p.spawned_model;
+    g_free.push_back(k);
+    spdlog::info("puppets: parked puppet {:#x} ({}) frozen={} hidden={} pool={}", reinterpret_cast<uintptr_t>(p.entity),
+                 why, frozen, hidden, g_free.size());
+    p.entity = nullptr;
+}
+
+bool take_parked(Puppet& p) {
+    auto it = std::find_if(g_free.begin(), g_free.end(), [&](const Parked& k) { return k.model == p.model; });
+    if (it == g_free.end()) return false;
+    const Parked k = *it;
+    g_free.erase(it);
+    p.entity = k.entity;
+    p.spawned_model = k.model;
+    std::memcpy(p.rel_box, k.rel_box, sizeof p.rel_box);
+    p.body_half = k.body_half;
+    p.anim.clear();
+    p.arms_shown.clear();
+    p.gun_shown.clear();
+    p.have_placed = false;
+    p.last_shots = -1;
+    p.was_knocked = false;
+    p.getup_until = 0;
+    p.fire_until = 0;
+    p.dead = false;
+    const bool thawed = entity::FreezeBody(p.entity, false);
+    const bool shown = entity::SetVisible(p.entity, true);
+    spdlog::info("puppets: reusing parked puppet {:#x} (unfrozen={} shown={} pool={})",
+                 reinterpret_cast<uintptr_t>(p.entity), thawed, shown, g_free.size());
+    return true;
+}
+
 void load_settings() {
     const std::string ini = (core::self_dir() / "dh2coop.ini").string();
     char buf[64] = {};
@@ -617,11 +680,12 @@ public:
             p.attack_target = false;
             p.spawn_failed = false;
             p.anim.clear();
-    p.weapon = nullptr;
-    p.weapon_kind = 0;
-    p.weapon_failed = false;
-    p.gun_shown.clear();
-}
+            p.weapon = nullptr;
+            p.weapon_kind = 0;
+            p.weapon_failed = false;
+            p.gun_shown.clear();
+        }
+        g_free.clear();
         g_spawn_manager = nullptr;
         g_spike_entity = nullptr;
         g_spike_wait = 0.f;
@@ -656,6 +720,8 @@ public:
             p.anim.clear();
             p.arms_shown.clear();
         }
+        // Parked bodies carry no weapon and no list entry; DeleteAllObjects frees them.
+        g_free.clear();
     }
 
     void OnFrame(float dt) override {
@@ -693,10 +759,12 @@ public:
             if (!p.entity && !p.spawn_failed) {
                 char why[32];
                 std::snprintf(why, sizeof why, "remote %u", static_cast<unsigned>(id));
-                p.entity = spawn_human(why, p.model);
-                p.spawned_model = p.model;
-                p.spawn_failed = p.entity == nullptr;
-                if (p.entity) capture_rel_box(p);
+                if (!take_parked(p)) {
+                    p.entity = spawn_human(why, p.model);
+                    p.spawned_model = p.model;
+                    p.spawn_failed = p.entity == nullptr;
+                    if (p.entity) capture_rel_box(p);
+                }
             }
             if (!p.entity) continue;
             // A dead player is not prey: animals drop list entries only through RemoveAttackTarget.
@@ -884,11 +952,9 @@ void SetModel(uint8_t playerId, int model) {
     Puppet& p = g_puppets[playerId];
     p.model = model;
     if (!p.entity || p.spawned_model == model) return;
-    // A different body than the one standing there (test command, or a late PlayerJoined): make it again.
-    unregister_target(p);
-    drop_weapon(p);
-    if (g_spawn_manager) entity::RemoveEntity(g_spawn_manager, p.entity);
-    p.entity = nullptr;
+    // A different body than the one standing there (test command, or a late PlayerJoined): make it again. The old
+    // body is parked, not removed (same rule as a leaving player).
+    park_puppet(p, "model change");
     p.spawn_failed = false;
     p.anim.clear();
     p.weapon_kind = 0;
@@ -901,21 +967,14 @@ void SetModel(uint8_t playerId, int model) {
 void OnRemoteLeft(uint8_t playerId) {
     auto it = g_puppets.find(playerId);
     if (it == g_puppets.end()) return;
-    unregister_target(it->second);
-    drop_weapon(it->second);
-    if (it->second.entity && g_spawn_manager) {
-        const bool ok = entity::RemoveEntity(g_spawn_manager, it->second.entity);
-        spdlog::info("puppets: removed puppet for player {} -> {}", playerId, ok);
-    }
+    char why[32];
+    std::snprintf(why, sizeof why, "player %u left", static_cast<unsigned>(playerId));
+    park_puppet(it->second, why);  // never RemoveEntity mid-map: the body waits for the next joiner
     g_puppets.erase(it);
 }
 
 void RemoveAll() {
-    for (auto& [id, p] : g_puppets) {
-        unregister_target(p);
-        drop_weapon(p);
-        if (p.entity && g_spawn_manager) entity::RemoveEntity(g_spawn_manager, p.entity);
-    }
+    for (auto& [id, p] : g_puppets) park_puppet(p, "session ended");
     g_puppets.clear();
 }
 
@@ -970,6 +1029,9 @@ bool Owns(void* ent) {
     for (const auto& [id, p] : g_puppets) {
         (void)id;
         if (p.entity == ent || p.weapon == ent) return true;
+    }
+    for (const Parked& k : g_free) {
+        if (k.entity == ent) return true;
     }
     return false;
 }

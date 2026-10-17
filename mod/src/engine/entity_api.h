@@ -80,6 +80,11 @@ bool PresentDeath(void* animal);
 bool AddAttackTarget(void* ent);
 bool RemoveAttackTarget(void* ent);
 int AttackTargetCount();  // -1 when the interface is not available
+// cObjScriptedEntity::SetVisible(int) (CommonDll7): +0xC0 bit 0 = hidden; showing relinks the BSP when linked.
+bool SetVisible(void* ent, bool visible);
+// cPhysicsObject::Freeze / Unfreeze (EngineDll7) on the entity's body (+0x118): the body flag +0xBC bit 2 stops
+// the physics step integrating it. False when the entity has no body or the call faulted.
+bool FreezeBody(void* ent, bool freeze);
 // Manager vtable calls.
 int AddEntity(void* mgr, void* ent);                             // +0x10, returns index or -1 on fault
 bool RemoveEntity(void* mgr, void* ent);                         // +0x20 (ent, 1)
