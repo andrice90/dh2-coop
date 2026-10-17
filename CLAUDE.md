@@ -9,7 +9,7 @@
 | `PLAN.md` | Roadmap, phases, decisions, orchestration model | Lead, when scope/decisions change |
 | `MEMORY.md` | Verified engine/decompilation facts with evidence | Lead only (merges workers' "Proposed MEMORY facts") |
 | `docs/mod-learnings.md` | Build, injection, hooking, testing and orchestration learnings | Lead (from worker reports) |
-| `docs/handoff-*.md` | Handoffs for the worker while the lead is away (tasks, rules, test how-to). Current: `handoff-cursor-story.md`; `handoff-grok-p4.md` is history | Lead |
+| `docs/handoff-*.md` | Handoffs for the next session. Current: `handoff-story-resume.md`. `handoff-cursor-story.md` and `handoff-grok-p4.md` are history | Lead |
 | `GROK_p4-session.md` | What Grok changed and learned in the Phase 4 session (P4b mirror, GameEvent death and map complete) | Grok |
 | `re/notes/*.md` | Per-topic RE detail and hypotheses | Workers (their deliverables) |
 | `re/jobs/*.md`, `*.out.log` | Worker job specs and logs | Lead writes specs; runner writes logs |

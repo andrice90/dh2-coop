@@ -92,7 +92,9 @@ User: "the real goal is singleplayer… switch to getting story mode missions to
     - The "weapons off" controls were invalid (`mod/dh2coop.ini` has no `Weapons` key), so whether puppet weapons are involved is still unknown.
     - Workaround: don't replay the same map; restart the game instead.
 
-## Next steps — pick up here (2026-10-17 00:03)
+## Next steps — pick up here (2026-10-17 00:05)
+
+Handoff for the next agent: `docs/handoff-story-resume.md`.
 
 **Playing now:** `.\run-coop-local.ps1 -Map MAP2A`. Left window is the host, right is the client. F8 hides the overlay. **F9** on a client stands that hunter up at the host. Do not write `coop_trigger` into a session the user is playing; it spends one-shot story triggers.
 
