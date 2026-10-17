@@ -77,6 +77,7 @@ bool g_map_committed = false;
 std::string g_host_map;         // client: last map the host announced
 bool g_client_seen_map = false;  // client: first announcement after joining only loads on a different map
 uint16_t g_host_serial = 0;      // client: serial of that announcement (repeats of it are not new map starts)
+bool g_loaded_alone = false;     // client: its current map was loaded without a host announcement for it
 uint16_t g_followed_serial = 0;  // client: serial we issued spmap for, and when
 uint32_t g_followed_ms = 0;
 // Host: clients that got this map's journal (kSyncDone). Live commits go to them only; a client that is
@@ -250,12 +251,19 @@ void OnMapStartCommit(const net::GameEvent& ev) {
     }
     const bool first = !g_client_seen_map;
     const bool repeat = !first && ev.subjectId == g_host_serial;
+    // This client loaded its current map by itself after the host's last announcement (it continued from its own
+    // results screen at a mission end, as the host did). A new host serial for that same map is then the host
+    // arriving, not the host replaying it: reloading would be the same-map replay that crashes at the next teardown.
+    const bool arrived_alone = !first && want == g_map && g_loaded_alone && ev.subjectId != g_host_serial;
     g_client_seen_map = true;
     g_host_map = want;
     g_host_serial = ev.subjectId;
-    if (want == g_map && (first || repeat)) {
-        // A join, or the start of the host's catch-up reply for the map this client already followed.
-        spdlog::info("events: host map '{}' (serial {}) is already loaded here", want, ev.subjectId);
+    if (want == g_map && (first || repeat || arrived_alone)) {
+        // A join, the start of the host's catch-up reply for the map this client already followed, or a map this
+        // client reached on its own.
+        g_loaded_alone = false;
+        spdlog::info("events: host map '{}' (serial {}) is already loaded here{}", want, ev.subjectId,
+                     arrived_alone ? " (this client got here on its own)" : "");
         return;
     }
     // The catch-up reply repeats the announcement while our spmap is still loading: do not start it twice.
@@ -478,7 +486,10 @@ public:
 
     void OnMapLoaded(const char* bspName) override {
         ResetMap();
-        g_map = MapNameFromLabel(bspName);
+        const std::string loaded = MapNameFromLabel(bspName);
+        // A client on a map the host has not announced (yet): it got here itself, not by following.
+        g_loaded_alone = !NetIsHost() && NetIsOnline() && g_client_seen_map && loaded != g_host_map;
+        g_map = loaded;
         ++g_map_serial;
         g_map_committed = false;
         spdlog::info("events: journal cleared for map '{}' (serial {})", g_map, g_map_serial);
