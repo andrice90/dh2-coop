@@ -1,0 +1,16 @@
+# Job: focus-input — a game window that is not in front gets no keyboard or mouse input (C++; git worktree; game launches when free)
+
+## Problem
+Local tests run 2-4 game windows on one PC. Scan-code input sent to one window (`tools-src\game-input.ps1`, or the user's keyboard) reaches every game: an ESCAPE to the host opened the pause menu in both windows and a RETURN on the host also answered the client's dialog (`re/notes/session-repro.md` tasks 2-3). The games keep running in the background on purpose (`cApplication::m_bAllowBackground`, `mod/src/coop/coop.cpp` `AssertBackground`), and the game reads DirectInput 8 (`dinput8.dll` in `game\Bin` is the Ultimate ASI Loader proxy, which loads `dh2coop.asi` and forwards to the system `dinput8.dll`). On two PCs this does not matter; for local multi-window play and tests it does.
+
+## Where you work
+Git worktree `D:\scary hunt\dh2coop-input`, branch `focus-input` (the lead creates it). Build with `.\mod\build.ps1` there (installs into that worktree's `game\Bin`). First-time game copies: `robocopy "D:\scary hunt\dh2coop\game" "D:\scary hunt\dh2coop-input\game" /MIR /XF *.log dh2coop.cmd /R:1 /W:1 /NFL /NDL /NP`, same into `game2`. Never write to `D:\scary hunt\dh2coop\` or `D:\scary hunt\Activision Value\`. Before launching check `Get-Process Main7`; wait (poll 30 s, up to 30 min) if any runs; close only your own games.
+
+## What to build
+1. Find how the game reads input: `DirectInput8Create`, `CreateDevice` (keyboard `GUID_SysKeyboard`, mouse `GUID_SysMouse`), `SetCooperativeLevel` flags (`DISCL_BACKGROUND`?), and whether it reads with `GetDeviceState` or `GetDeviceData` (buffered). Existing notes: `re/notes/lead-focus-*.c|txt`, `re/notes/timing.md`, `re/notes/console.md`, `tools-src\game-input.ps1` header. No DirectInput headers exist in the SDK copy we use; declare the few COM methods you need yourself (like `mod/third_party/d3d8/`, original declarations only).
+2. Hook the device methods the game uses (vtable hooks on the created `IDirectInputDevice8A` objects, or an inline hook on the system `dinput8.dll` functions). When the game's own window (the D3D device window, `mod/src/engine/d3d8_hooks.cpp` has it) is not the foreground window: return an all-released state (`GetDeviceState`: zero the buffer and return `DI_OK`; `GetDeviceData`: return 0 items and `DI_OK`). In front: pass through.
+3. `[Coop] InputOnlyWhenFocused=1` in `mod/dh2coop.ini` (default 1). Log once when the hook is installed and each time the window gains/loses input.
+4. Test (record in `re/notes/focus-input.md` with screenshots): your worktree's `run-coop-local.ps1 -Map MAP3B`; `game-input.ps1 -ProcessId <host> -Keys ESCAPE`: only the host pauses (screenshots of both). Then `-ProcessId <client> -Keys W:2000`: only the client walks (`coop: remote` positions in the other log). Then mouse look (`MOUSE:200,0`) to one window only. The F7/F8/F9 keys of the mod use `GetAsyncKeyState` with their own foreground check and must keep working.
+
+## Deliverables
+Code in the worktree (a new `mod/src/engine/dinput_hooks.cpp|h` or similar, ini key), `re/notes/focus-input.md`. Commit on the branch (author `andri <andrice90@gmail.com>`, trailer `Co-Authored-By: Grok 4.7 <noreply@x.ai>`). Do not merge.
