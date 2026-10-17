@@ -16,7 +16,25 @@ User report at session start: a story map played with NPC + animal sync, scripte
 | **Objective types** | Worker report `re/notes/story-objectives.md`: guide/companion NPCs and animal chases read the host's `"hunter"`. Checklist maps: MAP3A, MAP9, MAP2B, MAP7, MAP8, MAP4A, MAP5, MAP11A (user to play). |
 | Fixed along the way | 3+ player journal re-broadcast (existing clients reloaded the map); trigger fire request flood (~100/s) that crashed a client on MAP12C; stuck NPC sync attack on clients. |
 | **Open: MAP12C yeti fight crashes clients** | Pre-existing: client exits ~10 s after the yeti starts attacking (first-chance `EngineDll7+0x28b337`, a dynamic-array push). The client yeti stays in a sync attack that started before the join; ending it (`OnEndSA`) faults on the yeti. |
-| **Open: NPC follow target** | Cursor `npc-follow-re` finished; lead review pending: `re/notes/npc-follow.md`. |
+| **NPC follow target** | Research `re/notes/npc-follow.md`. Lead built `npc_follow.cpp` (`ea6219f`): mid hook after `cAIBrain_NPC`'s player lookup. **Off** until tested (`[Story] NpcFollowNearest=1`). |
+
+### Two-PC user test 2026-10-17 11:34–12:07 (host = this PC; notes in the user's vault "DH2 Test.md")
+Host log: `D:\scary hunt\Activision Value\Magic Wand\DNGH2\Bin\dh2coop.log`. The client PC's logs were lost (each launch truncated them, and Program Files redirects writes).
+
+| Finding | Cause (from the host log) | State |
+|---|---|---|
+| Client set off a cutscene, host never saw it, both stuck | Host's `OnFireRequest` skipped `Fire` when `+0x1fc` was set but the host had never run the trigger (`cScrTask12` 11:40:15) | Fixed `0d960f1` (decide by "ran here") |
+| Clients never saw cutscenes | Host profile auto-skips cutscenes inside `OnActivate`, and `kCutsceneSkip` forwarded that | Fixed `0d960f1`: only the skip key (`0x6b600`) is forwarded |
+| User request: cutscene = gather point | — | `0d960f1`: when a client's cutscene ends, a client 20 m+ away is moved to the host |
+| Hit floods (403 / 880 reports) | Client NPC mirrors (Uncle Hugh, ids 82/75/128) sent `AnimalHit` every frame | Fixed `0d960f1` (no NPC hits; host ignores them; 150 ms limit) |
+| Fell through the map after teleport / drop-in | Teleport went 1.5 m to the side at the host's height | Fixed `0d960f1` (host's spot + 0.25 m) |
+| No client logs | Truncated per run; VirtualStore under Program Files | Fixed `04adb0a` (`%LOCALAPPDATA%\dh2coop` under Program Files, `.1/.2` rotation) |
+| Mountain lion pounce → client crash (MAP2A) | Lion switched to the client 11:57:56; client gone 11:58:07; nothing forwarded | Repro: Cursor `session-repro` |
+| Mission end: client stuck on the "pause" screen | Host frames and network kept running in menus; client left 50 s before the host's next map | Repro: `session-repro` |
+| Host pause shows a pause screen on the client | Unknown | Repro: `session-repro` |
+| Drop-in player: no damage, no cutscenes, no bear | The cutscene part is the forwarded auto-skip; damage unknown (no animal hits from that session, only the Hugh flood) | Repro: `session-repro` |
+| Bolt-action on puppets misaligned, frozen muzzle flash | Puppet uses `rifle1.skin` for every rifle; the local gun is `rifle2` | Cursor `rifle-puppet` (worktree `D:\scary hunt\dh2coop-rifle`) |
+| Bottles / stumps only shootable by the host | — | Research: Cursor `props-research`; user intent to confirm |
 
 Found while reading the code: with 3+ players, every join re-sent the host's journal to *all* clients, so the existing clients `spmap`ed their current map (the replay crash) and replayed `PlaySA`/mission end. Fixed by the per-client sync.
 
