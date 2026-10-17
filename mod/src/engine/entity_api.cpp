@@ -202,7 +202,35 @@ int guarded_link_part(void* owner, void* child, const char* tag) {
 // owner entity, so puppet and weapon hold references on each other. The world teardown then destroys one of them
 // twice (2026-10-16 20:42/20:51 crash in cSndDrvDS::WaveRelease from StopServer -> DeleteAllObjects, only with
 // puppet weapons). SetSyncWith(nullptr) is the engine's own way out: it unthreads the ring and Unlinks both links.
+//
+// First-chance AV on every leave / weapon switch on story maps (MAP3B, 2026-10-17 17:09; re/notes/puppet-polish.md):
+// the tail of SetSyncWith(nullptr) runs the part's state machine Begin (part +0xd8, vt +0x20). On those maps the
+// hand part holds a cScriptedBodyStateMachine (EngineDll7 vtable 0x428750), whose Begin goes through the script VM
+// (cVMachine::FunctionCall) and calls a stale function pointer (the class list entry for the missing
+// cBodyShotgun1npc / cBodyHandgun3npc body script). Free-hunt maps hold a plain cBodyStateMachine there and are fine.
+// The state machine is hidden from the call (part +0xd8 = 0 while it runs, put back after) when it is a scripted
+// one, so the unlink still unthreads the ring and releases both references, minus the Begin that faults.
+struct UnlinkDiag {
+    void* ctrl = nullptr;
+    void* sm = nullptr;
+    void* sm_vt = nullptr;
+    void* sm_vt20 = nullptr;
+    bool hid_sm = false;
+    void* synced = nullptr;  // the weapon entity the hand was synced with
+} g_unlink_diag;
+void* g_scripted_sm_vt = nullptr;  // EngineDll7 ??_7cScriptedBodyStateMachine@@6B@
+
+void restore_sm_slot(void** sm_slot, void* sm) {
+    __try {
+        *sm_slot = sm;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+
 int guarded_unlink_part(void* owner, const char* tag) {
+    void** sm_slot = nullptr;
+    void* sm = nullptr;
+    int result = -1;
     __try {
         void* owner_model = *reinterpret_cast<void**>(static_cast<char*>(owner) + 0xE4);
         if (!owner_model) return 0;
@@ -212,11 +240,24 @@ int guarded_unlink_part(void* owner, const char* tag) {
         if (!ctrl) return 0;
         void* synced = *reinterpret_cast<void**>(static_cast<char*>(ctrl) + 0x100 + 4);  // link +4 = owner entity
         if (!synced) return 2;
+        g_unlink_diag.ctrl = ctrl;
+        g_unlink_diag.synced = synced;
+        sm_slot =reinterpret_cast<void**>(static_cast<char*>(ctrl) + 0xd8);
+        sm = *sm_slot;
+        g_unlink_diag.sm = sm;
+        g_unlink_diag.sm_vt = sm ? *reinterpret_cast<void**>(sm) : nullptr;
+        g_unlink_diag.sm_vt20 = g_unlink_diag.sm_vt ? slot(sm, 0x20) : nullptr;
+        if (sm && g_scripted_sm_vt && g_unlink_diag.sm_vt == g_scripted_sm_vt) {
+            *sm_slot = nullptr;
+            g_unlink_diag.hid_sm = true;
+        }
         reinterpret_cast<LinkFn>(slot(ctrl, 0x38))(ctrl, nullptr);
-        return 1;
+        result = 1;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return -1;
+        result = -1;
     }
+    if (g_unlink_diag.hid_sm && sm_slot) restore_sm_slot(sm_slot, sm);
+    return result;
 }
 
 // Body state machine of model part 0 (pattern from cObjItemEx::GetCurrentState/Activate, CommonDll7): model vt
@@ -380,6 +421,7 @@ bool Bind(HMODULE engine) {
     g_tag_index = core::find_export_as<TagIndexFn>(engine, "?GetTagIndex@cObjEntity@@QAEHPBD@Z");
     g_attach = core::find_export_as<AttachFn>(engine, "?Attach@cObjEntity@@QAEHHHHUtVect3@@@Z");
     g_detach = core::find_export_as<DetachFn>(engine, "?Detach@cObjEntity@@QAEXXZ");
+    g_scripted_sm_vt = core::find_export(engine, "??_7cScriptedBodyStateMachine@@6B@");
     if (auto* fn = core::find_export_as<const unsigned char*>(engine, "?UseServer@cBspTree@@SAXH@Z")) {
         const uintptr_t expect = reinterpret_cast<uintptr_t>(engine) + 0x6963dc;
         uint32_t imm = 0;
@@ -578,9 +620,21 @@ int Attach(void* child, int parentId, int tag, int flag) {
 bool Detach(void* ent) { return ent && g_detach && guarded_detach(ent); }
 int UnlinkPart(void* owner, const char* tag) {
     if (!owner || !tag) return -2;
+    g_unlink_diag = {};
+    int owner_before = -99, owner_after = -99, w_before = -99, w_after = -99;
+    core::safe_read(static_cast<char*>(owner) + 0xb8, owner_before);
     const int r = guarded_unlink_part(owner, tag);
-    spdlog::info("entity_api: UnlinkPart owner={:#x} tag='{}' -> {} (SetSyncWith(nullptr))",
-                 reinterpret_cast<uintptr_t>(owner), tag, r);
+    core::safe_read(static_cast<char*>(owner) + 0xb8, owner_after);
+    if (g_unlink_diag.synced) {
+        core::safe_read(static_cast<char*>(g_unlink_diag.synced) + 0xb8, w_after);
+    }
+    (void)w_before;
+    spdlog::info("entity_api: UnlinkPart owner={:#x} tag='{}' -> {} (SetSyncWith(nullptr)) ctrl={:#x} sm={:#x} "
+                 "sm_vt={} vt+0x20={} hid_sm={} refs owner {}->{} weapon after {}",
+                 reinterpret_cast<uintptr_t>(owner), tag, r, reinterpret_cast<uintptr_t>(g_unlink_diag.ctrl),
+                 reinterpret_cast<uintptr_t>(g_unlink_diag.sm), core::describe_address(g_unlink_diag.sm_vt),
+                 core::describe_address(g_unlink_diag.sm_vt20), g_unlink_diag.hid_sm, owner_before, owner_after,
+                 w_after);
     return r;
 }
 
