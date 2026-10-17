@@ -1,6 +1,6 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-16 21:56 (America/Chicago) by the Cursor worker (Grok). Lead's 21:35 handoff is below.
+**Last updated:** 2026-10-16 22:17 (America/Chicago) by the Cursor worker (Grok). Lead's 21:35 handoff is below.
 
 ## Cursor worker log (lead away)
 - **21:35** Previous MAP3B pair had already shut down cleanly. That session killed both leopards and never logged a mission end.
@@ -12,6 +12,7 @@
   - Snakes were not in the 2-animal `cScrAnimal` mirror.
   - In-game pause menus are not synced. Not a small fix; user accepts the desync. See Next steps.
 - **21:56** Closed that pair and smoke-tested MAP12B, MAP12C, MAP4A, MAP11B (30 s each). All four clients were welcomed. Animals received: 1, 1, 6, 8. MAP11B's post-join `cScrTask02` arm was applied on the client. MAP12C's client crashed in `cObjNPC::Update` (guide model `mountainguide.skin`, missing `cBodyShotgun1npc`); no client screenshot. The other three had no exception in the kept lines. Shots in `re/notes/coop-local/story-s1-map*.png`.
+- **22:17** MAP12C client crash fixed in `puppets.cpp`. Solo MAP12C does not log `cBodyShotgun1npc`. Co-op did, because the puppet body played `shotgun1/idlealertneutral` and the gun mesh played `idlealertneutral`; both ask for `cBodyShotgun1npc`, which this map does not register. Body clips are unarmed `GAME.AP` names again. The gun mesh stays attached and is not `SetAnim`'d. Retest: `run-coop-local.ps1 -Map MAP12C -Seconds 25` exited 0 (client alive the whole window). One `cBodyShotgun1npc` line remains at weapon spawn. The client yeti (`id=24`) logs `SetBodyState 'Attack'/'IdleAttack' -> -1` and does not take the process down. Shutdown still logs the usual nvgpu first-chance.
 
 > **Lead away (~80% of the 5-hour limit). Worker handoff: `docs/handoff-cursor-story.md`** (Cursor CLI, Grok 4.7 Medium Fast; job `re/jobs/story-s1-playtest.md`).
 > **Story S1 works on MAP3B:**
@@ -87,7 +88,7 @@ User: "the real goal is singleplayer… switch to getting story mode missions to
 2. **Story map transition (observed 21:43).** MAP3B's successful ending did not call the mission message. The host loaded `Bsp\map2a.bsp` on its own, then committed `kMapStart` `MAP2A`. The client applied that map's `cScrTask01` arm *before* `spmap` finished (`story: trigger commit id=117 'cScrTask01': no such trigger here`), then crashed in `cSndDrvDS::WaveRelease` during `StopServer`. That crash matches the known same-map-replay teardown: the attempt before this one was `Mission failed` plus `spmap MAP3B` while MAP3B was already loaded. Question: which call loads the next story map, and can `kMapStart` be committed only after the client has loaded it?
 3. **Snakes.** User: "I killed them as the client and the host and saw one per game instance, not synced across both." MAP3B's mirror tracked exactly 2 `cScrAnimal` entities (vt `GAMEDLL7.DLL+0xff470`, ids 47 and 48, the leopards). Their deaths did sync. `cObjSnake` / `cObjCobra` are separate classes. Question: which vtable are the MAP3B snakes, and should the mirror include them?
 4. **In-game pause / overlays.** User: a pause overlay does not pause in-game events; when the host pauses, client animals stop animating; they want a host pause to pause every client, and a client pause to pause nobody else. They accept the desync if it is not a small fix. It is not: the mod has no pause message. A host modal blocks the host sim, so animal snapshots freeze (that part already matches what they saw). A client modal does not block the host, so events keep arriving. Sending "host paused" requires detecting menu-open, and the game thread is inside the modal so the usual frame hook is not running. `cHUDSlowMotion::Enable` is already a no-op in co-op; this is the game's own menu, not slow-mo. Leave it for a later design.
-5. **MAP12C smoke (21:53).** The client joined and received 1 animal, then crashed about 11 s later in `cObjNPC::Update` (`EngineDll7.dll+0x28b337`). Debug: `cModelPart::SetAnim` (`ModelPart.cpp` line 435) and `Could not create scripted body state machine with class cBodyShotgun1npc`. The host logged a `SetSyncWith` access violation on `mountainguide.skin` anim `blink` and stayed up. Question: is the guide's body-state machine failing because a puppet or a mirrored part is attached, or does this map do that in solo too?
+5. **MAP12C yeti states.** The client crash is fixed (see the worker log). Still open: the mirrored yeti rejects `Attack`, `IdleAttack`, and `Run` (`SetBodyState -> -1`). Those names are the deer set. Question: which body-state names does the MAP12C yeti actually have?
 6. **Player damage to clients (Phase 5 for story):**
    - Host animals must be able to hurt client players. Puppets can't be attack targets (no physics → `ProcessAttackStuck` crash).
    - Options: give puppets a physics body that physics doesn't pull back to spawn; or redirect damage meant for the host hunter.

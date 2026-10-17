@@ -39,11 +39,9 @@ struct Puppet {
     bool spawn_failed = false;
     std::string anim;
     float rel_box[6] = {};  // world AABB at spawn time (entity at origin) = model-relative AABB
-    int last_shots = -1;    // shot counter from PlayerState.flags bits 8-11
     void* weapon = nullptr; // third-person weapon entity attached to the puppet's hand
     int weapon_kind = 0;    // net::WeaponKind currently attached
     bool weapon_failed = false;
-    uint32_t fire_until = 0;  // ms: fire clip plays until then
     bool attack_target = false;  // host: registered in the animals' attack-target list (Phase 5)
 };
 
@@ -97,7 +95,6 @@ bool g_anim_enabled = true;     // [Puppets] Animate=1
 bool g_physics = false;         // [Puppets] Physics=0: drop the puppet's physics body (see spawn_human)
 float g_y_offset = 0.f;         // [Puppets] YOffset (metres) added to the networked hunter y
 std::string g_crouch_clip = "coveridle";  // [Puppets] CrouchClip: NPC packs have no crouch-walk clip
-uint32_t g_fire_ms = 600;       // [Puppets] FireMs: how long the fire clip plays per shot
 bool g_weapons = true;          // [Puppets] Weapons=1: attach a third-person weapon model to the puppet's hand
 bool g_attack_target = false;   // [Puppets] AttackTarget=1: host animals may pick puppets as attack targets.
 // Off: a tiger attacking a puppet crashed the host in cAIHuntBrain_Animal::ProcessAttackStuck (null +0x7c,
@@ -114,8 +111,9 @@ uint32_t now_ms() {
 
 // The player's own model (teenmm.skin) is only first-person arms ("fpshands1", teenmm1st.skin) — there is
 // no third-person player body. Puppets use a full NPC body instead ([Puppets] Model=, "hunter" = player model).
-// Weapon packs are appended so the armed clip sets (handgun3/*, shotgun1/*) resolve.
-std::string g_model = "objects/npc/mountainguide/mountainguide.skin,game.ap,shotgun1.ap,handgun3.ap";
+// GAME.AP only. Adding shotgun1.ap makes spawn try to create cBodyShotgun1npc, which is not registered
+// on MAP12C; that failed create then breaks later SetAnim calls (client crash 2026-10-16 22:08).
+std::string g_model = "objects/npc/mountainguide/mountainguide.skin,game.ap";
 
 void* spawn_human(const char* why) {
     void* mgr = EntityManager();
@@ -146,42 +144,24 @@ void* spawn_human(const char* why) {
 }
 
 // Clip choice from movement and the remote player's actions. Names: re/notes/anim-names.md.
-// Unarmed (GAME.AP, shared by 17 NPC bodies): standing idle is "idlenormalneutral" ("idle" is another clip);
-// no run-back/strafe clip, the NPC scripts reuse the walk ones. Armed sets live in SHOTGUN1.AP / HANDGUN3.AP
-// (prefixed names); the rifle has no NPC locomotion set, so it uses the shotgun one (two-handed long gun).
+// Body clips stay in GAME.AP (idlenormalneutral, walk/forward, ...). A "shotgun1/..." name makes
+// the guide script create cBodyShotgun1npc, which MAP12C does not register. That failed create
+// then access-violates in cObjNPC::Update (client exited 2026-10-16 22:08, about 12s after join).
+// The third-person gun mesh is still attached. SetAnim on that mesh is not called: idlealertneutral
+// on shotgun1.skin asks for the same missing class (host debug 22:13).
 // Facing vector (sin yaw, cos yaw); right = (cos yaw, -sin yaw) — verified: key A (strafe left) → walk/left.
-std::string choose_clip(Puppet& p, const net::InterpSample& s, uint32_t now) {
-    const char* prefix = "";
-    switch (s.weaponId) {
-        case net::kWeaponHandgun: prefix = "handgun3/"; break;
-        case net::kWeaponShotgun:
-        case net::kWeaponRifle: prefix = "shotgun1/"; break;
-        // kWeaponOther: knife/machete/branch (story maps), bow, darts. No NPC melee locomotion clips exist (every
-        // NPC MBRANCH.AP holds only cs_pumafight), so unarmed clips and no model beat a wrong shotgun (user 21:20).
-        default: break;
-    }
-    const bool armed = *prefix != 0;
-    const int shots = (s.flags & net::kShotCounterMask) >> net::kShotCounterShift;
-    if (p.last_shots >= 0 && shots != p.last_shots && armed) p.fire_until = now + g_fire_ms;
-    p.last_shots = shots;
-    if (armed && now < p.fire_until) return std::string(prefix) + "fire";
-    if (armed && (s.flags & net::kFlagReloading))
-        return std::string(prefix) + (s.weaponId == net::kWeaponHandgun ? "reload" : "reload1");
+std::string choose_clip(const net::InterpSample& s) {
     if (s.flags & net::kFlagCrouched) return g_crouch_clip;
-
     const float vx = s.velocity[0], vz = s.velocity[2];
     const float speed = std::sqrt(vx * vx + vz * vz);
-    if (speed < kWalkSpeed) return armed ? std::string(prefix) + "idlealertneutral" : "idlenormalneutral";
+    if (speed < kWalkSpeed) return "idlenormalneutral";
     const float y = s.yaw * 3.14159265f / 180.f;
     const float fwd = vx * std::sin(y) + vz * std::cos(y);
     const float right = vx * std::cos(y) - vz * std::sin(y);
-    if (fwd >= std::fabs(right)) {
-        if (speed >= kRunSpeed) return armed ? std::string(prefix) + "run" : "run/forward";
-        return armed ? std::string(prefix) + "walkforwardalert" : "walk/forward";
-    }
-    if (-fwd >= std::fabs(right)) return armed ? std::string(prefix) + "walkbackwardalert" : "walk/backward";
-    if (right > 0.f) return armed ? std::string(prefix) + "walkstraferightalert" : "walk/right";
-    return armed ? std::string(prefix) + "walkstrafeleftalert" : "walk/left";
+    if (fwd >= std::fabs(right)) return speed >= kRunSpeed ? "run/forward" : "walk/forward";
+    if (-fwd >= std::fabs(right)) return "walk/backward";
+    if (right > 0.f) return "walk/right";
+    return "walk/left";
 }
 // Third-person weapon models (OBJECTS\ITEMS\GAME\WEAPONS\<NAME>\<NAME>.SKIN; the *1ST dirs are first-person).
 // Hands as in the NPC weapon scripts (HGUNNPC/SGUNNPC/RIFLENPC.SCR default branch): handgun right, long guns left;
@@ -199,8 +179,6 @@ WeaponModel weapon_model(int kind) {
         default: return {nullptr, nullptr};
     }
 }
-
-void weapon_anim(Puppet& p);
 
 // Unlink first: the hand controller's cModelPartLink holds a reference on the weapon's model owner, and a link left
 // in place is released a second time when the world is torn down (StopServer crash, 2026-10-16 20:42).
@@ -252,7 +230,6 @@ void sync_weapon(Puppet& p, int kind) {
         return;
     }
     p.weapon = w;
-    weapon_anim(p);
 }
 
 // Keep the weapon drawable: give it the puppet's world box and relink it into the BSP (like the puppet itself).
@@ -262,23 +239,11 @@ void place_weapon(Puppet& p) {
     entity::BspUpdate(p.weapon);
 }
 
-// The weapon model (<name>.skin -> <name>.model) carries its own clips named like the armed body clips without the
-// pack prefix (fire, reload, idlealertneutral, walkforwardalert, ...). They pose the gun in the hand and key the
-// muzzle flash ("flame" bone, vis keys); with no clip the gun sits in bind pose (sideways, flame always on). The NPC
-// weapon scripts (cBody*npc) play the matching clip on the weapon, so we mirror the body clip.
-void weapon_anim(Puppet& p) {
-    if (!p.weapon || p.anim.empty()) return;
-    const size_t slash = p.anim.find('/');
-    const std::string clip = slash == std::string::npos ? p.anim : p.anim.substr(slash + 1);
-    entity::SetAnim(p.weapon, clip.c_str());
-}
-
 void pick_anim(Puppet& p, const std::string& want) {
     if (!g_anim_enabled || !p.entity) return;
     if (p.anim == want) return;
     p.anim = want;
     const bool ok = entity::SetAnim(p.entity, want.c_str());
-    weapon_anim(p);
     spdlog::info("puppets: entity {:#x} anim '{}' -> {}", reinterpret_cast<uintptr_t>(p.entity), want, ok);
 }
 
@@ -313,7 +278,6 @@ void load_settings() {
     char crouch[64] = {};
     GetPrivateProfileStringA("Puppets", "CrouchClip", g_crouch_clip.c_str(), crouch, sizeof crouch, ini.c_str());
     g_crouch_clip = crouch;
-    g_fire_ms = GetPrivateProfileIntA("Puppets", "FireMs", 600, ini.c_str());
     g_weapons = GetPrivateProfileIntA("Puppets", "Weapons", 1, ini.c_str()) != 0;
     g_attack_target = GetPrivateProfileIntA("Puppets", "AttackTarget", 0, ini.c_str()) != 0;
     GetPrivateProfileStringA("Puppets", "Class", kDefaultClass, buf, sizeof buf, ini.c_str());
@@ -410,7 +374,7 @@ public:
             place(p, {s.pos[0], s.pos[1] + g_y_offset, s.pos[2]}, s.yaw);
             sync_weapon(p, s.weaponId);
             place_weapon(p);
-            pick_anim(p, choose_clip(p, s, now));
+            pick_anim(p, choose_clip(s));
         }
     }
 
