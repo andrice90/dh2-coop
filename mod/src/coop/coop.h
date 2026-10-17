@@ -16,9 +16,11 @@ struct CoopSettings {
     bool disable_slowmo = true;     // [Coop] DisableSlowMo
     std::string player_name = "Hunter";  // [Coop] PlayerName
     uint16_t port = 27420;          // [Coop] Port
-    // Command line: -coophost  |  -coopjoin <host[:port]>   (applied after the first map load)
+    // [Coop] AutoRole / JoinAddress, overridden by the command line -coophost | -coopjoin <host[:port]>.
+    // Applied after the first map load; a joiner retries every join_retry_s seconds while offline.
     std::string auto_role;          // "", "host", "join"
     std::string auto_join_addr;
+    float join_retry_s = 5.f;       // [Coop] JoinRetrySeconds (0 = no retry)
 };
 
 const CoopSettings& Settings();

@@ -342,6 +342,8 @@ public:
 
     void OnAnimalStates(const net::AnimalStates& states, uint32_t localMs) {
         if (hosting_ || !session_active_) return;
+        // Entity ids only mean the same animal inside the same map (a follow load may still be in progress).
+        if (!events::SameMapAsHost()) return;
         for (const net::AnimalState& a : states.animals) mirrors_[a.id].buffer.Push(localMs, a);
         if (!logged_rx_ && !states.animals.empty()) {
             logged_rx_ = true;
@@ -391,7 +393,7 @@ public:
 
     void Place() {
         if (session_active_) {
-            if (!hosting_) ApplyMirror();
+            if (!hosting_ && events::SameMapAsHost()) ApplyMirror();
             return;
         }
         PlaceSpike();

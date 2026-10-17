@@ -53,6 +53,8 @@ HANDLE WINAPI hk_CreateMutexA(LPSECURITY_ATTRIBUTES sa, BOOL owner, LPCSTR name)
     return g_mutex_hook->unsafe_stdcall<HANDLE>(sa, owner, used);
 }
 
+bool g_bsp_loaded_in_start = false;
+
 int __fastcall hk_BspLoad(void* self, void*, char* name, unsigned flags, int arg) {
     const ULONGLONG t0 = GetTickCount64();
     const int r = g_bsp_hook->unsafe_thiscall<int>(self, name, flags, arg);
@@ -60,10 +62,44 @@ int __fastcall hk_BspLoad(void* self, void*, char* name, unsigned flags, int arg
     spdlog::info("cBspTree::Load('{}', {:#x}, {}) -> {} in {}ms", label, flags, arg, r, GetTickCount64() - t0);
     // Probe runs saw success as 1 (runtime-spmap-probe.txt).
     if (r == 1) {
+        g_bsp_loaded_in_start = true;
         modules::DispatchMapLoaded(label.c_str());
         console::OnMapLoaded(label.c_str());
     }
     return r;
+}
+
+// Main7 cSpServer::StartGame (RVA 0x1ed80, thiscall(server, const char* map, int)). spmap and menumap both
+// end here, after StopServer has torn the world down. Starting the map that is already loaded (results
+// screen "replay") resets the BSP instead of calling cBspTree::Load, so modules would keep pointers to
+// destroyed entities: dispatch OnMapLoaded for that case too (re/notes/lead-mission.md, map flow).
+safetyhook::InlineHook* g_start_hook = nullptr;
+
+int __fastcall hk_StartGame(void* self, void*, const char* map, int arg) {
+    g_bsp_loaded_in_start = false;
+    const std::string name = safe_cstr(map, 64);
+    const int r = g_start_hook->unsafe_thiscall<int>(self, map, arg);
+    spdlog::info("cSpServer::StartGame('{}', {}) -> {} (bsp {})", name, arg, r,
+                 g_bsp_loaded_in_start ? "loaded" : "reset, same map");
+    if (!g_bsp_loaded_in_start && !name.empty()) {
+        const std::string label = "Bsp\\" + name + ".bsp";
+        modules::DispatchMapLoaded(label.c_str());
+        console::OnMapLoaded(label.c_str());
+    }
+    g_bsp_loaded_in_start = false;
+    return r;
+}
+
+void install_start_game_hook() {
+    static const uint8_t kPrologue[5] = {0x55, 0x8b, 0xec, 0x6a, 0xff};
+    auto* exe = reinterpret_cast<uint8_t*>(GetModuleHandleA(nullptr));
+    void* target = exe ? exe + 0x1ed80 : nullptr;
+    uint8_t got[5] = {};
+    if (!target || !safe_copy(target, got, sizeof got) || std::memcmp(got, kPrologue, sizeof got) != 0) {
+        spdlog::error("cSpServer::StartGame: unexpected bytes at Main7+0x1ed80; not hooked (wrong game build?)");
+        return;
+    }
+    g_start_hook = install_hook("cSpServer::StartGame", target, reinterpret_cast<void*>(&hk_StartGame));
 }
 
 struct LdrStr {
@@ -98,6 +134,7 @@ void note_engine(HMODULE m) {
     console::Bind(m);
     void* load = find_export(m, "?Load@cBspTree@@QAEHPADIH@Z");
     g_bsp_hook = install_hook("cBspTree::Load", load, reinterpret_cast<void*>(&hk_BspLoad));
+    install_start_game_hook();
     modules::DispatchEngineReady(m);
 }
 

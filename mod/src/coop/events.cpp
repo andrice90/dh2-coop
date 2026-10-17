@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <intrin.h>
 
+#include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <map>
@@ -20,6 +21,7 @@
 #include "core/hook.h"
 #include "core/module.h"
 #include "core/safe_mem.h"
+#include "engine/console.h"
 
 namespace dh2::coop::events {
 namespace {
@@ -58,6 +60,12 @@ bool g_pending_end = false;
 net::GameEvent g_pending_ev;
 uint32_t g_check_swallowed = 0;
 uint16_t g_seq = 0;
+// Map flow (kMapStart). g_map is this process's map. The host announces each start once it is hosting.
+std::string g_map;
+uint16_t g_map_serial = 0;
+bool g_map_committed = false;
+std::string g_host_map;         // client: last map the host announced
+bool g_client_seen_map = false;  // client: first announcement after joining only loads on a different map
 std::vector<net::GameEvent> g_journal;
 std::map<uint16_t, Handlers> g_handlers;
 std::map<uint16_t, bool> g_unknown_logged;
@@ -192,6 +200,36 @@ void OnClaimCommit(const net::GameEvent& ev) {
     spdlog::info("events: trophy id={} claimed by player {}", ev.subjectId, ev.actorId);
 }
 
+// ---- kMapStart ----
+
+std::string MapNameFromLabel(const char* label) {
+    std::string s = label ? label : "";
+    const size_t slash = s.find_last_of("\\/");
+    if (slash != std::string::npos) s.erase(0, slash + 1);
+    const size_t dot = s.rfind('.');
+    if (dot != std::string::npos) s.resize(dot);
+    for (char& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return s;
+}
+
+bool IsMenuMap(const std::string& name) { return name == "MENUMAP"; }
+
+void OnMapStartCommit(const net::GameEvent& ev) {
+    const std::string want = MapNameFromLabel(ev.key.c_str());
+    const bool first = !g_client_seen_map;
+    g_client_seen_map = true;
+    g_host_map = want;
+    if (want.empty()) return;
+    if (first && want == g_map) {
+        spdlog::info("events: host map '{}' (serial {}) is already loaded here", want, ev.subjectId);
+        return;
+    }
+    // spmap also closes the main and in-game menus; menumap is how the game itself enters the menu map.
+    const std::string cmd = (IsMenuMap(want) ? "menumap " : "spmap ") + want;
+    const int r = console::Exec(cmd.c_str());
+    spdlog::info("events: following host to '{}' (serial {}, here '{}'): {} -> {}", want, ev.subjectId, g_map, cmd, r);
+}
+
 // ---- kAnimalDied ----
 
 void OnAnimalDiedCommit(const net::GameEvent& ev) { animals::OnAnimalDied(ev.subjectId); }
@@ -202,6 +240,14 @@ void OnAnimalDiedRequest(const net::GameEvent& ev) {
     logged = true;
     spdlog::info("events: AnimalDied is host-simulated; ignored request subject={} actor={}", ev.subjectId,
                  ev.actorId);
+}
+
+// Per map: the journal only holds outcomes of the current map.
+void ResetMap() {
+    g_journal.clear();
+    g_seq = 0;
+    g_pending_end = false;
+    g_check_swallowed = 0;
 }
 
 // ---- hooks ----
@@ -261,8 +307,9 @@ public:
         SetHandler(kAnimalDied, &OnAnimalDiedRequest, &OnAnimalDiedCommit);
         SetHandler(kMissionEnd, nullptr, &OnMissionEndCommit);
         SetHandler(kTrophyClaim, &OnClaimRequest, &OnClaimCommit);
-        spdlog::info("events: registry AnimalDied={} MissionEnd={} TrophyClaim={}", kAnimalDied, kMissionEnd,
-                     kTrophyClaim);
+        SetHandler(kMapStart, nullptr, &OnMapStartCommit);
+        spdlog::info("events: registry AnimalDied={} MissionEnd={} TrophyClaim={} MapStart={}", kAnimalDied,
+                     kMissionEnd, kTrophyClaim, kMapStart);
     }
 
     void OnGameDllLoaded(HMODULE game) override {
@@ -281,8 +328,11 @@ public:
     }
 
     void OnMapLoaded(const char* bspName) override {
-        Reset();
-        spdlog::info("events: journal cleared for map '{}'", bspName ? bspName : "");
+        ResetMap();
+        g_map = MapNameFromLabel(bspName);
+        ++g_map_serial;
+        g_map_committed = false;
+        spdlog::info("events: journal cleared for map '{}' (serial {})", g_map, g_map_serial);
     }
 };
 
@@ -362,13 +412,25 @@ void OnNet(const net::GameEvent& ev) {
 
 void Pump() {
     if (g_pending_end && !NetIsHost() && NetIsOnline() && ApplyMissionEnd(g_pending_ev)) g_pending_end = false;
+    // The first map's load happens before hosting starts (auto-host runs on the next frame), so announce here.
+    if (NetIsHost() && !g_map_committed && !g_map.empty()) {
+        g_map_committed = true;
+        Commit(kMapStart, g_map_serial, IsMenuMap(g_map) ? 1u : 0u, 0.f, g_map, 0);
+    }
 }
 
 void Reset() {
-    g_journal.clear();
-    g_seq = 0;
-    g_pending_end = false;
-    g_check_swallowed = 0;
+    ResetMap();
+    g_map_committed = false;
+    g_host_map.clear();
+    g_client_seen_map = false;
+}
+
+const std::string& CurrentMap() { return g_map; }
+
+bool SameMapAsHost() {
+    if (NetIsHost() || !NetIsOnline() || g_host_map.empty()) return true;
+    return g_host_map == g_map;
 }
 
 void Replay() {

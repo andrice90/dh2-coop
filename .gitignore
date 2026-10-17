@@ -18,3 +18,4 @@ mod/net-test/build/
 game2/
 mod/build-lead/
 re/notes/coop-local/
+re/jobs/*.prompt.md

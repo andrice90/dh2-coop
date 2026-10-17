@@ -1,7 +1,8 @@
-﻿#include "coop/coop.h"
+#include "coop/coop.h"
 
 #include <windows.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -78,6 +79,12 @@ void load_settings() {
     g_settings.port = static_cast<uint16_t>(GetPrivateProfileIntA("Coop", "Port", net::kDefaultPort, ini.c_str()));
     GetPrivateProfileStringA("Coop", "PlayerName", "Hunter", buf, sizeof buf, ini.c_str());
     g_settings.player_name = buf;
+    GetPrivateProfileStringA("Coop", "AutoRole", "off", buf, sizeof buf, ini.c_str());
+    const std::string role = buf;
+    if (role == "host" || role == "join") g_settings.auto_role = role;
+    GetPrivateProfileStringA("Coop", "JoinAddress", "127.0.0.1", buf, sizeof buf, ini.c_str());
+    if (g_settings.auto_role == "join") g_settings.auto_join_addr = buf;
+    g_settings.join_retry_s = static_cast<float>(GetPrivateProfileIntA("Coop", "JoinRetrySeconds", 5, ini.c_str()));
 
     // Command line switches for automated tests (run-coop-local.ps1). The engine ignores unknown switches.
     const char* cmd = GetCommandLineA();
@@ -99,6 +106,8 @@ void load_settings() {
 
 // ---- console command handlers (__cdecl, called by cConsoleFunc::CallFunction on the game thread) ----
 
+bool g_auto_stopped = false;  // coop_leave stops the AutoRole=join retry until the next coop_join/coop_host
+
 void __cdecl cmd_status() { spdlog::info("coop_status: {}", StatusLine()); }
 
 void __cdecl cmd_host(const char* arg) {
@@ -110,6 +119,7 @@ void __cdecl cmd_host(const char* arg) {
         const int p = std::atoi(a.c_str());
         if (p > 0 && p < 65536) port = static_cast<uint16_t>(p);
     }
+    g_auto_stopped = false;
     RequestHost(port);
 }
 
@@ -123,10 +133,14 @@ void __cdecl cmd_join(const char* arg) {
         spdlog::warn("coop_join: usage coop_join <host[:port]>");
         return;
     }
+    g_auto_stopped = false;
     RequestJoin(host, port);
 }
 
-void __cdecl cmd_leave() { RequestLeave(); }
+void __cdecl cmd_leave() {
+    g_auto_stopped = true;
+    RequestLeave();
+}
 
 // Test commands. coop_kill <id> [damage]: FuncInflictDamage on that animal. On the host or solo it is
 // the real damage; on a client it hits the local mirror like a bullet would, so the mirror reports an
@@ -228,6 +242,7 @@ public:
         }
         if (frames_ < 600 || (frames_ % 600) == 0) AssertBackground(nullptr);
 
+        RetryAutoJoin(dt);
         ApplyPending();
         g_session.Service();
         const bool hosting = g_session.IsHost();
@@ -249,6 +264,25 @@ public:
     // At process exit peers see a timeout instead of a graceful disconnect; `coop_leave` is graceful.
 
 private:
+    // AutoRole=join: the host may start later than the friend, or restart. Re-join while offline.
+    void RetryAutoJoin(float dt) {
+        const bool want = auto_done_ && !g_auto_stopped && g_settings.auto_role == "join" &&
+                          g_settings.join_retry_s > 0.f && !g_session.IsHost() && !g_session.IsConnected();
+        if (!want) {
+            join_wait_ = 0.f;
+            return;
+        }
+        join_wait_ += dt;
+        // ENet's connect attempt needs a few seconds before it gives up; do not cut it short.
+        if (join_wait_ < std::max(g_settings.join_retry_s, 6.f)) return;
+        join_wait_ = 0.f;
+        std::string host;
+        uint16_t port = g_settings.port;
+        split_host_port(g_settings.auto_join_addr.c_str(), host, port);
+        spdlog::info("coop: auto-join retry {}:{}", host, port);
+        RequestJoin(host, port);
+    }
+
     void AssertBackground(const char* why) {
         if (!g_settings.allow_background || !g_allow_background) return;
         int cur = 0;
@@ -394,6 +428,7 @@ private:
     bool auto_done_ = false;
     float log_accum_ = 0.f;
     float cmd_poll_ = 0.f;
+    float join_wait_ = 0.f;
     uint16_t seq_ = 0;
     Vec3 prev_{};
     uint32_t prev_tick_ = 0;

@@ -8,6 +8,7 @@
 #include "net/protocol.h"
 
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 namespace dh2::coop::events {
@@ -15,6 +16,8 @@ namespace dh2::coop::events {
 constexpr uint16_t kAnimalDied = 1;   // commit. subject = entity id. Client plays death once.
 constexpr uint16_t kMissionEnd = 2;   // commit. i0 = message code (5 success, 6 failed), key = text.
 constexpr uint16_t kTrophyClaim = 3;  // request (client pressed the claim key) and commit. subject = entity id.
+constexpr uint16_t kMapStart = 4;     // commit. key = map name (e.g. HUNTMAP4, MENUMAP), subject = host map serial.
+                                      // Clients follow with spmap/menumap; a same-name commit is a replay.
 
 // onRequest runs on the host. onCommit runs on a client. Either may be null.
 using Handler = void (*)(const net::GameEvent&);
@@ -37,5 +40,11 @@ void Replay();
 
 // Test hook (console coop_claim <id>): run the claim path for an animal as if the engine called it.
 void DebugClaim(uint16_t animalId);
+
+// This process's current map name (upper case, no path/extension), "" before the first map.
+const std::string& CurrentMap();
+// Client: true when the host's last announced map is the map this process is in (or none announced yet).
+// Entity-id based sync (animals) must not run across different maps.
+bool SameMapAsHost();
 
 }  // namespace dh2::coop::events
