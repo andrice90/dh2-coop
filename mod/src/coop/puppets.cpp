@@ -153,6 +153,8 @@ bool g_anim_enabled = true;     // [Puppets] Animate=1
 float g_y_offset = 0.f;         // [Puppets] YOffset (metres) added to the networked hunter y
 std::string g_crouch_clip = "coveridle";  // [Puppets] CrouchClip: NPC packs have no crouch-walk clip
 bool g_weapons = true;          // [Puppets] Weapons=1: attach a third-person weapon model to the puppet's hand
+int g_spike_weapon = 0;     // [Puppets] SpikeWeapon: kind held by the solo test puppet (0 = none)
+int g_fire_ms = 400;        // [Puppets] FireMs: how long the fire clip stays up after a shot
 bool g_attack_target = false;   // [Puppets] AttackTarget=1: host animals may pick puppets as attack targets.
 // Off: a tiger attacking a puppet crashed the host in cAIHuntBrain_Animal::ProcessAttackStuck (null +0x7c,
 // MAP3B 2026-10-16 21:20). Puppets have no physics body; the attack code needs one. Phase 5 work.
@@ -236,13 +238,61 @@ struct ClipSet {
     const char* gun;   // clip on the weapon mesh, no pack prefix
 };
 
-ClipSet choose_clips(Puppet& p, const net::InterpSample& s, uint32_t now) {
+// Third-person skins where they exist. rifle2 and handgun5 have only a *1ST skin; that mesh's own
+// idle/fire clips hide the flame bone. rifle1's mesh has no fire clip, so it stays on idle3030.
+// npc_gun: the short names match the NPC weapon script (idlealertneutral, walkforwardalert, ...).
+struct WeaponModel {
+    const char* skin = nullptr;
+    const char* hand = nullptr;
     const char* pack = nullptr;
-    if (s.weaponId == net::kWeaponShotgun || s.weaponId == net::kWeaponRifle) pack = "shotgun1/";
-    else if (s.weaponId == net::kWeaponHandgun) pack = "handgun3/";
+    bool npc_gun = false;
+    const char* gun_idle = nullptr;
+    const char* gun_walk = nullptr;
+    const char* gun_run = nullptr;
+    const char* gun_fire = nullptr;
+    const char* gun_reload = nullptr;
+};
+WeaponModel weapon_model(int kind) {
+    switch (kind) {
+        case net::kWeaponHandgun:
+            return {"objects/items/game/weapons/handgun3/handgun3.skin", "BipRHand", "handgun3/", true,
+                    "idlealertneutral", nullptr, "run", "fire", "reload"};
+        case net::kWeaponShotgun:
+            return {"objects/items/game/weapons/shotgun1/shotgun1.skin", "BipLHand", "shotgun1/", true,
+                    "idlealertneutral", nullptr, "run", "fire", "reload1"};
+        case net::kWeaponRifle:
+            // Every clip in rifle1.model (idle3030, give3030, stand) forwards to a Torso part the gun
+            // does not have: SetAnim throws and debug.log says "Could not forward". Leaving the clip
+            // unset avoids that. The mesh stays in bind pose (flame visible). UNVERIFIED workaround
+            // is to show the rifle2 skin instead; not done, so rifle1 stays the third-person model.
+            return {"objects/items/game/weapons/rifle1/rifle1.skin", "BipLHand", "shotgun1/", false,
+                    nullptr, nullptr, nullptr, nullptr, nullptr};
+        case net::kWeaponRifle2:
+            // First-person skin: "idle" applies (parts=1) and leaves the flame off. "fire"/"walk"/"reload"
+            // throw and log "Could not forward animation ... to Torso", so the gun stays on idle.
+            return {"objects/items/game/weapons/rifle21st/rifle2.skin", "BipLHand", "shotgun1/", false,
+                    "idle", "idle", "idle", "idle", "idle"};
+        case net::kWeaponHandgun5:
+            return {"objects/items/game/weapons/handgun51st/handgun5.skin", "BipRHand", "handgun3/", false,
+                    "idle", "idle", "idle", "idle", "idle"};
+        default: return {};
+    }
+}
+
+// Gun-mesh clip. NPC guns use the same short name as the arms. Other guns only get a name that is
+// actually in that .model (a missing name leaves the mesh in bind pose, flame bone visible).
+const char* gun_clip(const WeaponModel& m, const char* npc_name, const char* own) {
+    if (!m.skin) return nullptr;
+    if (m.npc_gun) return npc_name;
+    return own;
+}
+
+ClipSet choose_clips(Puppet& p, const net::InterpSample& s, uint32_t now) {
+    const WeaponModel m = weapon_model(s.weaponId);
+    const char* pack = m.pack;
     const bool armed = pack != nullptr;
     const int shots = (s.flags & net::kShotCounterMask) >> net::kShotCounterShift;
-    if (p.last_shots >= 0 && shots != p.last_shots && armed) p.fire_until = now + 400;
+    if (p.last_shots >= 0 && shots != p.last_shots && armed) p.fire_until = now + static_cast<uint32_t>(g_fire_ms);
     p.last_shots = shots;
 
     // Whole-body poses from the guide pack (GUIDELEGS.SCR StayDown / Getup / FinalLiedead), on every part so the
@@ -258,14 +308,15 @@ ClipSet choose_clips(Puppet& p, const net::InterpSample& s, uint32_t now) {
     }
     if (now < p.getup_until) return ClipSet{"syncguidegetup", "syncguidegetup", nullptr};
 
-    ClipSet c{"idlenormalneutral", nullptr, "idlealertneutral"};
+    ClipSet c{"idlenormalneutral", armed ? "idlealertneutral" : nullptr,
+              gun_clip(m, "idlealertneutral", m.gun_idle)};
     if (armed && now < p.fire_until) {
         c.legs = "idlenormalneutral";
         c.arms = "fire";  // filled with pack below
-        c.gun = "fire";
+        c.gun = gun_clip(m, "fire", m.gun_fire);
     } else if (armed && (s.flags & net::kFlagReloading)) {
-        c.gun = s.weaponId == net::kWeaponHandgun ? "reload" : "reload1";
-        c.arms = c.gun;
+        c.arms = (s.weaponId == net::kWeaponHandgun || s.weaponId == net::kWeaponHandgun5) ? "reload" : "reload1";
+        c.gun = gun_clip(m, c.arms, m.gun_reload);
     } else if (s.flags & net::kFlagCrouched) {
         c.legs = g_crouch_clip.c_str();
         c.arms = "idlealertneutral";
@@ -280,24 +331,24 @@ ClipSet choose_clips(Puppet& p, const net::InterpSample& s, uint32_t now) {
                 if (speed >= kRunSpeed) {
                     c.legs = "run/forward";
                     c.arms = "run";
-                    c.gun = "run";
+                    c.gun = gun_clip(m, "run", m.gun_run);
                 } else {
                     c.legs = "walk/forward";
                     c.arms = "walkforwardalert";
-                    c.gun = "walkforwardalert";
+                    c.gun = gun_clip(m, "walkforwardalert", m.gun_walk);
                 }
             } else if (-fwd >= std::fabs(right)) {
                 c.legs = "walk/backward";
                 c.arms = "walkbackwardalert";
-                c.gun = "walkbackwardalert";
+                c.gun = gun_clip(m, "walkbackwardalert", m.gun_walk);
             } else if (right > 0.f) {
                 c.legs = "walk/right";
                 c.arms = "walkstraferightalert";
-                c.gun = "walkstraferightalert";
+                c.gun = gun_clip(m, "walkstraferightalert", m.gun_walk);
             } else {
                 c.legs = "walk/left";
                 c.arms = "walkstrafeleftalert";
-                c.gun = "walkstrafeleftalert";
+                c.gun = gun_clip(m, "walkstrafeleftalert", m.gun_walk);
             }
         }
     }
@@ -311,22 +362,9 @@ ClipSet choose_clips(Puppet& p, const net::InterpSample& s, uint32_t now) {
     }
     return c;
 }
-// Third-person weapon models (OBJECTS\ITEMS\GAME\WEAPONS\<NAME>\<NAME>.SKIN; the *1ST dirs are first-person).
-// Hands as in the NPC weapon scripts (HGUNNPC/SGUNNPC/RIFLENPC.SCR default branch): handgun right, long guns left;
-// each script also LinkParts the weapon to that hand so it follows the clip.
-struct WeaponModel {
-    const char* skin;
-    const char* hand;
-};
-WeaponModel weapon_model(int kind) {
-    switch (kind) {
-        case net::kWeaponHandgun: return {"objects/items/game/weapons/handgun3/handgun3.skin", "BipRHand"};
-        case net::kWeaponShotgun: return {"objects/items/game/weapons/shotgun1/shotgun1.skin", "BipLHand"};
-        case net::kWeaponRifle: return {"objects/items/game/weapons/rifle1/rifle1.skin", "BipLHand"};
-        case net::kWeaponOther: return {nullptr, nullptr};
-        default: return {nullptr, nullptr};
-    }
-}
+// Hands match the NPC weapon scripts' default branch (HGUNNPC right, SGUNNPC/RIFLENPC left). Those scripts
+// also LinkPart the same weapon part to BipLFoot, which replaces the hand link (cScrEntity::LinkPart syncs
+// part 0 only), so the puppet links the hand alone. No attach offset in the scripts.
 
 // Unlink first: the hand controller's cModelPartLink holds a reference on the weapon's model owner, and a link left
 // in place is released a second time when the world is torn down (StopServer crash, 2026-10-16 20:42).
@@ -341,6 +379,7 @@ void drop_weapon(Puppet& p) {
     }
     p.weapon = nullptr;
     p.weapon_kind = 0;
+    p.gun_shown.clear();
 }
 
 void sync_weapon(Puppet& p, int kind) {
@@ -443,14 +482,17 @@ void load_settings() {
     GetPrivateProfileStringA("Puppets", "CrouchClip", g_crouch_clip.c_str(), crouch, sizeof crouch, ini.c_str());
     g_crouch_clip = crouch;
     g_weapons = GetPrivateProfileIntA("Puppets", "Weapons", 1, ini.c_str()) != 0;
+    g_spike_weapon = GetPrivateProfileIntA("Puppets", "SpikeWeapon", 0, ini.c_str());
+    g_fire_ms = GetPrivateProfileIntA("Puppets", "FireMs", 400, ini.c_str());
+    if (g_fire_ms < 50) g_fire_ms = 50;
     g_attack_target = GetPrivateProfileIntA("Puppets", "AttackTarget", 0, ini.c_str()) != 0;
     GetPrivateProfileStringA("Puppets", "Class", kDefaultClass, buf, sizeof buf, ini.c_str());
     g_class = buf;
     char model[260] = {};
     GetPrivateProfileStringA("Puppets", "Model", g_model.c_str(), model, sizeof model, ini.c_str());
     g_model = model;
-    spdlog::info("puppets: enabled={} spike={} animate={} physics={} yoffset={:.2f} class='{}' model='{}'", g_enabled,
-                 g_spike, g_anim_enabled, g_physics, g_y_offset, g_class, g_model);
+    spdlog::info("puppets: enabled={} spike={} spikeWeapon={} fireMs={} animate={} physics={} yoffset={:.2f} class='{}' model='{}'",
+                 g_enabled, g_spike, g_spike_weapon, g_fire_ms, g_anim_enabled, g_physics, g_y_offset, g_class, g_model);
 }
 
 class PuppetsModule : public dh2::Module {
@@ -560,6 +602,7 @@ private:
                 g_spike = false;
                 return;
             }
+            spike_puppet_ = {};
             spike_puppet_.entity = g_spike_entity;
             capture_rel_box(spike_puppet_);
             spdlog::info("puppets: spike rel box ({:.2f},{:.2f},{:.2f})-({:.2f},{:.2f},{:.2f})", spike_puppet_.rel_box[0],
@@ -607,7 +650,18 @@ private:
         const float yawDeg = by_view ? local.viewYaw + 180.f
                                      : (spike_sign_ < 0 ? local.angle.y : local.angle.y + 180.f);  // face the camera
         place(spike_puppet_, pos, yawDeg);
-        pick_anim(spike_puppet_, ClipSet{"walk/forward", nullptr, nullptr});
+        if (g_spike_weapon > 0) {
+            // Hold still in the armed idle and fire on a 3 s cycle (shot counter bumps once per cycle).
+            sync_weapon(spike_puppet_, g_spike_weapon);
+            place_weapon(spike_puppet_);
+            net::InterpSample s;
+            s.weaponId = static_cast<uint8_t>(g_spike_weapon);
+            const int cycle = static_cast<int>(now_ms() / 3000u);
+            s.flags = static_cast<uint16_t>((cycle & 0xF) << net::kShotCounterShift);
+            pick_anim(spike_puppet_, choose_clips(spike_puppet_, s, now_ms()));
+        } else {
+            pick_anim(spike_puppet_, ClipSet{"walk/forward", nullptr, nullptr});
+        }
         log_accum_ += dt;
         if (log_accum_ >= 2.f) {
             log_accum_ = 0.f;

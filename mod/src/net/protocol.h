@@ -139,8 +139,17 @@ constexpr uint16_t kFlagDead = 1u << 4;     // hunter +0x6CC set (OnDie); the ho
 constexpr uint16_t kFlagKnocked = 1u << 5;  // hunter inside a sync attack (+0x368): puppets show the knocked-down pose
 constexpr int kShotCounterShift = 8;
 constexpr uint16_t kShotCounterMask = 0x0F00;
-// PlayerState.weaponId values.
-enum WeaponKind : uint8_t { kWeaponNone = 0, kWeaponHandgun = 1, kWeaponShotgun = 2, kWeaponRifle = 3, kWeaponOther = 4 };
+// PlayerState.weaponId values. Append only: old values stay what they were.
+// 5 and 6 are weapons that have no third-person skin (rifle2 bolt-action, handgun5).
+enum WeaponKind : uint8_t {
+    kWeaponNone = 0,
+    kWeaponHandgun = 1,
+    kWeaponShotgun = 2,
+    kWeaponRifle = 3,
+    kWeaponOther = 4,
+    kWeaponRifle2 = 5,
+    kWeaponHandgun5 = 6
+};
 
 struct Ping {
     uint32_t token = 0;

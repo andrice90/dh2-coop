@@ -20,6 +20,7 @@
 #include "core/log.h"
 #include "core/module.h"
 #include "core/safe_mem.h"
+#include "net/protocol.h"
 
 namespace dh2::coop {
 namespace {
@@ -142,13 +143,16 @@ struct ActionState {
 ActionState g_act;
 
 uint8_t weapon_kind(const char* model) {
-    if (!model || !*model) return 0;
+    if (!model || !*model) return net::kWeaponNone;
     std::string m = model;
     for (auto& ch : m) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    if (m.find("handgun") != std::string::npos || m.find("pistol") != std::string::npos) return 1;
-    if (m.find("shotgun") != std::string::npos || m.find("12ga") != std::string::npos) return 2;
-    if (m.find("rifle") != std::string::npos) return 3;
-    return 4;
+    // More specific folders first: "handgun51st" contains "handgun", "rifle21st" contains "rifle".
+    if (m.find("handgun5") != std::string::npos) return net::kWeaponHandgun5;
+    if (m.find("handgun") != std::string::npos || m.find("pistol") != std::string::npos) return net::kWeaponHandgun;
+    if (m.find("shotgun") != std::string::npos || m.find("12ga") != std::string::npos) return net::kWeaponShotgun;
+    if (m.find("rifle2") != std::string::npos) return net::kWeaponRifle2;
+    if (m.find("rifle") != std::string::npos) return net::kWeaponRifle;
+    return net::kWeaponOther;
 }
 
 void read_camera(LocalPlayerSample& s) {
