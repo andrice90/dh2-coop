@@ -187,11 +187,12 @@ void GuardedProfileSet(void* profile, int attr, float value) {
     }
 }
 
-// 1.5 m to the host's side, facing the host's view yaw. Same calls the F9 revive used from the start:
-// the "position"/"angle" keys move the script side, SetPos/SetAngle/BspUpdate the entity.
+// On the host's own spot, 0.25 m up, facing the host's view yaw. 1.5 m to the side at the host's height dropped
+// players through the map on slopes and ledges (two-PC test 2026-10-17); the host's spot is known ground, and the
+// host's puppet no longer collides with players. Same calls the F9 revive used from the start: the
+// "position"/"angle" keys move the script side and the body, SetPos/SetAngle/BspUpdate the entity.
 entity::Vec3 place_near(void* hunter, const net::PlayerState& host) {
-    const float yaw_rad = host.yaw * 3.14159265f / 180.f;
-    const entity::Vec3 pos{host.pos[0] + std::cos(yaw_rad) * 1.5f, host.pos[1], host.pos[2] - std::sin(yaw_rad) * 1.5f};
+    const entity::Vec3 pos{host.pos[0], host.pos[1] + 0.25f, host.pos[2]};
     char buf[96];
     std::snprintf(buf, sizeof buf, "%.2f %.2f %.2f", pos.x * 100.f, pos.y * 100.f, pos.z * 100.f);
     entity::HandleKey(hunter, "position", buf);
@@ -245,6 +246,27 @@ void __cdecl cmd_kill(const char* arg) {
 void __cdecl cmd_respawn() { g_respawn_requested = true; }
 
 void __cdecl cmd_tohost() { TeleportToHost("coop_tohost"); }
+
+// Test: coop_tp <x>:<y>:<z> moves the local hunter there (metres, the coordinates the logs print).
+void __cdecl cmd_tp(const char* arg) {
+    std::string a = core::safe_cstr(arg, 64);
+    for (char& c : a) {
+        if (c == ':' || c == ',') c = ' ';
+    }
+    float x = 0.f, y = 0.f, z = 0.f;
+    LocalPlayerSample lp;
+    if (std::sscanf(a.c_str(), "%f %f %f", &x, &y, &z) != 3 || !SampleLocalNow(lp) || !lp.entity) {
+        spdlog::warn("coop_tp: usage coop_tp <x>:<y>:<z>");
+        return;
+    }
+    net::PlayerState at{};
+    at.pos[0] = x;
+    at.pos[1] = y - 0.25f;  // place_near lifts by 0.25
+    at.pos[2] = z;
+    at.yaw = lp.viewValid ? lp.viewYaw : lp.angle.y;
+    const entity::Vec3 pos = place_near(lp.entity, at);
+    spdlog::info("coop_tp: hunter to ({:.1f},{:.1f},{:.1f})", pos.x, pos.y, pos.z);
+}
 
 void __cdecl cmd_trigger(const char* arg) {
     const std::string name = core::safe_cstr(arg, 64);
@@ -345,6 +367,7 @@ public:
             console_cmds::AddCommandStr("coop_trigger", &cmd_trigger);
             console_cmds::AddCommand0("coop_respawn", &cmd_respawn);
             console_cmds::AddCommand0("coop_tohost", &cmd_tohost);
+            console_cmds::AddCommandStr("coop_tp", &cmd_tp);
         }
         cmd_poll_ += dt;
         if (commands_registered_ && cmd_poll_ >= 0.5f) {

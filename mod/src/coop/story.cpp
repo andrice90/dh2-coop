@@ -250,11 +250,29 @@ void PumpSkips() {
     }
 }
 
+// The skip key's input callback (0x6b600, cdecl(trigger, pressed)) is the only manual path into 0x6b350. The same
+// function also runs inside a trigger's OnActivate when this profile skips cutscenes on its own (two-PC test
+// 2026-10-17: every host cutscene "skipped" within 20 ms of its fire, MAP1 intro included). Forwarding those made
+// every client skip every cutscene; only a key press is the host's choice.
+constexpr uintptr_t kRvaSkipInput = 0x6b600;
+safetyhook::InlineHook* g_skip_input_hook = nullptr;
+bool g_manual_skip = false;
+
+void __cdecl hk_SkipInput(void* trigger, int pressed) {
+    g_manual_skip = pressed != 0;
+    g_skip_input_hook->unsafe_ccall<void>(trigger, pressed);
+    g_manual_skip = false;
+}
+
 void __fastcall hk_TriggerSkip(void* self, void*) {
     int before = 1;
     core::safe_read(static_cast<char*>(self) + kTriggerSkipped, before);
     g_skip_hook->unsafe_fastcall<void>(self);
     if (g_in_skip || before != 0 || !g_sync_events || !NetIsHost()) return;
+    if (!g_manual_skip) {
+        spdlog::info("story: host cutscene of '{}' skipped by the game itself; clients keep theirs", NameOf(self));
+        return;
+    }
     const int16_t id = IdOf(self);
     const std::string name = NameOf(self);
     spdlog::info("story: host skipped the cutscene of '{}' (id {})", name, id);
@@ -325,8 +343,19 @@ void OnFireRequest(const net::GameEvent& ev) {
                      ev.actorId);
         return;
     }
-    if (!HasFired(ent)) Fire(ent);
-    spdlog::info("story: trigger '{}' (id {}) fired by player {}", ev.key, ev.subjectId, ev.actorId);
+    // Whether OnActivate ran *here*, not the +0x1fc flag: the flag can be set without the script having run (the
+    // same case ApplyFireCommit handles on clients). 2026-10-17 11:40:15 a client's cScrTask12 found the host's flag
+    // set, the host never ran it, the client did, and the story split (two-PC test, both players stuck).
+    const int16_t id = static_cast<int16_t>(ev.subjectId);
+    if (g_ran_fire.count(id) == 0) {
+        if (HasFired(ent)) {
+            const int zero = 0;
+            std::memcpy(static_cast<char*>(ent) + 0x1fc, &zero, sizeof zero);
+        }
+        Fire(ent);
+    }
+    spdlog::info("story: trigger '{}' (id {}) fired by player {} (ran here: {})", ev.key, ev.subjectId, ev.actorId,
+                 g_ran_fire.count(id) != 0);
     events::Commit(events::kTriggerFire, ev.subjectId, 0, 0.f, ev.key, ev.actorId);
 }
 
@@ -375,6 +404,30 @@ void PumpDeferredFires() {
     const std::vector<net::GameEvent> pending = std::move(g_deferred_fires);
     g_deferred_fires.clear();
     for (const net::GameEvent& ev : pending) ApplyFireCommit(ev);
+}
+
+// A cutscene gathers everyone (user, 2026-10-17): whoever set it off, everyone plays it, and when a client's
+// cutscene camera lets go, a client far from the host is moved next to the host.
+bool g_was_cutscene = false;
+uint32_t g_gather_at = 0;
+
+void PumpGather() {
+    if (NetIsHost() || !NetIsOnline()) {
+        g_was_cutscene = false;
+        g_gather_at = 0;
+        return;
+    }
+    const bool in_cutscene = PlayerInCutscene();
+    const uint32_t now = GetTickCount();
+    if (g_was_cutscene && !in_cutscene) g_gather_at = now + 1500;  // let the camera and the host's position settle
+    g_was_cutscene = in_cutscene;
+    if (!g_gather_at || static_cast<int32_t>(now - g_gather_at) < 0) return;
+    g_gather_at = 0;
+    const float dist = DistanceToHost();
+    if (dist > 20.f) {
+        spdlog::info("story: cutscene over, host {:.1f} m away: gathering", dist);
+        TeleportToHost("after cutscene");
+    }
 }
 
 void __fastcall hk_TriggerFire(void* self, void*, void* activator) {
@@ -581,6 +634,7 @@ public:
     void OnFrame(float) override {
         PumpSkips();
         PumpDeferredFires();
+        PumpGather();
     }
 
     void OnInit() override {
@@ -634,6 +688,9 @@ public:
         g_skip_hook = core::install_hook("cObjTriggerEvent skip cutscene (0x6b350)",
                                          CheckedGameRva(game, kRvaTriggerSkip, "trigger skip"),
                                          reinterpret_cast<void*>(&hk_TriggerSkip));
+        g_skip_input_hook = core::install_hook("skip_cutscene key callback (0x6b600)",
+                                               CheckedGameRva(game, kRvaSkipInput, "skip key"),
+                                               reinterpret_cast<void*>(&hk_SkipInput));
         spdlog::info("story: skip path scr={} record={} mgr={}", reinterpret_cast<void*>(g_get_scr),
                      reinterpret_cast<void*>(g_get_record), reinterpret_cast<void*>(g_class_mgr));
     }

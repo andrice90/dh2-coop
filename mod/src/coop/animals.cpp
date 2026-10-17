@@ -230,6 +230,7 @@ struct Mirror {
     AnimalBuffer buffer;
     bool frozen = false;
     bool freeze_logged = false;
+    uint32_t last_hit_ms = 0;  // client: last AnimalHit sent for this animal
     bool missing_logged = false;
     float rel[6] = {};
     bool have_rel = false;
@@ -618,6 +619,13 @@ public:
                          hit.damage);
             return;
         }
+        for (void* npc : Npcs()) {
+            if (npc != ent) continue;
+            // A story NPC is never a target from the network (MAP2B Hugh, 12:06: ~100 bogus hits a second).
+            static uint32_t warned = 0;
+            if (warned++ < 3) spdlog::warn("animals: AnimalHit on NPC id={} from player {} ignored", hit.animalId, hit.shooterId);
+            return;
+        }
         float before = 0.f;
         core::safe_read(static_cast<char*>(ent) + kEntHealth, before);
         if (before <= 0.f) {
@@ -827,9 +835,12 @@ private:
                 continue;
             }
 
+            // NPCs are not targets: the client's Uncle Hugh read lower than the host's every frame and ~100 "hits" a
+            // second reached the host's Hugh (two-PC test, MAP2B 12:06). One report per animal per 150 ms at most.
             float localHp = 0.f;
-            if (core::safe_read(static_cast<char*>(ent) + kEntHealth, localHp) && m.have_hp && m.last_host_hp > 0.f &&
-                localHp < m.last_host_hp - 0.01f) {
+            if (!m.is_npc && t - m.last_hit_ms >= 150 && core::safe_read(static_cast<char*>(ent) + kEntHealth, localHp) &&
+                m.have_hp && m.last_host_hp > 0.f && localHp < m.last_host_hp - 0.01f) {
+                m.last_hit_ms = t;
                 net::AnimalHit hit;
                 hit.animalId = id;
                 hit.damage = m.last_host_hp - localHp;
