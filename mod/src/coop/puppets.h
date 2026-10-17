@@ -14,5 +14,7 @@ void OnRemoteLeft(uint8_t playerId);
 // Session ended: remove all puppets.
 void RemoveAll();
 int Count();
+// True for a puppet or weapon entity this module spawned. Those use /npc/ models and must not be mirrored as world NPCs.
+bool Owns(void* ent);
 
 }  // namespace dh2::coop::puppets

@@ -41,6 +41,8 @@ bool SampleLocalNow(LocalPlayerSample& out);
 int AnimalCount();
 // Animal entities (cScrAnimal, GameDll7 vtable +0xff470) from the last 1 s scan, in manager index order.
 const std::vector<void*>& Animals();
+// World NPCs whose model path contains "/npc/" (Uncle Hugh, guides). Includes puppet models until the caller filters them.
+const std::vector<void*>& Npcs();
 // Called once per frame on the game thread from the first cRender::SetCamera of the frame: after the sim/physics
 // step, before anything is drawn. Place remote-driven entities here so the drawn pose is ours, not physics'.
 void SetPreRenderCallback(void (*fn)());

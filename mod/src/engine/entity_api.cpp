@@ -441,6 +441,29 @@ bool FreezeBrain(void* ent, bool freeze) {
     return brain && guarded_freeze(brain, freeze ? 1 : 0);
 }
 
+using CharFreezeFn = void(__fastcall*)(void* self, int freeze);
+CharFreezeFn g_char_freeze = nullptr;
+
+bool guarded_char_freeze(void* ent, int freeze) {
+    __try {
+        g_char_freeze(ent, freeze);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+bool CharacterBrainFreeze(void* ent, bool freeze) {
+    if (!ent) return false;
+    if (!g_char_freeze) {
+        if (HMODULE common = GetModuleHandleA("CommonDll7.dll"))
+            g_char_freeze = reinterpret_cast<CharFreezeFn>(
+                GetProcAddress(common, "?CharacterBrainFreeze@cObjCharacterEx@@QAIXH@Z"));
+        if (!g_char_freeze) return false;
+    }
+    return guarded_char_freeze(ent, freeze ? 1 : 0);
+}
+
 bool InflictDamage(void* animal, float dmg) {
     if (!animal) return false;
     if (!g_inflict) {

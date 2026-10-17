@@ -152,6 +152,7 @@ namespace animal_flag {
 constexpr uint8_t kDead = 1u << 0;
 constexpr uint8_t kParked = 1u << 1;
 constexpr uint8_t kFrozenOnHost = 1u << 2;
+constexpr uint8_t kNpc = 1u << 3;  // companion (obj_guide and other /npc/ models), not cScrAnimal
 }
 
 // One animal in an AnimalStates snapshot. `state` is a body-state name.

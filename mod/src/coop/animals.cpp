@@ -25,6 +25,7 @@
 
 #include "coop/coop.h"
 #include "coop/player_tracker.h"
+#include "coop/puppets.h"
 #include "core/exports.h"
 #include "core/hook.h"
 #include "core/log.h"
@@ -206,13 +207,20 @@ struct Mirror {
     float last_yaw = 0.f;
     bool have_target = false;
     bool death_presented = false;
+    bool is_npc = false;
 };
 
 void* FindAnimal(uint16_t id) {
-    for (void* a : Animals()) {
+    auto match = [&](void* a) {
         int16_t eid = -1;
-        if (core::safe_read(static_cast<char*>(a) + kEntId, eid) && eid >= 0 && static_cast<uint16_t>(eid) == id)
-            return a;
+        return core::safe_read(static_cast<char*>(a) + kEntId, eid) && eid >= 0 && static_cast<uint16_t>(eid) == id;
+    };
+    for (void* a : Animals()) {
+        if (match(a)) return a;
+    }
+    for (void* a : Npcs()) {
+        if (puppets::Owns(a)) continue;
+        if (match(a)) return a;
     }
     return nullptr;
 }
@@ -320,7 +328,11 @@ public:
                 log_sync_ += dt;
                 if (log_sync_ >= 2.f) {
                     log_sync_ = 0.f;
-                    LogSync(animals);
+                    std::vector<void*> tracked = animals;
+                    for (void* npc : Npcs()) {
+                        if (!puppets::Owns(npc)) tracked.push_back(npc);
+                    }
+                    LogSync(tracked);
                 }
             }
             return;
@@ -380,11 +392,51 @@ public:
             if (hp <= 0.f) st.flags |= net::animal_flag::kDead;
             if (p.y < -1000.f) st.flags |= net::animal_flag::kParked;
             if ((st.flags & net::animal_flag::kDead) != 0 && (st.flags & net::animal_flag::kParked) == 0 &&
-                announced_.insert(uid).second) {
+                (st.flags & net::animal_flag::kNpc) == 0 && announced_.insert(uid).second) {
                 spdlog::info("animals: death commit id={} hp={:.1f} state='{}'", uid, hp, st.state);
                 events::Commit(events::kAnimalDied, uid, 0, hp, "", 0);
             }
             msg.animals.push_back(std::move(st));
+        }
+        int npc_count = 0;
+        for (void* npc : Npcs()) {
+            if (msg.animals.size() >= net::kMaxAnimals) break;
+            if (puppets::Owns(npc)) continue;
+            int16_t id = -1;
+            Vec3 p{};
+            Vec3 ang{};
+            float hp = 0.f;
+            if (!core::safe_read(static_cast<char*>(npc) + kEntId, id) || id < 0) continue;
+            if (!core::safe_read(static_cast<char*>(npc) + kEntPos, p)) continue;
+            core::safe_read(static_cast<char*>(npc) + kEntAngle, ang);
+            core::safe_read(static_cast<char*>(npc) + kEntHealth, hp);
+            const auto uid = static_cast<uint16_t>(id);
+            YawTrack& tr = yaws_[uid];
+            if (!tr.have) {
+                tr.have = true;
+                tr.prev = p;
+                tr.yaw = NormYaw(ang.y);
+                char* model = nullptr;
+                core::safe_read(static_cast<char*>(npc) + 0xE0, model);
+                spdlog::info("animals: npc id={} model='{}'", uid, model ? core::safe_cstr(model, 120) : "");
+            } else {
+                const float dx = p.x - tr.prev.x;
+                const float dz = p.z - tr.prev.z;
+                if (dx * dx + dz * dz > kYawMoveM * kYawMoveM) tr.yaw = NormYaw(std::atan2(dx, dz) * 57.2957795f);
+                tr.prev = p;
+            }
+            net::AnimalState st;
+            st.id = uid;
+            st.pos[0] = p.x;
+            st.pos[1] = p.y;
+            st.pos[2] = p.z;
+            st.yaw = tr.yaw;
+            st.health = hp;
+            st.state = entity::BodyStateName(npc);
+            st.flags = net::animal_flag::kNpc;
+            if (p.y < -1000.f) st.flags |= net::animal_flag::kParked;
+            msg.animals.push_back(std::move(st));
+            ++npc_count;
         }
         if (!logged_tx_ && !msg.animals.empty()) {
             logged_tx_ = true;
@@ -400,7 +452,11 @@ public:
         if (hosting_ || !session_active_) return;
         // Entity ids only mean the same animal inside the same map (a follow load may still be in progress).
         if (!events::SameMapAsHost()) return;
-        for (const net::AnimalState& a : states.animals) mirrors_[a.id].buffer.Push(localMs, a);
+        for (const net::AnimalState& a : states.animals) {
+            Mirror& m = mirrors_[a.id];
+            if ((a.flags & net::animal_flag::kNpc) != 0) m.is_npc = true;
+            m.buffer.Push(localMs, a);
+        }
         if (!logged_rx_ && !states.animals.empty()) {
             logged_rx_ = true;
             spdlog::info("animals: client received {} animals seq={}", states.animals.size(), states.seq);
@@ -556,15 +612,18 @@ private:
                 continue;
             }
             if (!m.frozen) {
-                const bool ok = entity::FreezeBrain(ent, true);
+                const bool ok = m.is_npc ? entity::CharacterBrainFreeze(ent, true) : entity::FreezeBrain(ent, true);
                 if (!m.freeze_logged) {
                     m.freeze_logged = true;
-                    spdlog::info("animals: mirror freeze id={} ok={} state='{}'", id, ok, entity::BodyStateName(ent));
+                    spdlog::info("animals: mirror freeze id={} ok={} npc={} state='{}'", id, ok, m.is_npc,
+                                 entity::BodyStateName(ent));
                 }
-                if (!ok) continue;
-                m.frozen = true;
-                m.have_rel = CaptureRel(ent, m.rel);
-                if (!m.have_rel) spdlog::warn("animals: mirror id={} world box unreadable", id);
+                if (!ok && !m.is_npc) continue;
+                if (ok) {
+                    m.frozen = true;
+                    m.have_rel = CaptureRel(ent, m.rel);
+                    if (!m.have_rel) spdlog::warn("animals: mirror id={} world box unreadable", id);
+                }
             }
             AnimalSample sample;
             if (!m.buffer.Sample(t, sample)) continue;
@@ -623,19 +682,32 @@ private:
                 --m.place_burst;
             }
             if (m.have_rel) PlaceEntity(ent, pos, yaw, m.rel);
+            const float step_x = m.have_target ? pos.x - m.last_target.x : 0.f;
+            const float step_z = m.have_target ? pos.z - m.last_target.z : 0.f;
             m.last_target = pos;
             m.last_yaw = yaw;
             m.have_target = true;
 
             // Re-apply when the live name drifts. FreezeBrain stops pathing, but the state machine can
             // still leave the host's state (deer 121 showed IdleAttack for ~4 s while the host stayed CutScene).
-            if (!sample.state.empty() && entity::BodyStateName(ent) != sample.state) {
+            if (m.is_npc) {
+                if (!sample.state.empty() && entity::BodyStateName(ent) != sample.state)
+                    entity::SetBodyState(ent, sample.state.c_str(), true);
+            } else if (!sample.state.empty() && entity::BodyStateName(ent) != sample.state) {
                 const int r = entity::SetBodyState(ent, sample.state.c_str(), false);
                 if (r == 1) {
                     m.applied_state = sample.state;
                 } else if (sample.state != m.warned_state) {
                     m.warned_state = sample.state;
                     spdlog::warn("animals: SetBodyState id={} '{}' -> {}", id, sample.state, r);
+                }
+            }
+            if (m.is_npc && entity::BodyStateName(ent) != sample.state) {
+                const char* clip = (step_x * step_x + step_z * step_z) > 0.0025f ? "walk/forward" : "idlenormalneutral";
+                const std::string key = std::string("leg:") + clip;
+                if (m.applied_state != key) {
+                    entity::SetAnim(ent, clip);
+                    m.applied_state = key;
                 }
             }
         }

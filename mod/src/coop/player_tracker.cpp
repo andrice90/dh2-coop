@@ -156,6 +156,7 @@ std::atomic<uintptr_t> g_game_base{0};
 LocalPlayerSample g_local;
 int g_animals = 0;
 std::vector<void*> g_animal_list;
+std::vector<void*> g_npc_list;
 std::string g_hunter_model;
 
 void** resolve_manager_slot(HMODULE engine) {
@@ -230,6 +231,7 @@ public:
         g_local = {};
         g_map_ready = false;
         g_animal_list.clear();
+        g_npc_list.clear();
         g_animals = 0;
     }
 
@@ -239,6 +241,7 @@ public:
         g_local = {};
         g_map_ready = false;
         g_animal_list.clear();
+        g_npc_list.clear();
         g_animals = 0;
         g_hunter_model.clear();
         histogram_logged_ = false;
@@ -287,6 +290,7 @@ private:
         const uintptr_t vtAnimal = game + kVtAnimalRva;
         std::map<uintptr_t, int> hist;
         std::vector<void*> animals;
+        std::vector<void*> npcs;
         std::vector<void*> children;  // candidates; filtered to the hunter's children below
         void* hunter = nullptr;
 
@@ -300,9 +304,16 @@ private:
             children.push_back(ent);
             if (diff_hunter_) DiffEntityAngle(i, ent, vt);
             if (vt == vtAnimal) animals.push_back(ent);
+            char* model = nullptr;
+            if (core::safe_read(reinterpret_cast<char*>(ent) + kEntModelName, model) && model) {
+                std::string path = core::safe_cstr(model, 160);
+                for (char& c : path) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (path.find("/npc/") != std::string::npos) npcs.push_back(ent);
+            }
         }
         g_animals = static_cast<int>(animals.size());
         g_animal_list = animals;
+        g_npc_list = npcs;
 
         if (!histogram_logged_) {
             histogram_logged_ = true;
@@ -510,6 +521,7 @@ bool SampleLocalNow(LocalPlayerSample& out) {
 }
 int AnimalCount() { return g_animals; }
 const std::vector<void*>& Animals() { return g_animal_list; }
+const std::vector<void*>& Npcs() { return g_npc_list; }
 void SetPreRenderCallback(void (*fn)()) { g_prerender = fn; }
 
 }  // namespace dh2::coop

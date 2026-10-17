@@ -585,4 +585,14 @@ int Count() {
     return n;
 }
 
+bool Owns(void* ent) {
+    if (!ent) return false;
+    if (ent == g_spike_entity) return true;
+    for (const auto& [id, p] : g_puppets) {
+        (void)id;
+        if (p.entity == ent || p.weapon == ent) return true;
+    }
+    return false;
+}
+
 }  // namespace dh2::coop::puppets
