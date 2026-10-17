@@ -24,3 +24,4 @@ re/jobs/*.prompt.md
 re/notes/story-inventory.md
 dist/
 *.png
+tools-src/replaycmd/build/

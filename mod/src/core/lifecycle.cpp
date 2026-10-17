@@ -56,7 +56,7 @@ HANDLE WINAPI hk_CreateMutexA(LPSECURITY_ATTRIBUTES sa, BOOL owner, LPCSTR name)
 
 bool g_bsp_loaded_in_start = false;
 bool g_last_start_reset = false;
-bool g_full_reload = false;  // [Coop] FullReloadOnReplay (experiment; did not stop the replay crash, 21:12)
+bool g_full_reload = true;  // [Coop] FullReloadOnReplay (re/notes/replay-crash.md)
 
 int __fastcall hk_BspLoad(void* self, void*, char* name, unsigned flags, int arg) {
     const ULONGLONG t0 = GetTickCount64();
@@ -75,25 +75,14 @@ int __fastcall hk_BspLoad(void* self, void*, char* name, unsigned flags, int arg
 // Main7 cSpServer::StartGame (RVA 0x1ed80, thiscall(server, const char* map, int)). spmap and menumap both
 // end here, after StopServer has torn the world down. Starting the map that is already loaded (results
 // screen "replay") resets the BSP instead of calling cBspTree::Load, so modules would keep pointers to
-// destroyed entities: dispatch OnMapLoaded for that case too (re/notes/lead-mission.md, map flow).
+// destroyed entities: dispatch OnMapLoaded for that case too (re/notes/lead-mission.md, map flow). With
+// FullReloadOnReplay=1 (hk_MapLoad below) that case loads the BSP and this fallback stays unused.
 safetyhook::InlineHook* g_start_hook = nullptr;
 
 int __fastcall hk_StartGame(void* self, void*, const char* map, int arg) {
     g_bsp_loaded_in_start = false;
     g_last_start_reset = false;
     const std::string name = safe_cstr(map, 64);
-    // Main7's map loader (0x101d0) resets the loaded BSP instead of reloading when the name matches the current map
-    // (char* at Main7 0x3d590). After such a reset with a puppet weapon around, the next world teardown crashed in
-    // cSndDrvDS::WaveRelease (2026-10-16 20:42-21:11). A null name takes the normal map-change path (full load).
-    // [Coop] FullReloadOnReplay=0 restores the engine behavior. The old name string is leaked (a few bytes).
-    if (g_full_reload && !name.empty()) {
-        auto** current = reinterpret_cast<char**>(reinterpret_cast<uint8_t*>(GetModuleHandleA(nullptr)) + 0x3d590);
-        const std::string cur = *current ? safe_cstr(*current, 64) : std::string();
-        if (!cur.empty() && _stricmp(cur.c_str(), name.c_str()) == 0) {
-            *current = nullptr;
-            spdlog::info("cSpServer::StartGame('{}'): same map, forcing a full reload", name);
-        }
-    }
     const int r = g_start_hook->unsafe_thiscall<int>(self, map, arg);
     spdlog::info("cSpServer::StartGame('{}', {}) -> {} (bsp {})", name, arg, r,
                  g_bsp_loaded_in_start ? "loaded" : "reset, same map");
@@ -116,6 +105,28 @@ int __fastcall hk_StopServer(void* self, void*) {
     return g_stop_hook->unsafe_thiscall<int>(self);
 }
 
+// Main7 map loader (RVA 0x101d0, cdecl(const char* map) -> int), called by StartGame inside its sound and model
+// precache windows. For another map it first runs the map-change cleanup (RVA 0xf8f0, cdecl(int)): BSP free,
+// sound SetBSP(0), cModelManager::ClearCache ("*** clear cache"). For the map already loaded (char* at Main7
+// 0x3d590) it only resets the BSP and skips that cleanup, so cached models keep their cBoneSound prototypes (the
+// hunter's Sound\Fx\bite1-3.wav) although the first EndPrecache already took those prototypes' wave references.
+// The respawned hunter's NewSound then reloads the waves with one reference, the closing EndPrecache frees them
+// while the hunter uses them, and the next teardown's cSndDrvDS::WaveRelease writes through the empty slot. Same in
+// the unmodded game (re/notes/replay-crash.md). [Coop] FullReloadOnReplay=1 runs the cleanup first, which also
+// clears the current name, so the loader takes the full path exactly as for another map. 0 = engine behavior.
+safetyhook::InlineHook* g_load_hook = nullptr;
+using MapCleanupFn = void(__cdecl*)(int clear_all);
+MapCleanupFn g_map_cleanup = nullptr;
+
+int __cdecl hk_MapLoad(const char* map) {
+    auto** current = reinterpret_cast<char**>(reinterpret_cast<uint8_t*>(GetModuleHandleA(nullptr)) + 0x3d590);
+    if (g_full_reload && g_map_cleanup && map && *current && _stricmp(*current, map) == 0) {
+        spdlog::info("map loader: '{}' is the loaded map; map-change cleanup first, then a full load", safe_cstr(map, 64));
+        g_map_cleanup(0);
+    }
+    return g_load_hook->unsafe_ccall<int>(map);
+}
+
 void* checked_main7(uintptr_t rva, const char* label) {
     static const uint8_t kPrologue[5] = {0x55, 0x8b, 0xec, 0x6a, 0xff};
     auto* exe = reinterpret_cast<uint8_t*>(GetModuleHandleA(nullptr));
@@ -130,11 +141,17 @@ void* checked_main7(uintptr_t rva, const char* label) {
 
 void install_start_game_hook() {
     const std::string ini = (self_dir() / "dh2coop.ini").string();
-    g_full_reload = GetPrivateProfileIntA("Coop", "FullReloadOnReplay", 0, ini.c_str()) != 0;
+    g_full_reload = GetPrivateProfileIntA("Coop", "FullReloadOnReplay", 1, ini.c_str()) != 0;
     g_start_hook = install_hook("cSpServer::StartGame", checked_main7(0x1ed80, "cSpServer::StartGame"),
                                 reinterpret_cast<void*>(&hk_StartGame));
     g_stop_hook = install_hook("cSpServer::StopServer", checked_main7(0x1b060, "cSpServer::StopServer"),
                                reinterpret_cast<void*>(&hk_StopServer));
+    g_map_cleanup = reinterpret_cast<MapCleanupFn>(checked_main7(0xf8f0, "map-change cleanup"));
+    if (g_map_cleanup) {
+        g_load_hook = install_hook("Main7 map loader", checked_main7(0x101d0, "map loader"),
+                                   reinterpret_cast<void*>(&hk_MapLoad));
+    }
+    spdlog::info("FullReloadOnReplay={}", g_full_reload ? 1 : 0);
 }
 
 struct LdrStr {
