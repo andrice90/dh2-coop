@@ -621,6 +621,14 @@ struct Session::Impl {
         return Send(remote, Encode(ev), kChannelEvents, true);
     }
 
+    bool SendGameTo(uint8_t playerId, const GameEvent& ev) {
+        if (!host || !hosting || !ev.commit()) return false;
+        for (auto& rp : remotes) {
+            if (rp->active && rp->playerId == playerId) return Send(rp.get(), Encode(ev), kChannelEvents, true);
+        }
+        return false;
+    }
+
     bool SendPing(uint32_t token) {
         if (!host || (!hosting && !connected)) return false;
         Ping ping;
@@ -772,6 +780,8 @@ bool Session::SendAnimalStates(const AnimalStates& states) { return impl_->SendA
 bool Session::SendAnimalHit(const AnimalHit& hit) { return impl_->SendHit(hit); }
 
 bool Session::SendGameEvent(const GameEvent& ev) { return impl_->SendGame(ev); }
+
+bool Session::SendGameEventTo(uint8_t playerId, const GameEvent& ev) { return impl_->SendGameTo(playerId, ev); }
 
 bool Session::ConsumeSendTick(uint32_t nowMs) {
     if (!impl_->sendArmed || nowMs - impl_->lastSendMs >= kStateIntervalMs) {

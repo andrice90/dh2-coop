@@ -56,6 +56,28 @@ bool g_log = true;
 std::unordered_set<int16_t> g_ran_fire;
 std::vector<net::GameEvent> g_deferred_fires;
 
+// ---- cutscene skip ----
+// GameDll7 0x6b350 is the trigger's skip (the skip_cutscene key ends up here): fastcall(cObjTriggerEvent*). It sets
+// +0x1f0, hides the skip HUD, and calls cScrTriggerEvent::SkipCutScene (0x6a940), which takes the script the
+// trigger executed (cScrTriggerEvent +0x30, a class-manager index), sets that cScrCutScene's m_bSkip (+0x4c) and
+// switches it to its "Skip" state: EndCamera, StopAllTask on the actors, DeactivateCutSceneMode.
+// re/notes/lead-dropin.md. The host's skips are committed (kCutsceneSkip); a client catching up after a join skips
+// the cutscenes of fires that are already old on the host.
+constexpr uintptr_t kRvaTriggerSkip = 0x6b350;
+constexpr uintptr_t kTriggerSkipped = 0x1f0;
+constexpr uintptr_t kScrExecuted = 0x30;
+constexpr uintptr_t kRvaCutSceneVt = 0x110998;  // cScrCutScene constructor 0x8e260
+constexpr float kCatchupSkipAge = 3.f;          // seconds: a replayed fire older than this does not play its cutscene
+uintptr_t g_game_base = 0;
+safetyhook::InlineHook* g_skip_hook = nullptr;
+using GetScrObjectFn = void*(__thiscall*)(void*);
+using GetRecordFn = void*(__thiscall*)(void*, int);
+GetScrObjectFn g_get_scr = nullptr;
+GetRecordFn g_get_record = nullptr;
+void** g_class_mgr = nullptr;  // &g_pClassManager (EngineDll7)
+bool g_in_skip = false;
+std::unordered_map<int16_t, uint32_t> g_skip_watch;  // trigger id -> GetTickCount after which we stop trying
+
 // Opening cutscenes put the render camera on a scripted rail, metres from the hunter.
 // Standing play keeps it about 1.7 m above the feet. MAP12C's cScrCutScene1 only calls
 // EndCamera / DeactivateCutSceneMode after the yeti's PlaySA task, so a host fire applied
@@ -129,6 +151,98 @@ void* FindEvent(const net::GameEvent& ev) {
     void* ent = EntityById(ev.subjectId);
     if (!ent) return nullptr;
     return NameOf(ent) == ev.key ? ent : nullptr;
+}
+
+void* guarded_scr(void* ent) {
+    __try {
+        return g_get_scr(ent);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
+    }
+}
+
+void* guarded_record(int idx) {
+    __try {
+        return g_get_record(*g_class_mgr, idx);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
+    }
+}
+
+bool guarded_skip(void* trigger) {
+    __try {
+        g_skip_hook->unsafe_fastcall<void>(trigger);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+// The cutscene script this trigger executed, or null. Only a real cScrCutScene instance counts: the skip writes
+// m_bSkip and switches the script to a "Skip" state that other script classes do not have.
+void* TriggerCutscene(void* trigger) {
+    if (!g_get_scr || !g_get_record || !g_class_mgr || !*g_class_mgr || !g_game_base) return nullptr;
+    void* scr = guarded_scr(trigger);
+    int idx = -1;
+    if (!scr || !core::safe_read(static_cast<char*>(scr) + kScrExecuted, idx) || idx < 0) return nullptr;
+    void* rec = guarded_record(idx);
+    void* inst = nullptr;
+    if (!rec || !core::safe_read(static_cast<char*>(rec) + 8, inst) || !inst) return nullptr;
+    uintptr_t vt = 0;
+    if (!core::safe_read(inst, vt) || vt != g_game_base + kRvaCutSceneVt) return nullptr;
+    return inst;
+}
+
+bool Skippable(void* trigger) {
+    int skipped = 1;
+    return trigger && core::safe_read(static_cast<char*>(trigger) + kTriggerSkipped, skipped) && skipped == 0 &&
+           TriggerCutscene(trigger) != nullptr;
+}
+
+// Keep trying to skip this trigger's cutscene for a while: the fire may still be deferred, or the cutscene
+// script may start a frame after OnActivate.
+void WatchSkip(uint16_t id, const char* why) {
+    if (!g_skip_hook) return;
+    g_skip_watch[static_cast<int16_t>(id)] = GetTickCount() + 15000;
+    spdlog::info("story: will skip the cutscene of trigger id {} ({})", id, why);
+}
+
+void PumpSkips() {
+    if (g_skip_watch.empty()) return;
+    const uint32_t now = GetTickCount();
+    for (auto it = g_skip_watch.begin(); it != g_skip_watch.end();) {
+        void* ent = EntityById(it->first);
+        if (ent && Skippable(ent)) {
+            g_in_skip = true;
+            const bool ok = guarded_skip(ent);
+            g_in_skip = false;
+            spdlog::info("story: skipped cutscene of '{}' (id {}) ok={}", NameOf(ent), it->first, ok);
+            it = g_skip_watch.erase(it);
+        } else if (static_cast<int32_t>(now - it->second) > 0) {
+            it = g_skip_watch.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void __fastcall hk_TriggerSkip(void* self, void*) {
+    int before = 1;
+    core::safe_read(static_cast<char*>(self) + kTriggerSkipped, before);
+    g_skip_hook->unsafe_fastcall<void>(self);
+    if (g_in_skip || before != 0 || !g_sync_events || !NetIsHost()) return;
+    const int16_t id = IdOf(self);
+    const std::string name = NameOf(self);
+    spdlog::info("story: host skipped the cutscene of '{}' (id {})", name, id);
+    if (id >= 0) events::Commit(events::kCutsceneSkip, static_cast<uint16_t>(id), 0, 0.f, name, 0);
+}
+
+void OnSkipCommit(const net::GameEvent& ev) {
+    if (!FindEvent(ev)) {
+        spdlog::warn("story: cutscene skip id={} '{}': no such trigger here", ev.subjectId, ev.key);
+        return;
+    }
+    WatchSkip(ev.subjectId, "host skipped it");
 }
 
 void OnEventRequest(const net::GameEvent& ev) {
@@ -208,6 +322,9 @@ void ApplyFireCommit(const net::GameEvent& ev) {
 }
 
 void OnFireCommit(const net::GameEvent& ev) {
+    // Late join: the host fired this a while ago, so its cutscene is long over there. Watch before deferring:
+    // the cutscene holding the deferral may be this trigger's own (a map-start fire that ran before the join).
+    if (events::CatchingUp() && ev.f0 > kCatchupSkipAge) WatchSkip(ev.subjectId, "old fire during catch-up");
     if (PlayerInCutscene()) {
         for (const net::GameEvent& pending : g_deferred_fires) {
             if (pending.subjectId == ev.subjectId && pending.key == ev.key) return;
@@ -390,6 +507,9 @@ void DebugActivate(const char* name) {
     spdlog::warn("story: coop_trigger '{}' not found", name);
 }
 
+// Watched skips are not counted: a trigger without a cutscene stays watched until it expires.
+bool CatchupBusy() { return !g_deferred_fires.empty() || PlayerInCutscene(); }
+
 namespace {
 
 void* CheckedGameRva(HMODULE game, uintptr_t rva, const char* label) {
@@ -414,9 +534,13 @@ public:
         g_prop_anim.clear();
         g_playsa.clear();
         g_play_keep.clear();
+        g_skip_watch.clear();
     }
 
-    void OnFrame(float) override { PumpDeferredFires(); }
+    void OnFrame(float) override {
+        PumpSkips();
+        PumpDeferredFires();
+    }
 
     void OnInit() override {
         const std::string ini = (core::self_dir() / "dh2coop.ini").string();
@@ -426,10 +550,18 @@ public:
         events::SetHandler(events::kTriggerFire, &OnFireRequest, &OnFireCommit);
         events::SetHandler(events::kPropAnim, nullptr, &OnPropAnimCommit);
         events::SetHandler(events::kPlaySA, nullptr, &OnPlaySACommit);
+        events::SetHandler(events::kCutsceneSkip, nullptr, &OnSkipCommit);
     }
 
-    void OnEngineReady(HMODULE) override {
+    void OnEngineReady(HMODULE engine) override {
+        if (engine) {
+            g_get_record = reinterpret_cast<GetRecordFn>(
+                core::find_export(engine, "?GetObjectA@cClassManager@@QAEPAVcObjRecord@@H@Z"));
+            g_class_mgr = reinterpret_cast<void**>(core::find_export(engine, "?g_pClassManager@@3PAVcClassManager@@A"));
+        }
         if (HMODULE common = core::wait_for_module("CommonDll7.dll", 10000)) {
+            g_get_scr = reinterpret_cast<GetScrObjectFn>(
+                core::find_export(common, "?GetScrObject@cObjScriptedEntity@@QAEPAVcScrEntity@@XZ"));
             g_volume_hook = core::install_hook(
                 "cObjTrigger::OnActivate (story log)",
                 core::find_export(common, "?OnActivate@cObjTrigger@@UAEXPAVcObjScriptedEntity@@@Z"),
@@ -457,6 +589,12 @@ public:
         g_task_hook = core::install_hook("cMission::CompleteTask (0x95840)",
                                          CheckedGameRva(game, kRvaCompleteTask, "complete task"),
                                          reinterpret_cast<void*>(&hk_CompleteTask));
+        g_game_base = reinterpret_cast<uintptr_t>(game);
+        g_skip_hook = core::install_hook("cObjTriggerEvent skip cutscene (0x6b350)",
+                                         CheckedGameRva(game, kRvaTriggerSkip, "trigger skip"),
+                                         reinterpret_cast<void*>(&hk_TriggerSkip));
+        spdlog::info("story: skip path scr={} record={} mgr={}", reinterpret_cast<void*>(g_get_scr),
+                     reinterpret_cast<void*>(g_get_record), reinterpret_cast<void*>(g_class_mgr));
     }
 };
 

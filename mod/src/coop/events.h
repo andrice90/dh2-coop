@@ -26,13 +26,19 @@ constexpr uint16_t kPropAnim = 7;     // commit. subject = world prop entity id,
                                       // Script SetAnim on a prop (MAP2A fallbridge "broken"). Not hunters, puppets, or mirrored actors.
 constexpr uint16_t kPlaySA = 8;       // commit. subject = character entity id, key = "anim|partner".
                                       // cObjCharacterEx::PlaySA. MAP2A's bridge mesh is the partner of Hugh's "cs02".
+constexpr uint16_t kSyncRequest = 9;  // request. key = the client's map, subject = its map serial. Sent once the client's
+                                      // map is loaded and its hunter exists. The host answers that client only: its
+                                      // kMapStart, then (same map) every journal commit and kSyncDone.
+constexpr uint16_t kSyncDone = 10;    // commit, to one client. i0 = commits replayed, key = map. Live commits follow.
+constexpr uint16_t kCutsceneSkip = 11;  // commit. subject/key = the cObjTriggerEvent whose cutscene the host skipped.
 
 // onRequest runs on the host. onCommit runs on a client. Either may be null.
 using Handler = void (*)(const net::GameEvent&);
 void SetHandler(uint16_t kind, Handler onRequest, Handler onCommit);
 
-// Host only. Records the commit and broadcasts it. A repeat of the same kind/subject/key resends
-// the stored commit and does not append another. No-op on a client.
+// Host only. Records the commit and sends it to the clients that have synced this map (kSyncDone sent);
+// kMapStart goes to every client. A client that is still loading gets it in its catch-up instead.
+// A repeat of the same kind/subject/key resends the stored commit and does not append another. No-op on a client.
 void Commit(uint16_t kind, uint16_t subject, uint32_t i0, float f0, std::string_view key, uint8_t actor);
 
 // Client only. Reliable request. The host stamps actorId. No-op on the host.
@@ -43,8 +49,11 @@ void OnNet(const net::GameEvent& ev);
 void Pump();
 // Drops the journal. Call on map load and when this process leaves the session.
 void Reset();
-// Host: send the journal to current peers (a client who joined after the outcome).
-void Replay();
+// Host: a client left. It gets the journal again when it asks (kSyncRequest).
+void OnPeerLeft(uint8_t playerId);
+// Client: between its kSyncRequest and the end of the catch-up (replayed commits applied, cutscenes
+// skipped, hunter moved to the host). Story code skips cutscenes while this is true.
+bool CatchingUp();
 
 // Test hook (console coop_claim <id>): run the claim path for an animal as if the engine called it.
 void DebugClaim(uint16_t animalId);

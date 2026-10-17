@@ -112,6 +112,7 @@ void load_settings() {
 // ---- console command handlers (__cdecl, called by cConsoleFunc::CallFunction on the game thread) ----
 
 bool g_auto_stopped = false;  // coop_leave stops the AutoRole=join retry until the next coop_join/coop_host
+bool g_respawn_requested = false;  // coop_respawn: same as F9, for test scripts that cannot hold the window in front
 
 void __cdecl cmd_status() { spdlog::info("coop_status: {}", StatusLine()); }
 
@@ -186,6 +187,29 @@ void GuardedProfileSet(void* profile, int attr, float value) {
     }
 }
 
+// 1.5 m to the host's side, facing the host's view yaw. Same calls the F9 revive used from the start:
+// the "position"/"angle" keys move the script side, SetPos/SetAngle/BspUpdate the entity.
+entity::Vec3 place_near(void* hunter, const net::PlayerState& host) {
+    const float yaw_rad = host.yaw * 3.14159265f / 180.f;
+    const entity::Vec3 pos{host.pos[0] + std::cos(yaw_rad) * 1.5f, host.pos[1], host.pos[2] - std::sin(yaw_rad) * 1.5f};
+    char buf[96];
+    std::snprintf(buf, sizeof buf, "%.2f %.2f %.2f", pos.x * 100.f, pos.y * 100.f, pos.z * 100.f);
+    entity::HandleKey(hunter, "position", buf);
+    std::snprintf(buf, sizeof buf, "0 %.2f 0", host.yaw);
+    entity::HandleKey(hunter, "angle", buf);
+    entity::SetPos(hunter, pos);
+    entity::SetAngle(hunter, entity::Vec3{0.f, host.yaw, 0.f});
+    entity::BspUpdate(hunter);
+    return pos;
+}
+
+// Several local test windows share one keyboard; only the window in front acts on F9.
+bool own_foreground() {
+    DWORD pid = 0;
+    GetWindowThreadProcessId(GetForegroundWindow(), &pid);
+    return pid == GetCurrentProcessId();
+}
+
 // Test: drop the local hunter. Does not end the level.
 void __cdecl cmd_down() {
     LocalPlayerSample lp;
@@ -217,6 +241,10 @@ void __cdecl cmd_kill(const char* arg) {
     }
     animals::DebugDamage(static_cast<uint16_t>(id), dmg);
 }
+
+void __cdecl cmd_respawn() { g_respawn_requested = true; }
+
+void __cdecl cmd_tohost() { TeleportToHost("coop_tohost"); }
 
 void __cdecl cmd_trigger(const char* arg) {
     const std::string name = core::safe_cstr(arg, 64);
@@ -315,6 +343,8 @@ public:
             console_cmds::AddCommandStr("coop_kill", &cmd_kill);
             console_cmds::AddCommandStr("coop_claim", &cmd_claim);
             console_cmds::AddCommandStr("coop_trigger", &cmd_trigger);
+            console_cmds::AddCommand0("coop_respawn", &cmd_respawn);
+            console_cmds::AddCommand0("coop_tohost", &cmd_tohost);
         }
         cmd_poll_ += dt;
         if (commands_registered_ && cmd_poll_ >= 0.5f) {
@@ -418,13 +448,14 @@ private:
                 return;
             }
             case net::EventType::PlayerJoined:
+                // The new client asks for the map's events itself once its map is loaded (events kSyncRequest).
                 g_remotes[ev.playerId].name = ev.name;
                 spdlog::info("coop: player {} '{}' joined", ev.playerId, ev.name);
-                events::Replay();
                 return;
             case net::EventType::PlayerLeft:
                 g_remotes.erase(ev.playerId);
                 puppets::OnRemoteLeft(ev.playerId);
+                events::OnPeerLeft(ev.playerId);
                 spdlog::info("coop: player {} left", ev.playerId);
                 return;
             case net::EventType::Welcome:
@@ -550,8 +581,15 @@ private:
         const bool down = (GetAsyncKeyState(VK_F9) & 0x8000) != 0;
         const bool pressed = down && !f9_down_;
         f9_down_ = down;
-        if (!pressed || g_session.IsHost() || !g_session.IsConnected()) return;
+        if (pressed && own_foreground()) Respawn();
+        if (g_respawn_requested) {
+            g_respawn_requested = false;
+            Respawn();
+        }
+    }
 
+    void Respawn() {
+        if (g_session.IsHost() || !g_session.IsConnected()) return;
         const auto host = g_remotes.find(0);
         if (host == g_remotes.end() || host->second.received == 0) {
             spdlog::info("coop: F9 respawn ignored, no host position yet");
@@ -560,9 +598,6 @@ private:
         LocalPlayerSample lp;
         if (!SampleLocalNow(lp) || !lp.entity) return;
         const net::PlayerState& host_state = host->second.last;
-        const float yaw_rad = host_state.yaw * 3.14159265f / 180.f;
-        entity::Vec3 pos{host_state.pos[0] + std::cos(yaw_rad) * 1.5f, host_state.pos[1],
-                         host_state.pos[2] - std::sin(yaw_rad) * 1.5f};
 
         void* profile = nullptr;
         core::safe_read(static_cast<char*>(lp.entity) + 0x1F8, profile);
@@ -570,14 +605,7 @@ private:
         const bool health_ok = GuardedSet(set_attr_, profile, 9, health);
         const bool stamina_ok = full_stamina_ > 1.f && GuardedSet(set_attr_, profile, 5, full_stamina_);
 
-        char buf[96];
-        std::snprintf(buf, sizeof buf, "%.2f %.2f %.2f", pos.x * 100.f, pos.y * 100.f, pos.z * 100.f);
-        entity::HandleKey(lp.entity, "position", buf);
-        std::snprintf(buf, sizeof buf, "0 %.2f 0", host_state.yaw);
-        entity::HandleKey(lp.entity, "angle", buf);
-        entity::SetPos(lp.entity, pos);
-        entity::SetAngle(lp.entity, entity::Vec3{0.f, host_state.yaw, 0.f});
-        entity::BspUpdate(lp.entity);
+        const entity::Vec3 pos = place_near(lp.entity, host_state);
         // "Death" is applied to every part. Idle on part 0 leaves the mesh in the death pose.
         GuardedSetAllParts(lp.entity, "Idle");
         entity::SetAnim(lp.entity, "idlenormalneutral");
@@ -680,6 +708,41 @@ bool BroadcastAnimalStates(const net::AnimalStates& states) { return g_session.S
 bool ReportAnimalHit(const net::AnimalHit& hit) { return g_session.SendAnimalHit(hit); }
 
 bool SendGameEvent(const net::GameEvent& ev) { return g_session.SendGameEvent(ev); }
+
+bool SendGameEventTo(uint8_t playerId, const net::GameEvent& ev) { return g_session.SendGameEventTo(playerId, ev); }
+
+std::vector<uint8_t> PeerIds() {
+    std::vector<uint8_t> ids;
+    if (!g_session.IsHost()) return ids;
+    for (const auto& p : g_session.Peers()) ids.push_back(p.playerId);
+    return ids;
+}
+
+bool TeleportToHost(const char* why) {
+    if (g_session.IsHost() || !g_session.IsConnected()) return false;
+    const auto host = g_remotes.find(0);
+    if (host == g_remotes.end() || host->second.received == 0) {
+        spdlog::info("coop: teleport to host ({}) skipped: no host position yet", why ? why : "");
+        return false;
+    }
+    LocalPlayerSample lp;
+    if (!SampleLocalNow(lp) || !lp.entity) return false;
+    const entity::Vec3 pos = place_near(lp.entity, host->second.last);
+    spdlog::info("coop: teleport to host ({}) from ({:.1f},{:.1f},{:.1f}) to ({:.1f},{:.1f},{:.1f})", why ? why : "",
+                 lp.pos.x, lp.pos.y, lp.pos.z, pos.x, pos.y, pos.z);
+    return true;
+}
+
+float DistanceToHost() {
+    if (g_session.IsHost() || !g_session.IsConnected()) return -1.f;
+    const auto host = g_remotes.find(0);
+    const LocalPlayerSample& lp = LocalPlayer();
+    if (host == g_remotes.end() || host->second.received == 0 || !lp.valid) return -1.f;
+    const float dx = host->second.last.pos[0] - lp.pos.x;
+    const float dy = host->second.last.pos[1] - lp.pos.y;
+    const float dz = host->second.last.pos[2] - lp.pos.z;
+    return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
 
 bool NetIsHost() { return g_session.IsHost(); }
 

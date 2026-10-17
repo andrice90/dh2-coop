@@ -104,6 +104,8 @@ public:
     // A request is client → host. Returns false on the host. The host writes actorId
     // from the sending peer and does not relay the request.
     bool SendGameEvent(const GameEvent& ev);
+    // Host only: a commit to one client (late-join catch-up). False on a client or for an unknown id.
+    bool SendGameEventTo(uint8_t playerId, const GameEvent& ev);
 
     // True at most once per kStateIntervalMs. The first call is true.
     // `nowMs` is a steady millisecond clock. Safe to call before connect.

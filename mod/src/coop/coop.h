@@ -2,6 +2,7 @@
 // Co-op session glue: settings, console commands, and the per-frame net pump (game thread).
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace net {
 struct AnimalStates;
@@ -57,7 +58,17 @@ std::string StatusLine();
 bool BroadcastAnimalStates(const net::AnimalStates& states);
 bool ReportAnimalHit(const net::AnimalHit& hit);
 bool SendGameEvent(const net::GameEvent& ev);
+// Host: a commit to one client only (catch-up after a join or a map change).
+bool SendGameEventTo(uint8_t playerId, const net::GameEvent& ev);
+// Host: ids of the clients in the session.
+std::vector<uint8_t> PeerIds();
 bool NetIsHost();
 bool NetIsOnline();
+
+// Client: put the local hunter 1.5 m beside the host's last reported position, facing the host's way.
+// False when there is no host position yet or no local hunter. Health and death state are not touched.
+bool TeleportToHost(const char* why);
+// Client: metres between the local hunter and the host's last reported position, or -1 if unknown.
+float DistanceToHost();
 
 }  // namespace dh2::coop
