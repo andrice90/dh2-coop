@@ -59,6 +59,7 @@ struct Puppet {
     bool attack_target = false;  // host: registered in the animals' attack-target list (Phase 5)
     bool was_knocked = false;    // last sample had kFlagKnocked: play the get-up when it clears
     uint32_t getup_until = 0;
+    float body_half = 0.f;       // Physics=1: physics body half height (cPhysicsObject +0x78)
     Vec3 placed;                 // Physics=1 diagnostics: where place() last put the entity
     bool have_placed = false;
     uint32_t drift_log_ms = 0;
@@ -69,6 +70,13 @@ constexpr uintptr_t kEntBspLink = 0x124;  // int, -1 = not linked into BSP leave
 
 void capture_rel_box(Puppet& p) {
     core::safe_copy(reinterpret_cast<char*>(p.entity) + kEntWorldBox, p.rel_box, sizeof p.rel_box);
+    // Physics=1: the "position" key places the body's centre; its half extents are cPhysicsObject +0x74/+0x78/+0x7c
+    // (0.625 / 0.900 / 0.625 on the guide body; +0x7c is the radius ProcessAttackStuck reads). Without lifting the
+    // key by the half height the model was drawn 0.9 m into the ground (user 2026-10-17; A/B screenshots against
+    // Physics=0 put the match between 0.9 and 1.0).
+    char* phys = nullptr;
+    if (g_physics && core::safe_read(reinterpret_cast<char*>(p.entity) + 0x118, phys) && phys)
+        core::safe_read(phys + 0x78, p.body_half);
     // Entity kind byte +0xA7: GameDll's human spawn writes 4 (hunter), animals 0x42; a bare obj_humanEx stays 0.
     // Experiment: tag the puppet as a human. [Puppets] Kind=-1 leaves it untouched.
     const std::string ini = (core::self_dir() / "dh2coop.ini").string();
@@ -87,17 +95,27 @@ void place(Puppet& p, const entity::Vec3& pos, float yawDeg) {
         // placements, and the model is drawn from the body: without the "position" key the puppet stayed at the
         // map origin and was invisible (user, 2026-10-17 10:47; drift log = -target every frame). The key moves
         // the body, but the model then sat below the feet (10:45): the body's origin is not the feet.
-        // g_phys_key_y (metres, [Puppets] PhysicsKeyY, console coop_physy) is that offset.
+        // The key places the body's centre, so it goes up by the body's half height (capture_rel_box), plus
+        // g_phys_key_y ([Puppets] PhysicsKeyY, console coop_physy) as a manual trim, default 0.
         char buf[64];
-        std::snprintf(buf, sizeof buf, "%.2f %.2f %.2f", pos.x * 100.f, (pos.y + g_phys_key_y) * 100.f, pos.z * 100.f);
+        std::snprintf(buf, sizeof buf, "%.2f %.2f %.2f", pos.x * 100.f, (pos.y + p.body_half + g_phys_key_y) * 100.f,
+                      pos.z * 100.f);
         entity::HandleKey(p.entity, "position", buf);
         Vec3 now{};
         const uint32_t t = GetTickCount();
         if (p.have_placed && t - p.drift_log_ms > 2000 &&
             core::safe_read(reinterpret_cast<char*>(p.entity) + 0xE8, now)) {
             p.drift_log_ms = t;
-            spdlog::info("puppets: physics drift since last place dy={:.2f} dx={:.2f} dz={:.2f} (target y {:.2f})",
-                         now.y - p.placed.y, now.x - p.placed.x, now.z - p.placed.z, pos.y);
+            // cPhysicsObject +4 = body, body +0x28 = position (cPhysicsObject::SetPosition, EngineDll 0xf9c40).
+            char* phys = nullptr;
+            char* body = nullptr;
+            Vec3 bpos{};
+            const bool have_body = core::safe_read(reinterpret_cast<char*>(p.entity) + 0x118, phys) && phys &&
+                                   core::safe_read(phys + 4, body) && body && core::safe_read(body + 0x28, bpos);
+            spdlog::info("puppets: physics drift since last place dy={:.2f} dx={:.2f} dz={:.2f} (target y {:.2f}) "
+                         "body y {:.2f} (body - entity {:.2f})",
+                         now.y - p.placed.y, now.x - p.placed.x, now.z - p.placed.z, pos.y,
+                         have_body ? bpos.y : 0.f, have_body ? bpos.y - now.y : 0.f);
         }
         p.placed = {pos.x, pos.y, pos.z};
         p.have_placed = true;
@@ -177,20 +195,30 @@ void* spawn_human(const char* why) {
         core::safe_read(reinterpret_cast<char*>(ent) + 0x118, phys);
         spdlog::info("puppets: unlinked physics -> {} (phys +0x118 now {:#x})", ok, phys);
     } else {
-        // Keep the body (the animal attack code reads it) but stop it colliding. A solid puppet under the local
-        // hunter pushed both players up without end (each side's push raised the other side's puppet: y -2.9 to
-        // 65 in 15 s, MAP3B 2026-10-17 10:26). Same three words cObjCharacterEx::PlaySA writes so the two partners
-        // of a sync attack can overlap (CommonDll 0x27f10; re/notes/knockdown.md).
+        // Keep the body (the animal attack code reads it) but stop it colliding with characters. A solid puppet under
+        // the local hunter pushed both players up without end (each side's push raised the other side's puppet: y
+        // -2.9 to 65 in 15 s, MAP3B 2026-10-17 10:26). cObjCharacterEx::PlaySA (CommonDll 0x27f10) writes
+        // +0x20 = +0x24 = 0xfffffff8 and +0x28 = 7 so the two partners of a sync attack can overlap; the low three
+        // bits look like the character categories, the rest (ground, world) stay. The first try had the order
+        // reversed (7, 7, 0xfffffff8: an ordinary animal's values, 13513 in objmodel-decomp-common-ai.c), which
+        // lifted the players again (10:47). CharacterFreeze only stops input (USER_STOP), not gravity.
         char* phys = nullptr;
         if (core::safe_read(reinterpret_cast<char*>(ent) + 0x118, phys) && phys) {
-            const uint32_t seven = 7, mask = 0xfffffff8;
-            std::memcpy(phys + 0x20, &seven, sizeof seven);
-            std::memcpy(phys + 0x24, &seven, sizeof seven);
-            std::memcpy(phys + 0x28, &mask, sizeof mask);
-            // Open (re/notes/lead-combat.md): without ground collision the body falls and the drawn model sinks
-            // (user 10:31). CharacterFreeze is not the fix: frozen, the body collided again and lifted both players
-            // (10:47, y -2.9 to 73). The body's velocity / gravity fields are still unknown.
-            spdlog::info("puppets: physics body {:#x} kept, collision off", reinterpret_cast<uintptr_t>(phys));
+            uint32_t was[3] = {};
+            core::safe_copy(phys + 0x20, was, sizeof was);
+            const uint32_t clear = 0xfffffff8, seven = 7;
+            std::memcpy(phys + 0x20, &clear, sizeof clear);
+            std::memcpy(phys + 0x24, &clear, sizeof clear);
+            std::memcpy(phys + 0x28, &seven, sizeof seven);
+            spdlog::info("puppets: physics body {:#x} kept; collision words were {:#x} {:#x} {:#x}, now as PlaySA",
+                         reinterpret_cast<uintptr_t>(phys), was[0], was[1], was[2]);
+            // One-off: the body's size fields (finding where the drawn model sits relative to the body).
+            float f[16] = {};
+            core::safe_copy(phys + 0x60, f, sizeof f);
+            spdlog::info("puppets: phys +0x60..+0x9c {:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} "
+                         "{:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} {:.3f}",
+                         f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9], f[10], f[11], f[12], f[13], f[14],
+                         f[15]);
         }
     }
     g_spawn_manager = mgr;
@@ -566,12 +594,16 @@ private:
         // swaying ±1 m sideways so movement is visible.
         // User report 2026-10-16: with +forward the puppet was BEHIND the camera → the view looks along
         // -(sin yaw, cos yaw). [Puppets] SpikeSign=-1 (default) places it in front; +1 restores the old side.
-        const float hy = local.angle.y * 3.14159265f / 180.f;
-        const float sgn = static_cast<float>(spike_sign_);
+        // The view camera's forward when known (+0xF4 only follows the view while walking; MAP3B 2026-10-17 the
+        // +0xF4 side put the spike out of the shot): forward = (sin, cos) of the view yaw.
+        const bool by_view = local.viewValid;
+        const float hy = (by_view ? local.viewYaw : local.angle.y) * 3.14159265f / 180.f;
+        const float sgn = by_view ? 1.f : static_cast<float>(spike_sign_);
         const float fx = sgn * std::sin(hy), fz = sgn * std::cos(hy);
-        const float side = std::sin(g_spike_t * 0.8f);
+        const float side = spike_sway_ ? std::sin(g_spike_t * 0.8f) : 0.f;
         const entity::Vec3 pos{local.pos.x + 3.f * fx + side * fz, local.pos.y, local.pos.z + 3.f * fz - side * fx};
-        const float yawDeg = spike_sign_ < 0 ? local.angle.y : local.angle.y + 180.f;  // face the camera
+        const float yawDeg = by_view ? local.viewYaw + 180.f
+                                     : (spike_sign_ < 0 ? local.angle.y : local.angle.y + 180.f);  // face the camera
         place(spike_puppet_, pos, yawDeg);
         pick_anim(spike_puppet_, ClipSet{"walk/forward", nullptr, nullptr});
         log_accum_ += dt;
@@ -611,6 +643,9 @@ private:
     bool hunter_box_logged_ = false;
     int spike_sign_ = static_cast<int>(GetPrivateProfileIntA("Puppets", "SpikeSign", -1,
                                                              (core::self_dir() / "dh2coop.ini").string().c_str()));
+    // [Puppets] SpikeSway=0 holds the test puppet still (same spot in every screenshot, for A/B pictures).
+    bool spike_sway_ = GetPrivateProfileIntA("Puppets", "SpikeSway", 1,
+                                             (core::self_dir() / "dh2coop.ini").string().c_str()) != 0;
     float log_accum_ = 0.f;
     float diag_accum_ = 0.f;
     float draw_accum_ = 0.f;
