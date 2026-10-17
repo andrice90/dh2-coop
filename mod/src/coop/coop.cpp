@@ -25,6 +25,7 @@
 #include "coop/player_tracker.h"
 #include "coop/puppet_models.h"
 #include "coop/puppets.h"
+#include "coop/test_fake.h"
 #include "coop/vehicles.h"
 
 namespace dh2::coop::story {
@@ -883,6 +884,7 @@ private:
                                          ((s.shots << net::kShotCounterShift) & net::kShotCounterMask));
         st.weaponId = s.weapon;
         st.health = 100;
+        testfake::Apply(st);  // no-op unless a coop_fake* test command is active
         g_session.SendPlayerState(st);
     }
 

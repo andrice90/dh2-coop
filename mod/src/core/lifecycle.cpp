@@ -246,6 +246,24 @@ LONG CALLBACK first_chance_logger(EXCEPTION_POINTERS* ep) {
     const EXCEPTION_RECORD* r = ep->ExceptionRecord;
     spdlog::error("first-chance exception {:#010x} at {} eip={:#x}", code, describe_address(r->ExceptionAddress),
                   c ? static_cast<uintptr_t>(c->Eip) : 0);
+    if (c && code == EXCEPTION_ACCESS_VIOLATION) {
+        // Access type (0 read, 1 write, 8 execute) and target, registers, and the stack words that point into a module
+        // (return addresses): enough to find who called a faulting engine routine without a debugger.
+        std::string stack;
+        const uintptr_t* sp = reinterpret_cast<const uintptr_t*>(c->Esp);
+        for (int i = 0; i < 96 && stack.size() < 700; ++i) {
+            uintptr_t v = 0;
+            if (!safe_read(sp + i, v)) break;
+            const std::string d = describe_address(reinterpret_cast<void*>(v));
+            if (d.rfind("<unknown>", 0) == 0) continue;
+            stack += " [" + std::to_string(i) + "]" + d;
+        }
+        spdlog::error("  AV kind={} addr={:#x} eax={:#x} ecx={:#x} edx={:#x} ebx={:#x} esi={:#x} edi={:#x} ebp={:#x} esp={:#x} stack:{}",
+                      static_cast<unsigned>(r->ExceptionInformation[0]), static_cast<uintptr_t>(r->ExceptionInformation[1]),
+                      static_cast<uintptr_t>(c->Eax), static_cast<uintptr_t>(c->Ecx), static_cast<uintptr_t>(c->Edx),
+                      static_cast<uintptr_t>(c->Ebx), static_cast<uintptr_t>(c->Esi), static_cast<uintptr_t>(c->Edi),
+                      static_cast<uintptr_t>(c->Ebp), static_cast<uintptr_t>(c->Esp), stack);
+    }
     busy = false;
     return EXCEPTION_CONTINUE_SEARCH;
 }
