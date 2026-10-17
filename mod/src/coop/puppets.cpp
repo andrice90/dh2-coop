@@ -99,7 +99,9 @@ float g_y_offset = 0.f;         // [Puppets] YOffset (metres) added to the netwo
 std::string g_crouch_clip = "coveridle";  // [Puppets] CrouchClip: NPC packs have no crouch-walk clip
 uint32_t g_fire_ms = 600;       // [Puppets] FireMs: how long the fire clip plays per shot
 bool g_weapons = true;          // [Puppets] Weapons=1: attach a third-person weapon model to the puppet's hand
-bool g_attack_target = true;    // [Puppets] AttackTarget=1: host animals may pick puppets as attack targets
+bool g_attack_target = false;   // [Puppets] AttackTarget=1: host animals may pick puppets as attack targets.
+// Off: a tiger attacking a puppet crashed the host in cAIHuntBrain_Animal::ProcessAttackStuck (null +0x7c,
+// MAP3B 2026-10-16 21:20). Puppets have no physics body; the attack code needs one. Phase 5 work.
 void* g_spike_entity = nullptr;
 float g_spike_t = 0.f;
 float g_spike_wait = 0.f;
@@ -153,8 +155,9 @@ std::string choose_clip(Puppet& p, const net::InterpSample& s, uint32_t now) {
     switch (s.weaponId) {
         case net::kWeaponHandgun: prefix = "handgun3/"; break;
         case net::kWeaponShotgun:
-        case net::kWeaponRifle:
-        case net::kWeaponOther: prefix = "shotgun1/"; break;
+        case net::kWeaponRifle: prefix = "shotgun1/"; break;
+        // kWeaponOther: knife/machete/branch (story maps), bow, darts. No NPC melee locomotion clips exist (every
+        // NPC MBRANCH.AP holds only cs_pumafight), so unarmed clips and no model beat a wrong shotgun (user 21:20).
         default: break;
     }
     const bool armed = *prefix != 0;
@@ -192,7 +195,7 @@ WeaponModel weapon_model(int kind) {
         case net::kWeaponHandgun: return {"objects/items/game/weapons/handgun3/handgun3.skin", "BipRHand"};
         case net::kWeaponShotgun: return {"objects/items/game/weapons/shotgun1/shotgun1.skin", "BipLHand"};
         case net::kWeaponRifle: return {"objects/items/game/weapons/rifle1/rifle1.skin", "BipLHand"};
-        case net::kWeaponOther: return {"objects/items/game/weapons/shotgun1/shotgun1.skin", "BipLHand"};
+        case net::kWeaponOther: return {nullptr, nullptr};
         default: return {nullptr, nullptr};
     }
 }
@@ -312,7 +315,7 @@ void load_settings() {
     g_crouch_clip = crouch;
     g_fire_ms = GetPrivateProfileIntA("Puppets", "FireMs", 600, ini.c_str());
     g_weapons = GetPrivateProfileIntA("Puppets", "Weapons", 1, ini.c_str()) != 0;
-    g_attack_target = GetPrivateProfileIntA("Puppets", "AttackTarget", 1, ini.c_str()) != 0;
+    g_attack_target = GetPrivateProfileIntA("Puppets", "AttackTarget", 0, ini.c_str()) != 0;
     GetPrivateProfileStringA("Puppets", "Class", kDefaultClass, buf, sizeof buf, ini.c_str());
     g_class = buf;
     char model[260] = {};

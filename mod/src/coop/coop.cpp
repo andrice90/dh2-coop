@@ -20,6 +20,10 @@
 #include "coop/events.h"
 #include "coop/player_tracker.h"
 #include "coop/puppets.h"
+
+namespace dh2::coop::story {
+void DebugActivate(const char* name);  // story.cpp
+}
 #include "core/exports.h"
 #include "core/log.h"
 #include "core/module.h"
@@ -160,6 +164,15 @@ void __cdecl cmd_kill(const char* arg) {
     animals::DebugDamage(static_cast<uint16_t>(id), dmg);
 }
 
+void __cdecl cmd_trigger(const char* arg) {
+    const std::string name = core::safe_cstr(arg, 64);
+    if (name.empty()) {
+        spdlog::warn("coop_trigger: usage coop_trigger <trigger event name, e.g. cScrTask03>");
+        return;
+    }
+    story::DebugActivate(name.c_str());
+}
+
 void __cdecl cmd_claim(const char* arg) {
     const int id = std::atoi(core::safe_cstr(arg, 32).c_str());
     if (id <= 0) {
@@ -246,6 +259,7 @@ public:
             console_cmds::AddCommand0("coop_leave", &cmd_leave);
             console_cmds::AddCommandStr("coop_kill", &cmd_kill);
             console_cmds::AddCommandStr("coop_claim", &cmd_claim);
+            console_cmds::AddCommandStr("coop_trigger", &cmd_trigger);
         }
         cmd_poll_ += dt;
         if (commands_registered_ && cmd_poll_ >= 0.5f) {

@@ -18,6 +18,10 @@ constexpr uint16_t kMissionEnd = 2;   // commit. i0 = message code (5 success, 6
 constexpr uint16_t kTrophyClaim = 3;  // request (client pressed the claim key) and commit. subject = entity id.
 constexpr uint16_t kMapStart = 4;     // commit. key = map name (e.g. HUNTMAP4, MENUMAP), subject = host map serial.
                                       // Clients follow with spmap/menumap; a same-name commit is a replay.
+constexpr uint16_t kTriggerEvent = 5; // request and commit. subject = cObjTriggerEvent entity id, key = its name.
+                                      // Arms a trigger (script trigger_N.Activate(), GameDll 0x68eb0).
+constexpr uint16_t kTriggerFire = 6;  // request and commit. Same subject/key. The armed trigger fired: a player entered
+                                      // it and its script OnActivate() ran (GameDll 0x68130). The main story branch.
 
 // onRequest runs on the host. onCommit runs on a client. Either may be null.
 using Handler = void (*)(const net::GameEvent&);

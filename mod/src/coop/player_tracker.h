@@ -46,6 +46,9 @@ const std::vector<void*>& Animals();
 void SetPreRenderCallback(void (*fn)());
 // Live cObjManager (captured from AddEntity), nullptr until the first spawn.
 void* EntityManager();
+// Entity with this id (int16 at +0x04) in the live manager's array, or null. Game thread. BSP-placed entities
+// have the same id on every instance of the same map (HUNTMAP4 animals, MAP3B trigger events).
+void* EntityById(int id);
 // The local hunter's model_name key (e.g. "Objects/Characters/Teenm/Body/teenmm.skin,game.ap,HUNTMAP4.ap"); "" if unknown.
 const char* HunterModelName();
 

@@ -482,6 +482,22 @@ DH2_MODULE(PlayerTrackerModule)
 
 const LocalPlayerSample& LocalPlayer() { return g_local; }
 void* EntityManager() { return current_manager(); }
+
+void* EntityById(int id) {
+    void* mgr = current_manager();
+    int count = 0;
+    void** arr = nullptr;
+    if (!mgr || !core::safe_read(reinterpret_cast<char*>(mgr) + kMgrCount, count) ||
+        !core::safe_read(reinterpret_cast<char*>(mgr) + kMgrArray, arr) || !arr || count <= 0 || count > kMgrMaxEntities)
+        return nullptr;
+    for (int i = 0; i < count; ++i) {
+        void* ent = nullptr;
+        int16_t eid = -1;
+        if (!core::safe_read(arr + i, ent) || !ent) continue;
+        if (core::safe_read(static_cast<char*>(ent) + 0x04, eid) && eid == id) return ent;
+    }
+    return nullptr;
+}
 const char* HunterModelName() { return g_hunter_model.c_str(); }
 
 bool SampleLocalNow(LocalPlayerSample& out) {
