@@ -113,7 +113,7 @@ An entry with an empty name is 24 bytes. Flag bits: bit 0 dead, bit 1 parked/ina
 | 1 | u8 | flags. Bit 0 = commit (host → clients). Clear = request (client → host). |
 | 2 | u8 | actorId. On a request the host overwrites this with the sending peer's player id. |
 | 3 | u16 | seq. The host assigns it on a commit. |
-| 5 | u16 | kind. Game-layer registry. `1` AnimalDied, `2` MapComplete. Other values are legal on the wire. |
+| 5 | u16 | kind. Game-layer registry. `1` AnimalDied, `2` MissionEnd (i0 = message code 5/6, key = text), `3` TrophyClaim. Other values are legal on the wire. |
 | 7 | u16 | subjectId. Entity id, or 0 when the subject is the map or an objective. |
 | 9 | u32 | i0. Kind-specific integer. |
 | 13 | f32 | f0. Kind-specific float. |
@@ -240,7 +240,7 @@ session.SendAnimalHit(hit);  // false on the host; EventType::AnimalHit arrives 
 
 // Client request / host commit. See re/notes/p4c-events.md. The host stamps actorId on a request.
 net::GameEvent ev;
-ev.kind = 2;                  // MapComplete, as one example. The session does not care.
+ev.kind = 2;                  // MissionEnd, as one example. The session does not care.
 session.SendGameEvent(ev);   // false on the host when flags bit0 is clear
 ev.flags = net::game_event_flag::kCommit;
 session.SendGameEvent(ev);   // false on a client; host fans the commit out, and does not queue it locally

@@ -4,10 +4,14 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <optional>
+#include <vector>
 
 #include <spdlog/spdlog.h>
 
@@ -124,6 +128,54 @@ void __cdecl cmd_join(const char* arg) {
 
 void __cdecl cmd_leave() { RequestLeave(); }
 
+// Test commands. coop_kill <id> [damage]: FuncInflictDamage on the host's (or a solo) animal.
+// coop_claim <id>: run the trophy-claim path as if the engine's claim key had fired for that animal.
+void __cdecl cmd_kill(const char* arg) {
+    const std::string a = core::safe_cstr(arg, 64);
+    int id = -1;
+    float dmg = 1000.f;
+    if (std::sscanf(a.c_str(), "%d %f", &id, &dmg) < 1 || id < 0) {
+        spdlog::warn("coop_kill: usage coop_kill <animal id> [damage]");
+        return;
+    }
+    if (g_session.IsConnected() && !g_session.IsHost()) {
+        spdlog::warn("coop_kill: client; the host simulates animals");
+        return;
+    }
+    animals::DebugDamage(static_cast<uint16_t>(id), dmg);
+}
+
+void __cdecl cmd_claim(const char* arg) {
+    const int id = std::atoi(core::safe_cstr(arg, 32).c_str());
+    if (id <= 0) {
+        spdlog::warn("coop_claim: usage coop_claim <animal id>");
+        return;
+    }
+    events::DebugClaim(static_cast<uint16_t>(id));
+}
+
+// Automation channel: Bin\dh2coop.cmd, one console line per line. Read, deleted, then queued with
+// cConsole::Exec (game thread). Lets test scripts drive coop_* and engine commands without typing.
+void PollCommandFile() {
+    const std::filesystem::path path = core::self_dir() / "dh2coop.cmd";
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) return;
+    std::vector<std::string> lines;
+    {
+        std::ifstream in(path);
+        std::string line;
+        while (std::getline(in, line)) {
+            while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+            if (!line.empty()) lines.push_back(line);
+        }
+    }
+    std::filesystem::remove(path, ec);
+    for (const std::string& l : lines) {
+        const int r = console::Exec(l.c_str());
+        spdlog::info("coop: cmd file '{}' -> {}", l, r);
+    }
+}
+
 class CoopModule : public dh2::Module {
 public:
     const char* Name() const override { return "coop"; }
@@ -165,6 +217,13 @@ public:
             console_cmds::AddCommandStr("coop_host", &cmd_host);
             console_cmds::AddCommandStr("coop_join", &cmd_join);
             console_cmds::AddCommand0("coop_leave", &cmd_leave);
+            console_cmds::AddCommandStr("coop_kill", &cmd_kill);
+            console_cmds::AddCommandStr("coop_claim", &cmd_claim);
+        }
+        cmd_poll_ += dt;
+        if (commands_registered_ && cmd_poll_ >= 0.5f) {
+            cmd_poll_ = 0.f;
+            PollCommandFile();
         }
         if (frames_ < 600 || (frames_ % 600) == 0) AssertBackground(nullptr);
 
@@ -333,6 +392,7 @@ private:
     bool self_test_done_ = false;
     bool auto_done_ = false;
     float log_accum_ = 0.f;
+    float cmd_poll_ = 0.f;
     uint16_t seq_ = 0;
     Vec3 prev_{};
     uint32_t prev_tick_ = 0;

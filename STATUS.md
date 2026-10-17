@@ -1,74 +1,57 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-16 16:51 (America/Chicago, system clock) by Grok. Session write-up: `GROK_p4-session.md`.
+**Last updated:** 2026-10-16 20:20 (America/Chicago, system clock) by the Claude lead session.
 
-New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap, `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail. Grok's Phase 4 write-up is `GROK_p4-session.md`.
+New session? Follow **Resume protocol** at the bottom. This file is the single source of truth for *where we are*. `PLAN.md` = roadmap (**primary goal: co-op story mode**, hunt maps first), `MEMORY.md` = verified engine facts, `docs/mod-learnings.md` = mod/build/tooling learnings, `re/notes/*.md` = per-topic detail. Grok's Phase 4 write-up: `GROK_p4-session.md`.
 
 ## Current phase
-**Phase 3 (ghost mode): DONE, user-confirmed 15:30** ("This is it! they look great, animations, gun model alignment, muzzle flash"). Two local instances connect. Each one shows the other player as an NPC body (mountain guide) that:
-- follows the remote position and **view yaw** (also while standing still);
-- stands on the ground;
-- plays walk/strafe/back/run clips by movement direction;
-- holds the remote player's **weapon model** in hand;
-- plays the armed idle/walk clips, **fire per shot**, **reload**, and a crouch pose.
-
-User-confirmed: movement, rotation, speed, armed poses, fire and reload, weapon-in-hand alignment and the muzzle flash. Not yet seen by the user: shotgun/rifle (left hand) and the crouch pose.
-
-## Phase 4 (shared animals): IN PROGRESS. Lead away → Grok continues per `docs/handoff-grok-p4.md`
-- **Handoff doc for Grok Build:** `docs/handoff-grok-p4.md`. The user sends it to Grok; Grok logs progress in a `## Grok session log (lead away)` section here.
-- **Lead findings 15:20–15:45** (`re/notes/lead-animals.md`, commits `cdc8a9c`, `97c0e71`):
-  - **Animal ids:** 120–124 on every instance, but spawn positions are random per instance, so the host sends positions.
-  - **Driving an animal:**
-    - `FreezeBrain`; **keep physics** (unlinked animals are not drawn).
-    - `HandleKey("position"/"angle")` moves entity + physics body together.
-    - Place in the **pre-render callback** (OnFrame placement flickers).
-    - `SetBodyState(name)` mirrors animation (deer states `Walk`/`Run`/`IdleAttack`/`CutScene`/`PostPlayAnim`).
-  - **Hits:** `FuncInflictDamage` only subtracts `+0x19C`, so clients detect local health drops → `AnimalHit` → host applies.
-  - **User solo spike check:** a deer circles and runs in front of the hunter, steadier after the pre-render move. Test-only artifacts: fixed height sinks into the terrain, and the deer is invisible over part of the circle.
+**Phase 4 (shared animals + world events): core done, verified with two instances 20:04.**
+- **P4b (Grok, `b8c4032`):** clients mirror the host's animals: position, movement yaw, body-state name, health. User-confirmed 16:13: "position looked good".
+- **Event sync (lead rework of Grok's P4c `926d351`, 20:04):**
+  - Engine map: `re/notes/lead-mission.md`.
+  - Every mission end on every map goes through cMission's message call (GameDll `0x91c20`, "MISSION SUCCESSFUL!"/"MISSION FAILED!"). Hooked:
+    - The host runs it and commits `kMissionEnd`.
+    - A client swallows its own call, and its `CheckMissionStatus` (`0x94e50`) is skipped while online.
+    - The client applies the host's commit (status, `SetMapIsComplete` on its own profile, then the message that brings up the results screen).
+  - Trophy claim (`cObjAnimal::ClaimCallback` `0x1cd40`): a client's claim becomes a `kTrophyClaim` request. The host runs the real claim, so the host's script ends the hunt.
+  - **Test 20:04** (`tools-src\event-test.ps1`):
+    - `coop_kill 120` on the host → client `present death ok=true` and the "Go claim your trophy!" hint.
+    - `coop_claim 120` on the client → host claim → host mission message → **MISSION SUCCESSFUL results screen in both windows** (`re/notes/coop-local/event-200320-*-2claim1.png`).
+- The 16:36/16:53 "both crashed" runs were the Grok Build shell's job object killing the launched games, not the mod. `run-coop-local.ps1` now starts games with `Win32_Process.Create`.
+- **Phase 3 (ghost mode): DONE**, user-confirmed 15:30.
 
 ## In flight
 | Job | Owner | Log | Deliverable |
 |---|---|---|---|
-| (none) | | | **Event sync built, not yet seen in game.** The 16:36 pair exited with no dump (see `re/notes/p4c-events.md`). Profile capture no longer hooks `GetLastmap`. |
-## Latest results (14:30–15:22)
-- **Actions networked** (`7ebea6f`):
-  - Tracker polls per frame: weapon state `Fire`/`Reload` via `cObjItemEx::GetCurrentState`, crouch from eye height (< 1.40 m), and weapon kind from the active item's model name.
-  - `PlayerState.flags` = crouched/reloading/firing plus a 4-bit shot counter; `weaponId` = kind.
-  - Puppet clips: `handgun3/*` or `shotgun1/*` (the rifle uses shotgun), a fire clip per shot (`FireMs`), reload, and crouch (`CrouchClip`, default `coveridle`).
-  - User: armed walk/idle, fire and reload look good.
-- **Weapon model in hand** (`e69eabb`):
-  - A third-person `objects/items/game/weapons/<name>/<name>.skin` entity, `Attach`ed to `BipRHand` (handgun) or `BipLHand` (long guns), then `LinkPart`. This mirrors the NPC weapon scripts.
-  - First version: the gun pointed sideways and the muzzle flash was always on (user). Cause: no clip on the weapon. Fix: mirror the body clip onto the weapon with the prefix stripped.
-  - Screenshots `re/notes/coop-local/wpn-*.png`: the handgun points forward and recoils on fire.
-- **Scripted LMB/RMB** in `tools-src/game-input.ps1`. A scripted fire test passed (2 shots → 2 remote fire clips).
-- **Earlier today (13:35–14:20):**
-  - Grok deliverables reviewed.
-  - Focus-stall investigation closed: no engine throttle; the stall was likely a window drag.
-  - Puppet physics unlinked, which fixed "stuck at spawn".
-  - View yaw comes from the render camera (`cRender::SetCamera` hook).
-  - Details in MEMORY.md and `re/notes/lead-puppets.md`.
+| (none) | | | |
+
+Worker jobs now run through `tools-src\cursorjob.ps1` (Cursor CLI, Grok 4.7 Medium Fast). User decision 2026-10-16: Grok Build performance not good enough; `grokjob.ps1` retired.
 
 ## Next steps (in order)
-1. **Leftover Phase 3 checks (low priority):**
-   - Try the shotgun and the rifle (left hand), and give a verdict on the crouch pose (`coveridle`; alternatives `cover`, `crouchidlecar`, `hurtsit` via `[Puppets] CrouchClip`).
-2. **Crouch key unknown.** Ask the user, then add it to scripted tests.
-3. **Polish (optional):**
-   - Feet sliding (anim speed factor).
-   - Pitch on the puppet (aim up/down).
-   - Weapon sounds on remote shots (the weapon `.model` has `Sound*Fire` bones; check whether the fire clip already plays them).
-4. **Cleanup:**
-   - Remove/guard the Draw diagnostic hook and spike code.
-   - `[Tracker] DiffHunter` diagnostics stay (default off).
-5. **Phase 4:** P4a done. P4b positions user-confirmed ("position looked good"). Event sync is in (`re/notes/p4c-events.md`) and waiting on a visual check:
-   - Host (left window) kills a deer. The client should see it fall, not stay standing. Log: `animals: death commit` on the host, `animals: present death id=… ok=1` on the client.
-   - Client walks up and presses F on "Press F to get meat". Both windows should get the success screen. Log: `client SetMapIsComplete swallowed`, then `map-complete request`, then `host SetMapIsComplete` / `applied host map-complete`.
-   - Then shoot a deer from the **client** window. The host should log `AnimalHit` and `FuncInflictDamage`. If the host deer does not flee, note it. That is lead work.
-   - If the client deer still stands after `present death ok=1`, next try is unfreezing the brain after that call. Do not decompile the skeleton.
-   - If the client still completes alone and the log has no `SetMapIsComplete swallowed` line, the success screen is a different function. Lead work. Do not start Ghidra.
-   - Lead-only otherwise: real animal heading (`+0xF4` unreliable; movement yaw is what we send); model culling after the first teleport (not seen). Grazing `PostPlayAnim` is ~10 ms, so most pulses never land in a 50 ms snapshot.
-6. Spawn overlap: both players spawn on the same point. Puppets are non-solid, so this is harmless. Option: HUNTMAP4's second spawn point.
+1. **User play check (hunt map, two windows `.\run-coop-local.ps1`):**
+   - Host kills a deer: does the client see it **fall**? Log: client `animals: present death id=… ok=true`. If it stays standing, try unfreezing the brain after `PresentDeath`.
+   - Client walks to the corpse and presses **F** (real key): both windows should show MISSION SUCCESSFUL. Log: client `events: client claim id=…`.
+   - Client **shoots** a deer: host log `animals: AnimalHit id=… hp a->b`. Does the host deer flee? Death should follow on lethal damage. Never seen in a log yet.
+2. **Hunt-map gaps (lead):**
+   - Scripts' `"hunter"` = local player only (spook distance, trophy distance, predator target / safe distance). Option: a host-side `GetDistBetween2Ais` (`0x9200`) hook that resolves `"hunter"` to the nearest player.
+   - The animal AI's own perception of the hunter (C++ brain) sees only the host hunter. That is Phase 5.
+   - **Results screen:** ESC replay / RETURN continue are per-process. The host's choice should drive the clients.
+   - **Map flow:** the host's menu map choice should load the same map on the clients. Today both use `-spmap HUNTMAP4` on the command line. Join UX for friends (ini or overlay, not command line).
+   - Other hunt maps: check animal ids and counts per map (HUNTMAP1–n).
+3. **Story-mode prep:**
+   - Inventory the story map scripts (natives, `"hunter"` uses, cutscenes/QTE, triggers, companions, spawns). That is a worker job → `re/jobs/story-inventory.md` via `cursorjob.ps1`.
+   - Then the lead writes the co-op story architecture: host runs scripts, clients mirror entities, outcome natives host-only.
+4. Leftover Phase 3 checks (low): shotgun/rifle in the left hand, crouch-pose verdict, crouch key.
+5. Polish (low): feet slide, puppet pitch, remote weapon sounds.
+6. Cleanup: the Draw diagnostic hook and spike code (solo only, off by default).
 
 ## Done
+- **Phase 4:**
+  - P4a net messages (`14250e0`).
+  - P4b animal mirror (`b8c4032`).
+  - Event envelope `GameEvent` id 48 (`926d351`).
+  - Mission end + trophy claim sync (lead, 2026-10-16 20:04).
+  - Automation channel `Bin\dh2coop.cmd` + `coop_kill` / `coop_claim`.
 - **Phase 3:**
   - Puppet spawn recipe + physics unlink.
   - NPC body.
@@ -77,35 +60,24 @@ User-confirmed: movement, rotation, speed, armed poses, fire and reload, weapon-
   - Action flags.
   - Armed clip sets.
   - Weapon model attach.
-  - Automated test tooling: `tools-src/game-input.ps1` (keys, mouse moves, mouse buttons), `move-test.ps1`, `focus-test.ps1`, `capture-window.ps1 -NoFocus`.
-- **P2b overlay** (F8), **hunter transform**, **Phase 2 core** (host/client PlayerState at 20 Hz, console commands, tracker, slow-mo block, background running), **Phase 1** (Route E), **Phase 0**: see MEMORY.md / PLAN.md.
-
-## Grok session log (lead away)
-
-- **16:00** — Read the handoff, `lead-animals.md`, and the P4b spec. P4a was already committed (`14250e0`). Implemented P4b in `animals.cpp` / `animals.h`, wired it in `coop.cpp`, and added `entity::InflictDamage`. `[Animals]` keys are in `mod/dh2coop.ini`. `mod\build.ps1` succeeded and installed `game\Bin\dh2coop.asi`.
-- **16:02** — `move-test.ps1` run 1: client deer moved onto the host positions (drift 0.000). Deer 122 walked; both sides `Walk`, yaw 171.4, error 0.113 m. Deer 121 showed `IdleAttack` for ~4 s while the host stayed `CutScene` (`FreezeBrain` does not hold the state machine).
-- **16:05** — Re-apply the host state whenever the live name differs. Run 2: 28 pairs per id, max error 0.010 m, yaw error 0, no state mismatches. No deer in the captures. No `AnimalHit` (nothing to shoot). Puppets still walked.
-- **16:13** — User: positions looked good. Host killed deer 121; the client still saw it standing, then "Press F to get meat" completed only the client. Logs (quoted in `re/notes/p4c-events.md`): both sides had `Dead` and hp 0 with drift 0.000. Host passed through `Die`; the client snapshot skipped it. No `AnimalHit`. Both processes were still in the match at 16:13:00.
-- **16:31** — `GameEvent` (id 48, channel 2) is the scalable envelope: client request, host commit, 64-deep journal replayed on join. Kinds: `1` AnimalDied (`PresentDeath` once, then stop driving the pose), `2` MapComplete (`SetMapIsComplete` swallowed on the client, run on the host, applied back). `dh2net_test` 3406 checks, 0 failures. ASI rebuilt after the last hook tweak. In-game result UNVERIFIED.
-- **16:32** — Opened the pair again (`run-coop-local.ps1`, host pid 20052, client pid 26480). Both logs show the event registry and the `SetMapIsComplete` / `GetLastmap` hooks. That launch truncated the 16:08–16:13 logs. Quotes live in `re/notes/p4c-events.md`. Session write-up: `GROK_p4-session.md`. Windows left open for the user.
-- **16:36** — User asked for the windows again (the 16:31 pair was gone). `run-coop-local.ps1` host pid 23124, client pid 6228. User: "both crashed". No `dh2coop-crash.dmp`, no SEH line, no WER event. Host last log `16:36:04.705` (animals still alive). Client last log `16:36:05.386` `role=offline` (never joined). Quotes in `re/notes/p4c-events.md`.
-- **16:51** — Stopped hooking `GetLastmap` (7-byte getter, probe never saw a call). Profile pointer now comes from `GetMapToBeStarted`. `SetMapIsComplete` logs on entry. `coop: join start` logs before `Session::Join`. In-game result not yet seen.
+  - Test tooling (`game-input.ps1`, `move-test.ps1`, `focus-test.ps1`, `capture-window.ps1 -NoFocus`, `event-test.ps1`).
+- **P2b overlay** (F8), **Phase 2 core**, **Phase 1** (Route E), **Phase 0**: see MEMORY.md / PLAN.md.
 
 ## Blockers / risks
-- Claude usage limits: keep Claude on expert work and review; delegate mechanical jobs to Grok (`tools-src/grokjob.ps1`).
+- Claude usage limits: keep Claude on expert work and review. Delegate defined jobs to Grok 4.7 via `tools-src\cursorjob.ps1`. When the 5-hour window nears 90%, write a handoff doc for the worker.
 
 ## Resume protocol (new session)
-1. Open the session in `D:\scary hunt\dh2coop` (loads `CLAUDE.md`; the REA MCP is registered for this folder only).
-2. Read this file, then the `PLAN.md` decisions, then skim `MEMORY.md`, then `re/notes/lead-puppets.md`.
+1. Open the session in `D:\scary hunt\dh2coop` (loads `CLAUDE.md`; the REA MCP is registered for this folder only). Ghidra headless also works through `re\scripts\ghrun.ps1` / `decomp.ps1` (slot L = lead).
+2. Read this file, then the `PLAN.md` decisions, then skim `MEMORY.md`, then `re/notes/lead-mission.md` and `re/notes/lead-animals.md`.
 3. Check jobs:
-   - Run `Get-Process grok`.
-   - For each in-flight log, look for the `=== end` line.
-   - A job with no end line and no `grok` process was killed. Rerun it with `.\tools-src\grokjob.ps1 -Name <job> -Effort <effort>`.
+   - For each in-flight log `re\jobs\<job>.out.log`, look for the `=== end` line.
+   - `Get-Process node` with `cursor-agent` in the command line means a worker is running.
 4. Run `git status` / `git log -5` to see uncommitted work since the last checkpoint.
 5. Build and test:
-   - Build: `.\mod\build.ps1` (fails while `Main7.exe` runs).
+   - Build: `.\mod\build.ps1` (fails to install while `Main7.exe` runs).
    - Solo test: `.\run-game.ps1 -ExtraArgs '-nointro -developper -cheats -spmap HUNTMAP4'` (no `-Seconds` when the user plays).
-   - Two windows for the user: `.\run-coop-local.ps1`. Close the CHOOSE ITEM menu with Enter, Left, Enter.
-   - Automated: `.\tools-src\move-test.ps1`, `.\tools-src\focus-test.ps1`.
-   - Logs: `game\Bin\dh2coop.log`, `game2\Bin\dh2coop.log`.
+   - Two windows for the user: `.\run-coop-local.ps1`. Close CHOOSE ITEM with Enter, Left, Enter.
+   - Automated: `.\tools-src\event-test.ps1` (kill + claim + mission end), `.\tools-src\move-test.ps1`, `.\tools-src\focus-test.ps1`.
+   - Drive a running game: write console lines to `game\Bin\dh2coop.cmd` / `game2\Bin\dh2coop.cmd`.
+   - Logs: `game\Bin\dh2coop.log`, `game2\Bin\dh2coop.log`. A new launch truncates them: quote what you need first.
 6. Continue with **Next steps** above. Update this file after every step and commit (timestamps from `Get-Date`). Edit docs with the Write/Edit tools, not PowerShell `Get-Content`/`Set-Content`.

@@ -1,4 +1,4 @@
-// Discrete world events. Design: re/notes/p4c-events.md.
+// Discrete world events. Design: re/notes/p4c-events.md, engine map: re/notes/lead-mission.md.
 // GameEvent is the only packet. Kinds are a registry so another map does not need a new message id.
 #include "coop/events.h"
 
@@ -6,6 +6,7 @@
 #include <intrin.h>
 
 #include <cstdint>
+#include <cstring>
 #include <map>
 #include <string>
 #include <utility>
@@ -18,47 +19,101 @@
 #include "core/exports.h"
 #include "core/hook.h"
 #include "core/module.h"
+#include "core/safe_mem.h"
 
 namespace dh2::coop::events {
 namespace {
 
 constexpr size_t kJournalCap = 64;
 
+// GameDll7 v1.0 (build 434). Every hooked body starts `55 8b ec 6a ff` (SEH frame); checked before hooking.
+constexpr uintptr_t kRvaMission = 0x1869e8;         // cMission* singleton (scripts' GlobalsCheckMissionStatus reads it)
+constexpr uintptr_t kRvaMissionMessage = 0x91c20;   // __thiscall(cMission*, char code, const char* text): msg 0x87
+constexpr uintptr_t kRvaCheckMission = 0x94e50;     // __thiscall(cMission*): all tasks done -> success branch
+constexpr uintptr_t kRvaHunterMissionEnd = 0x50760; // __thiscall(hunter, int 0): called in the success branch
+constexpr uintptr_t kRvaClaimCallback = 0x1cd40;    // __cdecl(cObjAnimal*): clears +0x404, runs the script callback
+constexpr uintptr_t kMissionStatus = 0x254;         // 1 running, 2 success, 3 failed
+constexpr uintptr_t kMissionHunter = 0x258;
+constexpr uintptr_t kHunterProfile = 0x1f8;
+constexpr uintptr_t kAnimalClaimable = 0x404;
+constexpr uintptr_t kAnimalHealth = 0x19C;
+constexpr char kMsgSuccess = 5;
+constexpr char kMsgFailed = 6;
+
 struct Handlers {
     Handler request = nullptr;
     Handler commit = nullptr;
 };
 
-safetyhook::InlineHook* g_map_hook = nullptr;
-safetyhook::InlineHook* g_start_hook = nullptr;
-void* g_profile = nullptr;
+HMODULE g_game = nullptr;
+safetyhook::InlineHook* g_msg_hook = nullptr;
+safetyhook::InlineHook* g_check_hook = nullptr;
+safetyhook::InlineHook* g_claim_hook = nullptr;
+using SetMapIsCompleteFn = void(__thiscall*)(void* profile);
+using HunterEndFn = void(__thiscall*)(void* hunter, int arg);
+SetMapIsCompleteFn g_set_map_complete = nullptr;
+HunterEndFn g_hunter_end = nullptr;
 bool g_in_apply = false;
-bool g_host_completed = false;
-bool g_client_completed = false;
-bool g_pending_host = false;
-bool g_pending_client = false;
-uint8_t g_pending_actor = 0;
+bool g_pending_end = false;
+net::GameEvent g_pending_ev;
+uint32_t g_check_swallowed = 0;
 uint16_t g_seq = 0;
 std::vector<net::GameEvent> g_journal;
 std::map<uint16_t, Handlers> g_handlers;
 std::map<uint16_t, bool> g_unknown_logged;
 
-bool call_complete(safetyhook::InlineHook* hook, void* self) {
+void* Mission() {
+    if (!g_game) return nullptr;
+    void* m = nullptr;
+    core::safe_read(reinterpret_cast<char*>(g_game) + kRvaMission, m);
+    return m;
+}
+
+void* Rva(uintptr_t rva) { return g_game ? reinterpret_cast<char*>(g_game) + rva : nullptr; }
+
+// The RVAs are for one retail build. Refuse to hook anything that does not look like the expected prologue.
+void* CheckedRva(uintptr_t rva, const char* label) {
+    static const uint8_t kPrologue[5] = {0x55, 0x8b, 0xec, 0x6a, 0xff};
+    void* p = Rva(rva);
+    uint8_t got[5] = {};
+    if (!p || !core::safe_copy(p, got, sizeof got) || std::memcmp(got, kPrologue, sizeof got) != 0) {
+        spdlog::error("events: {} at GameDll7+{:#x} has unexpected bytes; not hooked (wrong game build?)", label, rva);
+        return nullptr;
+    }
+    return p;
+}
+
+bool guarded_message(void* mission, char code, const char* text) {
     __try {
-        hook->unsafe_thiscall<void>(self);
+        g_msg_hook->unsafe_thiscall<void>(mission, code, text);
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false;
     }
 }
 
-bool CallOriginal(void* self) {
-    if (!g_map_hook || !self) return false;
-    g_in_apply = true;
-    const bool ok = call_complete(g_map_hook, self);
-    g_in_apply = false;
-    if (!ok) spdlog::warn("events: SetMapIsComplete faulted");
-    return ok;
+bool guarded_success_side_effects(void* mission) {
+    __try {
+        *reinterpret_cast<int*>(static_cast<char*>(mission) + kMissionStatus) = 2;
+        void* hunter = *reinterpret_cast<void**>(static_cast<char*>(mission) + kMissionHunter);
+        if (hunter) {
+            void* profile = *reinterpret_cast<void**>(static_cast<char*>(hunter) + kHunterProfile);
+            if (profile && g_set_map_complete) g_set_map_complete(profile);
+            if (g_hunter_end) g_hunter_end(hunter, 0);
+        }
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+bool guarded_claim(void* animal) {
+    __try {
+        g_claim_hook->unsafe_ccall<void>(animal);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
 }
 
 int FindJournal(uint16_t kind, uint16_t subject, const std::string& key) {
@@ -75,38 +130,69 @@ void NoteUnknown(uint16_t kind, const char* dir) {
     spdlog::warn("events: no {} handler for kind {} (ignored)", dir, kind);
 }
 
-void FinishHostComplete(uint8_t actor) {
-    g_host_completed = true;
-    g_pending_host = false;
-    Commit(kMapComplete, 0, actor, 0.f, "", actor);
+// ---- kMissionEnd ----
+
+// Client: replay what the host's mission did. Success mirrors cMission::CheckMissionStatus's success branch
+// (status 2, SetMapIsComplete on this player's profile, the hunter call), then the message that ends the map.
+bool ApplyMissionEnd(const net::GameEvent& ev) {
+    void* mission = Mission();
+    if (!mission || !g_msg_hook) return false;
+    const char code = static_cast<char>(ev.i0);
+    g_in_apply = true;
+    bool ok = true;
+    if (code == kMsgSuccess) ok = guarded_success_side_effects(mission);
+    else if (code == kMsgFailed) *reinterpret_cast<int*>(static_cast<char*>(mission) + kMissionStatus) = 3;
+    ok = guarded_message(mission, code, ev.key.c_str()) && ok;
+    g_in_apply = false;
+    spdlog::info("events: applied host mission end code={} text='{}' ok={}", static_cast<int>(code), ev.key, ok);
+    return true;
 }
 
-void OnMapRequest(const net::GameEvent& ev) {
-    spdlog::info("events: map-complete request from player {}", ev.actorId);
-    if (g_host_completed) {
-        Commit(kMapComplete, 0, ev.actorId, 0.f, "", ev.actorId);
-        return;
-    }
-    if (!CallOriginal(g_profile)) {
-        g_pending_host = true;
-        g_pending_actor = ev.actorId;
-        spdlog::warn("events: map-complete waiting for cHunterProfile");
-        return;
-    }
-    FinishHostComplete(ev.actorId);
+void OnMissionEndCommit(const net::GameEvent& ev) {
+    if (ApplyMissionEnd(ev)) return;
+    g_pending_end = true;
+    g_pending_ev = ev;
+    spdlog::warn("events: mission end code={} waiting for cMission", ev.i0);
 }
 
-void OnMapCommit(const net::GameEvent& ev) {
-    if (g_client_completed) return;
-    if (!CallOriginal(g_profile)) {
-        g_pending_client = true;
-        spdlog::warn("events: map-complete commit waiting for cHunterProfile (actor {})", ev.actorId);
+// ---- kTrophyClaim ----
+
+void OnClaimRequest(const net::GameEvent& ev) {
+    void* animal = animals::Find(ev.subjectId);
+    if (!animal) {
+        spdlog::warn("events: claim request id={} from player {}: no animal", ev.subjectId, ev.actorId);
         return;
     }
-    g_client_completed = true;
-    g_pending_client = false;
-    spdlog::info("events: applied host map-complete (actor {})", ev.actorId);
+    int claimable = 0;
+    float hp = 1.f;
+    core::safe_read(static_cast<char*>(animal) + kAnimalClaimable, claimable);
+    core::safe_read(static_cast<char*>(animal) + kAnimalHealth, hp);
+    if (FindJournal(kTrophyClaim, ev.subjectId, "") >= 0) {
+        spdlog::info("events: claim request id={} from player {}: already claimed", ev.subjectId, ev.actorId);
+        Commit(kTrophyClaim, ev.subjectId, 0, 0.f, "", ev.actorId);
+        return;
+    }
+    if (claimable == 0 || hp > 0.f) {
+        spdlog::warn("events: claim request id={} from player {} rejected (claimable={} hp={:.1f})", ev.subjectId,
+                     ev.actorId, claimable, hp);
+        return;
+    }
+    g_in_apply = true;
+    const bool ok = guarded_claim(animal);
+    g_in_apply = false;
+    spdlog::info("events: claim id={} by player {} ran on host ok={}", ev.subjectId, ev.actorId, ok);
+    if (ok) Commit(kTrophyClaim, ev.subjectId, 0, 0.f, "", ev.actorId);
 }
+
+void OnClaimCommit(const net::GameEvent& ev) {
+    // The host ran the claim script. Here only the prompt goes away; the client's own script must not end the map.
+    if (void* animal = animals::Find(ev.subjectId)) {
+        *reinterpret_cast<int*>(static_cast<char*>(animal) + kAnimalClaimable) = 0;
+    }
+    spdlog::info("events: trophy id={} claimed by player {}", ev.subjectId, ev.actorId);
+}
+
+// ---- kAnimalDied ----
 
 void OnAnimalDiedCommit(const net::GameEvent& ev) { animals::OnAnimalDied(ev.subjectId); }
 
@@ -118,42 +204,52 @@ void OnAnimalDiedRequest(const net::GameEvent& ev) {
                  ev.actorId);
 }
 
-// GetLastmap is `lea eax,[ecx+0x23D9]; ret` (7 bytes) and the probe never logged a call.
-// GetMapToBeStarted is a normal function. The spmap probe called it and got a profile pointer.
-char* __fastcall hk_GetMapToBeStarted(void* self, void* /*edx*/) {
-    if (self && !g_profile) {
-        g_profile = self;
-        spdlog::info("events: profile captured this={:#x}", reinterpret_cast<uintptr_t>(self));
-    }
-    if (!g_start_hook) return nullptr;
-    return g_start_hook->unsafe_thiscall<char*>(self);
-}
+// ---- hooks ----
 
-void __fastcall hk_SetMapIsComplete(void* self, void* /*edx*/) {
-    g_profile = self;
-    static int seen = 0;
-    if (seen < 8) {
-        ++seen;
-        spdlog::info("events: SetMapIsComplete enter this={:#x} online={} host={}", reinterpret_cast<uintptr_t>(self),
-                     NetIsOnline() ? 1 : 0, NetIsHost() ? 1 : 0);
-    }
+void __fastcall hk_MissionMessage(void* self, void* /*edx*/, char code, const char* text) {
+    const std::string t = core::safe_cstr(text, 64);
     if (g_in_apply || !NetIsOnline()) {
-        if (g_map_hook) g_map_hook->unsafe_thiscall<void>(self);
+        g_msg_hook->unsafe_thiscall<void>(self, code, text);
         return;
     }
     const std::string caller = core::describe_address(_ReturnAddress());
     if (NetIsHost()) {
-        spdlog::info("events: host SetMapIsComplete caller={}", caller);
-        if (!g_host_completed) {
-            if (CallOriginal(self)) FinishHostComplete(0);
-            else spdlog::warn("events: host SetMapIsComplete did not run");
-        } else {
-            Commit(kMapComplete, 0, 0, 0.f, "", 0);
-        }
+        spdlog::info("events: host mission message code={} text='{}' caller={}", static_cast<int>(code), t, caller);
+        g_msg_hook->unsafe_thiscall<void>(self, code, text);
+        Commit(kMissionEnd, 0, static_cast<uint8_t>(code), 0.f, t, 0);
         return;
     }
-    spdlog::info("events: client SetMapIsComplete swallowed caller={}", caller);
-    Request(kMapComplete, 0, 0, 0.f, "");
+    spdlog::info("events: client mission message swallowed code={} text='{}' caller={}", static_cast<int>(code), t,
+                 caller);
+}
+
+void __fastcall hk_CheckMission(void* self, void* /*edx*/) {
+    if (g_in_apply || !NetIsOnline() || NetIsHost()) {
+        g_check_hook->unsafe_thiscall<void>(self);
+        return;
+    }
+    // Client: the host's mission decides. Scripts call this every frame once a hunt can end.
+    if ((g_check_swallowed++ % 300) == 0) {
+        spdlog::info("events: client CheckMissionStatus skipped (x{}) caller={}", g_check_swallowed,
+                     core::describe_address(_ReturnAddress()));
+    }
+}
+
+void __cdecl hk_ClaimCallback(void* animal) {
+    if (g_in_apply || !NetIsOnline()) {
+        g_claim_hook->unsafe_ccall<void>(animal);
+        return;
+    }
+    const int id = animals::IdOf(animal);
+    if (NetIsHost()) {
+        g_claim_hook->unsafe_ccall<void>(animal);
+        spdlog::info("events: host claimed trophy id={}", id);
+        if (id >= 0) Commit(kTrophyClaim, static_cast<uint16_t>(id), 0, 0.f, "", 0);
+        return;
+    }
+    if (animal) *reinterpret_cast<int*>(static_cast<char*>(animal) + kAnimalClaimable) = 0;
+    spdlog::info("events: client claim id={} sent to host", id);
+    if (id >= 0) Request(kTrophyClaim, static_cast<uint16_t>(id), 0, 0.f, "");
 }
 
 class EventsModule : public dh2::Module {
@@ -163,17 +259,25 @@ public:
 
     void OnInit() override {
         SetHandler(kAnimalDied, &OnAnimalDiedRequest, &OnAnimalDiedCommit);
-        SetHandler(kMapComplete, &OnMapRequest, &OnMapCommit);
-        spdlog::info("events: registry AnimalDied={} MapComplete={}", kAnimalDied, kMapComplete);
+        SetHandler(kMissionEnd, nullptr, &OnMissionEndCommit);
+        SetHandler(kTrophyClaim, &OnClaimRequest, &OnClaimCommit);
+        spdlog::info("events: registry AnimalDied={} MissionEnd={} TrophyClaim={}", kAnimalDied, kMissionEnd,
+                     kTrophyClaim);
     }
 
     void OnGameDllLoaded(HMODULE game) override {
-        void* complete = core::find_export(game, "?SetMapIsComplete@cHunterProfile@@QAEXXZ");
-        void* start = core::find_export(game, "?GetMapToBeStarted@cHunterProfile@@QAEPADXZ");
-        g_map_hook = core::install_hook("cHunterProfile::SetMapIsComplete", complete,
-                                        reinterpret_cast<void*>(&hk_SetMapIsComplete));
-        g_start_hook = core::install_hook("cHunterProfile::GetMapToBeStarted", start,
-                                          reinterpret_cast<void*>(&hk_GetMapToBeStarted));
+        g_game = game;
+        g_set_map_complete =
+            reinterpret_cast<SetMapIsCompleteFn>(core::find_export(game, "?SetMapIsComplete@cHunterProfile@@QAEXXZ"));
+        g_hunter_end = reinterpret_cast<HunterEndFn>(CheckedRva(kRvaHunterMissionEnd, "hunter mission end"));
+        g_msg_hook = core::install_hook("cMission message (0x91c20)", CheckedRva(kRvaMissionMessage, "mission message"),
+                                        reinterpret_cast<void*>(&hk_MissionMessage));
+        g_check_hook = core::install_hook("cMission::CheckMissionStatus (0x94e50)",
+                                          CheckedRva(kRvaCheckMission, "check mission"),
+                                          reinterpret_cast<void*>(&hk_CheckMission));
+        g_claim_hook = core::install_hook("cObjAnimal::ClaimCallback (0x1cd40)",
+                                          CheckedRva(kRvaClaimCallback, "claim callback"),
+                                          reinterpret_cast<void*>(&hk_ClaimCallback));
     }
 
     void OnMapLoaded(const char* bspName) override {
@@ -218,8 +322,8 @@ void Commit(uint16_t kind, uint16_t subject, uint32_t i0, float f0, std::string_
     ev.key = trimmed;
     g_journal.push_back(ev);
     const bool sent = SendGameEvent(ev);
-    spdlog::info("events: commit kind={} subject={} actor={} key='{}' seq={} sent={} journal={}", kind, subject, actor,
-                 trimmed, ev.seq, sent, g_journal.size());
+    spdlog::info("events: commit kind={} subject={} actor={} i0={} key='{}' seq={} sent={} journal={}", kind, subject,
+                 actor, i0, trimmed, ev.seq, sent, g_journal.size());
 }
 
 void Request(uint16_t kind, uint16_t subject, uint32_t i0, float f0, std::string_view key) {
@@ -242,8 +346,8 @@ void OnNet(const net::GameEvent& ev) {
             NoteUnknown(ev.kind, "commit");
             return;
         }
-        spdlog::info("events: apply commit kind={} subject={} actor={} key='{}'", ev.kind, ev.subjectId, ev.actorId,
-                     ev.key);
+        spdlog::info("events: apply commit kind={} subject={} actor={} i0={} key='{}'", ev.kind, ev.subjectId,
+                     ev.actorId, ev.i0, ev.key);
         it->second.commit(ev);
         return;
     }
@@ -257,28 +361,26 @@ void OnNet(const net::GameEvent& ev) {
 }
 
 void Pump() {
-    if (g_pending_host && NetIsHost() && CallOriginal(g_profile)) FinishHostComplete(g_pending_actor);
-    if (g_pending_client && !NetIsHost() && NetIsOnline() && CallOriginal(g_profile)) {
-        g_client_completed = true;
-        g_pending_client = false;
-        spdlog::info("events: applied queued host map-complete");
-    }
+    if (g_pending_end && !NetIsHost() && NetIsOnline() && ApplyMissionEnd(g_pending_ev)) g_pending_end = false;
 }
 
 void Reset() {
     g_journal.clear();
     g_seq = 0;
-    g_host_completed = false;
-    g_client_completed = false;
-    g_pending_host = false;
-    g_pending_client = false;
-    g_pending_actor = 0;
+    g_pending_end = false;
+    g_check_swallowed = 0;
 }
 
 void Replay() {
     if (!NetIsHost() || g_journal.empty()) return;
     for (const net::GameEvent& ev : g_journal) SendGameEvent(ev);
     spdlog::info("events: replayed {} commits", g_journal.size());
+}
+
+void DebugClaim(uint16_t animalId) {
+    void* animal = animals::Find(animalId);
+    spdlog::info("events: coop_claim id={} animal={:#x}", animalId, reinterpret_cast<uintptr_t>(animal));
+    if (animal && g_claim_hook) hk_ClaimCallback(animal);
 }
 
 }  // namespace dh2::coop::events

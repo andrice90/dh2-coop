@@ -2,6 +2,10 @@
 # Usage: .\run-coop-local.ps1 [-Seconds N] [-NoArrange] [-Capture]
 #   -NoArrange  do not move the windows
 #   -Capture    every 10s of a -Seconds run, save both windows under re\notes\coop-local\
+# The client starts after the host debug.log reaches engine time 8s (host in the map and listening).
+# Both games are started with Win32_Process.Create so they outlive the launching shell: an agent
+# shell's job object kills Start-Process children when the command returns (the 2026-10-16 16:36
+# and 16:53 "both crashed" runs).
 # Build first: .\mod\build.ps1
 param(
     [int]$Seconds = 0,
@@ -208,11 +212,68 @@ function Join-Path {
 
 function Start-Instance([string]$tree, [string]$extra) {
     $bin = Join-Path $tree 'Bin'
-    $p = Start-Process (Join-Path $bin 'Main7.exe') -ArgumentList "$launch $extra" -WorkingDirectory $bin -PassThru
+    $exe = Join-Path $bin 'Main7.exe'
+    # Win32_Process.Create breaks out of a tool shell's job object. Start-Process
+    # children are killed when that job closes, which looks like both windows vanishing.
+    $cmd = '"{0}" {1} {2}' -f $exe, $launch, $extra
+    $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+        CommandLine = $cmd
+        CurrentDirectory = $bin
+    }
+    if ($r.ReturnValue -ne 0 -or -not $r.ProcessId) {
+        throw "failed to start $exe (Win32 $($r.ReturnValue))"
+    }
+    $p = $null
+    for ($i = 0; $i -lt 20 -and $null -eq $p; $i++) {
+        $p = Get-Process -Id ([int]$r.ProcessId) -ErrorAction SilentlyContinue
+        if (-not $p) { Start-Sleep -Milliseconds 50 }
+    }
+    if (-not $p) { throw "started pid $($r.ProcessId) but could not open the process" }
     Write-Host "pid=$($p.Id) bin=$bin"
     Write-Host "  dh2coop.log=$(Join-Path $bin 'dh2coop.log')"
     Write-Host "  debug.log=$(Join-Path $bin 'debug.log')"
     return $p
+}
+
+function Get-LatestEngineTime([string]$DebugPath) {
+    if (-not (Test-Path -LiteralPath $DebugPath)) { return -1.0 }
+    $fs = $null
+    try {
+        $fs = [System.IO.File]::Open($DebugPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        $len = $fs.Length
+        if ($len -le 0) { return -1.0 }
+        $take = [int][Math]::Min(16384, $len)
+        [void]$fs.Seek($len - $take, [System.IO.SeekOrigin]::Begin)
+        $buf = New-Object byte[] $take
+        $n = $fs.Read($buf, 0, $take)
+        if ($n -le 0) { return -1.0 }
+        $text = [System.Text.Encoding]::ASCII.GetString($buf, 0, $n)
+    } catch {
+        return -1.0
+    } finally {
+        if ($null -ne $fs) { $fs.Dispose() }
+    }
+    $found = [regex]::Matches($text, 'time=([0-9]+(?:\.[0-9]+)?)')
+    if ($found.Count -eq 0) { return -1.0 }
+    return [double]$found[$found.Count - 1].Groups[1].Value
+}
+
+function Wait-HostInMap([System.Diagnostics.Process]$Proc, [string]$DebugPath) {
+    # Host must be in the map (it starts hosting after the first map load) before the client joins.
+    $need = 8.0
+    $deadline = (Get-Date).AddSeconds(90)
+    $last = -1.0
+    while ((Get-Date) -lt $deadline) {
+        try { $Proc.Refresh() } catch { throw "game pid=$($Proc.Id) disappeared during startup" }
+        if ($Proc.HasExited) { throw "game pid=$($Proc.Id) exited during startup (code $($Proc.ExitCode))" }
+        $last = Get-LatestEngineTime $DebugPath
+        if ($last -ge $need) {
+            Write-Run ("host ready pid={0} engineTime={1:N3} (client waits until {2:N0}s)" -f $Proc.Id, $last, $need)
+            return
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    throw ("host pid={0} did not reach engine time {1:N0}s (last={2})" -f $Proc.Id, $need, $last)
 }
 
 function Stop-LaunchedInstances {
@@ -257,9 +318,7 @@ $completed = $false
 try {
     # Instance 1 hosts, instance 2 joins it (dh2coop.asi applies these after the first map load).
     $script:p1 = Start-Instance $game '-coophost'
-    Start-Sleep 3
-    try { $script:p1.Refresh() } catch { }
-    if ($script:p1.HasExited) { throw "game pid=$($script:p1.Id) exited during startup (code $($script:p1.ExitCode))" }
+    Wait-HostInMap $script:p1 (Join-Path $game 'Bin\debug.log')
     $script:p2 = Start-Instance $game2 '-coopjoin 127.0.0.1'
     Write-Run "role=game pid=$($script:p1.Id) args=-coophost"
     Write-Run "role=game2 pid=$($script:p2.Id) args=-coopjoin 127.0.0.1"

@@ -125,6 +125,25 @@ RVAs: EngineDll7 unless noted (CommonDll7 = "C", GameDll7 = "G").
   - Hands: handgun `BipRHand` (tag 37 on mountainguide); shotgun and rifle `BipLHand`.
 - **Hunter `+0xE8` is the feet position** (despite `cObjEntity::GetEyePos` returning it): a puppet placed at a remote hunter's `+0xE8` stands on the ground (pixel check at 5.2 m, terrain +0.7 m). Hunter world AABB is a generic pos ±2 m box (no height info).
 
+## Animals and mission flow (lead + Grok P4b, runtime-verified 2026-10-16; details `re/notes/lead-animals.md`, `re/notes/lead-mission.md`)
+- **Driving an animal on a client:**
+  - `cAIHuntBrain_Animal::FreezeBrain` (brain `+0x200`). Keep physics; an unlinked animal is not drawn.
+  - In the pre-render callback: `HandleKey("position", cm)` + `HandleKey("angle", "0 yaw 0")` + world AABB + `BspUpdate`. Position error ≤ 0.01 m (P4b run 2).
+  - `FreezeBrain` does not pin the body state: re-apply `SetBodyState` when the live name differs.
+  - Host yaw = movement `atan2(dx,dz)`; `+0xF4` is unreliable on animals.
+- `SetBodyState("Dead")` + health 0 does not play the fall (the user saw the client deer standing, 16:13). Death presentation is vfunc `+0x154` (`0x1e8b0`). It also calls `UpdateMissionStatus`.
+- HUNTMAP4 animal entity ids 120–124 match on every instance; spawn positions do not.
+- **Mission (GameDll7):**
+  - `g_mission` = `*(GameDll7+0x1869e8)`, status `+0x254` (1 running / 2 success / 3 failed), hunter `+0x258`, the hunter's `cHunterProfile` at `+0x1f8`.
+  - `CheckMissionStatus` `0x94e50` (thiscall): all tasks done → status 2, `SetMapIsComplete`, `0x50760(hunter,0)`, `0x91c20(5,"MISSION SUCCESSFUL!")`.
+  - **`0x91c20` = thiscall(mission, char code, const char* text)**. It sends in-process server message `0x87`; code 5/6 opens the results screen. Every mission end on every map calls it (callers `0x94e50`, `0x965e0` fail, `0x91e80` protected kill, `0x990b0` task fail).
+  - Verified 20:04: calling it on a client with code 5 + status 2 + `SetMapIsComplete` shows the MISSION SUCCESSFUL results screen.
+- **Trophy claim:**
+  - `cObjAnimal::ClaimCallback` `0x1cd40` (cdecl, animal) → `0x15550`: `animal+0x404` = 0 (claimable flag), then `g_pClassManager` vt `+0x28(scriptIdx +0x408, funcName +0x40c)`, which runs the level script's `ClaimCallback`.
+  - Calling it on the host for a dead animal ran the hunt script's end (`UpdateMissionStatus`, `gbCanEndHunt`) → MISSION SUCCESSFUL 20 ms later (20:04).
+- Script natives are registered in GameDll7 `0x1000ba30` (`cExportKey::ExportFnc(name, …)` + `cBaseClass::s_ExportStaticFunction(fn, …)`). Examples: `GlobalsCheckMissionStatus` `0x98f0`, `UpdateMissionStatus` `0x8390`, `CompleteTask` `0x9080`, `ActivateTrigger` `0x84a0`, `GetDistBetween2Ais` `0x9200`.
+- Hunt map scripts (`SCRIPTS\LEVELS\HUNTMAPBASE.SCR`) are plain text. Every `"hunter"` in them is the local player: spook distance, the 15 m trophy distance, predator spawn within 70 m, and the 25 m safe distance.
+
 ## Runtime probe (Track E, `re/notes/renderer.md`; reviewed 2026-10-16)
 - Renderer: D3D8 only. `Direct3DCreate8` ×3 (callers EngineDll7 `+0x352a3e`, `+0x35211c`, `+0x358f9e`), one HAL device (behavior `0x84` = mixed VP + multithreaded). `Present` called from EngineDll7 `+0x354cfd`, `EndScene` from `+0x354b63` (vtable slots 15 / 35). `Direct3DCreate9` (`+0x35a43b`) creates no device — `runtime-baseline-probe.txt`.
 - Default device: 640×480 `A8R8G8B8`, fullscreen, 240 Hz, `D3DPRESENT_INTERVAL_IMMEDIATE`. A loose `game\Data\Cfg\console.cfg` makes it **windowed** 640×480 (`r_windowed` default 1); the game rewrites that file on shutdown as an `addvar` dump. `game\Data\console.cfg` (wrong path) is ignored.

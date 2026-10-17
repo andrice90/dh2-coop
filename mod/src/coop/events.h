@@ -2,6 +2,9 @@
 // Host-authoritative discrete events. Snapshots stay continuous (position, health, anim name).
 // One wire envelope (net::GameEvent, id 48). A new map or mode adds a kind and a handler.
 // Clients send requests. The host commits. Clients apply commits and do not decide outcomes.
+// Engine side (GameDll7 v1.0 RVAs, re/notes/lead-mission.md): every mission end on every map goes
+// through cMission's message call (0x91c20, "MISSION SUCCESSFUL!" / "MISSION FAILED!"), and a hunt
+// trophy claim goes through cObjAnimal::ClaimCallback (0x1cd40).
 #include "net/protocol.h"
 
 #include <cstdint>
@@ -9,8 +12,9 @@
 
 namespace dh2::coop::events {
 
-constexpr uint16_t kAnimalDied = 1;    // commit. subject = entity id. Client plays death once.
-constexpr uint16_t kMapComplete = 2;   // request and commit. cHunterProfile::SetMapIsComplete.
+constexpr uint16_t kAnimalDied = 1;   // commit. subject = entity id. Client plays death once.
+constexpr uint16_t kMissionEnd = 2;   // commit. i0 = message code (5 success, 6 failed), key = text.
+constexpr uint16_t kTrophyClaim = 3;  // request (client pressed the claim key) and commit. subject = entity id.
 
 // onRequest runs on the host. onCommit runs on a client. Either may be null.
 using Handler = void (*)(const net::GameEvent&);
@@ -24,11 +28,14 @@ void Commit(uint16_t kind, uint16_t subject, uint32_t i0, float f0, std::string_
 void Request(uint16_t kind, uint16_t subject, uint32_t i0, float f0, std::string_view key);
 
 void OnNet(const net::GameEvent& ev);
-// Retries a map-complete that arrived before the profile pointer was known.
+// Retries a mission end that arrived before this process had a cMission.
 void Pump();
 // Drops the journal. Call on map load and when this process leaves the session.
 void Reset();
 // Host: send the journal to current peers (a client who joined after the outcome).
 void Replay();
+
+// Test hook (console coop_claim <id>): run the claim path for an animal as if the engine called it.
+void DebugClaim(uint16_t animalId);
 
 }  // namespace dh2::coop::events

@@ -9,7 +9,7 @@
 | `PLAN.md` | Roadmap, phases, decisions, orchestration model | Lead, when scope/decisions change |
 | `MEMORY.md` | Verified engine/decompilation facts with evidence | Lead only (merges workers' "Proposed MEMORY facts") |
 | `docs/mod-learnings.md` | Build, injection, hooking, testing and orchestration learnings | Lead (from worker reports) |
-| `docs/handoff-grok-p4.md` | Phase 4 handoff for Grok Build while the lead is away (tasks, rules, test how-to) | Lead |
+| `docs/handoff-*.md` | Handoffs for the worker while the lead is away (tasks, rules, test how-to). `handoff-grok-p4.md` is history | Lead |
 | `GROK_p4-session.md` | What Grok changed and learned in the Phase 4 session (P4b mirror, GameEvent death and map complete) | Grok |
 | `re/notes/*.md` | Per-topic RE detail and hypotheses | Workers (their deliverables) |
 | `re/jobs/*.md`, `*.out.log` | Worker job specs and logs | Lead writes specs; runner writes logs |
@@ -29,7 +29,7 @@ Lead rule: after any meaningful step, update `STATUS.md` (and the other docs it 
 - `Bin\EngineDll7.dll` (base 0x10000000, relocatable) — engine, D3D8/9, DInput8, WS2_32 netcode, Lua.
 - `Bin\CommonDll7.dll` — AI, world and scripted-entity classes.
 - `Data\GameDll7.dll` — game rules, weapons, hunter profile.
-All DLLs relocate: hook by export name or byte pattern, never by absolute address.
+All DLLs relocate: hook by export name, byte pattern, or module RVA with a prologue check (v1.0 build 434 is the only supported build), never by absolute address.
 
 ## Rules
 - Target **Win32 (x86)** only. MSVC v143, static CRT.
@@ -44,3 +44,4 @@ All DLLs relocate: hook by export name or byte pattern, never by absolute addres
 - REA MCP (`rea`), local scope for this project: read-only Ghidra analysis on Windows.
 - x32dbg, ImHex, PE-bear, ReClass.NET, Ninja, VS 2022 Build Tools.
 - Python: use `py` (3.14), `pefile` installed.
+- Workers: Grok 4.7 through the Cursor CLI, `tools-src\cursorjob.ps1 -Name <job>` (model `grok-4.7-medium-fast`). Grok Build is retired.

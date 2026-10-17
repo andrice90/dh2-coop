@@ -62,11 +62,11 @@ Host-run mission scripts, client teleport on load, mission flags replicated, mel
 |---|---|---|
 | Lead / expert | Claude Opus 5.5 (main session) | **Anything needing careful thought or expert knowledge:** engine hook design and implementation (calling conventions, vtables, pattern hooks, game-thread safety), non-trivial RE conclusions, sync/netcode architecture, route decisions; plus job specs, review of every deliverable, merging verified facts, commits |
 | Expert parallel | Claude Opus subagents | Expert tasks that can run in parallel with the lead (same bar as main thread) |
-| Workers | Grok 4.7 via Grok Build CLI (`grok`, headless) | **Well-defined, Sonnet-level work only:** scaffolding, build systems, scripts, standalone libraries with tests, mechanical RE (dumps, catalogs, inventories), runtime experiment runs with fixed steps. Effort `high` by default |
+| Workers | Grok 4.7 via the Cursor CLI (`cursor-agent -p --model grok-4.7-medium-fast`, headless) | **Well-defined, Sonnet-level work only:** scaffolding, build systems, scripts, standalone libraries with tests, mechanical RE (dumps, catalogs, inventories), runtime experiment runs with fixed steps. Effort `high` by default |
 
 Policy (user, 2026-10-16): Grok 4.7 is treated as Sonnet-level. If a job needs judgement on undocumented engine behavior, it goes to the lead or an Opus subagent, not Grok. Mixed jobs are split: Grok builds the scaffold, the lead does the expert part.
 
-Mechanics (since 2026-10-16): a job is a prompt file `re/jobs/<name>.md` (with `re/jobs/_rules.md` prepended) run by `tools-src/grokjob.ps1 -Name <name> [-Effort high]`. It uses Grok permission mode `auto` (never `bypassPermissions`) and writes its log to `re/jobs/<name>.out.log`. Each Ghidra job gets its own slot letter. Exactly one job per wave owns game launches.
+Mechanics (since 2026-10-16): a job is a prompt file `re/jobs/<name>.md` (with `re/jobs/_rules.md` prepended) run by `tools-src/cursorjob.ps1 -Name <name>` (Cursor `--auto-review`; `-Force` only for jobs whose spec lists every command). It writes its log to `re/jobs/<name>.out.log`. Grok Build (`grokjob.ps1`) is retired (user, 2026-10-16: performance). Each Ghidra job gets its own slot letter. Exactly one job per wave owns game launches.
 
 Rules: workers read `CLAUDE.md`, `MEMORY.md` and `PLAN.md` first; write only their listed deliverables, and put verified facts in a `## Proposed MEMORY facts` section that the lead merges after review. They never touch the original install and never commit.
 
@@ -85,7 +85,11 @@ History: wave 1 (2026-10-15) used Claude Opus/Sonnet/Haiku subagents; the Haiku 
 - Two local instances need the `"GI UNIQUE MUTEX"` check bypassed; our ASI should handle this (hook `CreateMutexA` or pass `-join`) rather than relying on `-dedicated` (which disables rendering).
 
 ## Decisions (user, via Grok session, 2026-10-16)
-- **World outcomes are events, not extra snapshots.** One reliable `GameEvent` envelope (message id 48). Clients send requests. The host commits and is the only side that applies a gameplay result. A new map or mode adds a kind and a handler, not a new packet. Kinds in use: `1` AnimalDied, `2` MapComplete. See `re/notes/p4c-events.md`.
+- **World outcomes are events, not extra snapshots.** One reliable `GameEvent` envelope (message id 48). Clients send requests. The host commits and is the only side that applies a gameplay result. A new map or mode adds a kind and a handler, not a new packet. Kinds in use: `1` AnimalDied, `2` MissionEnd, `3` TrophyClaim. See `re/notes/p4c-events.md`, `re/notes/lead-mission.md`.
+
+## Decisions (user, 2026-10-16 evening)
+- **Primary goal: the single-player story mode (the campaign) played in co-op.** Free-hunt maps are the first milestone and the test bed ("full coop ready hunting maps", then story). This supersedes the 2026-10-15 "MVP = free-hunt only" scope: Phase 7 (missions) is no longer a stretch.
+- Worker jobs run on Grok 4.7 through the Cursor CLI (`grok-4.7-medium-fast`), not Grok Build.
 
 ## Open decisions
 - Project name for release (neutral, no trademarks).

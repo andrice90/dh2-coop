@@ -689,5 +689,24 @@ void Reset() {
 void SetSessionActive(bool active, bool hosting) {
     if (g_self) g_self->SetSessionActive(active, hosting);
 }
+void* Find(uint16_t id) { return FindAnimal(id); }
+int IdOf(void* animal) {
+    int16_t id = -1;
+    if (!animal || !core::safe_read(static_cast<char*>(animal) + kEntId, id)) return -1;
+    return id;
+}
+bool DebugDamage(uint16_t id, float damage) {
+    void* ent = FindAnimal(id);
+    if (!ent) {
+        spdlog::warn("animals: coop_kill id={} no entity", id);
+        return false;
+    }
+    float before = 0.f, after = 0.f;
+    core::safe_read(static_cast<char*>(ent) + kEntHealth, before);
+    const bool ok = entity::InflictDamage(ent, damage);
+    core::safe_read(static_cast<char*>(ent) + kEntHealth, after);
+    spdlog::info("animals: coop_kill id={} dmg={:.1f} hp {:.1f}->{:.1f} ok={}", id, damage, before, after, ok);
+    return ok;
+}
 
 }  // namespace dh2::coop::animals

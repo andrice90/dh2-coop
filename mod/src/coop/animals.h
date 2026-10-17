@@ -18,5 +18,11 @@ void OnAnimalDied(uint16_t id);
 void Reset();
 // `active` is a host with at least one peer, or a connected client. The solo spike stays off while active.
 void SetSessionActive(bool active, bool hosting);
+// The animal entity with this id (int16 at +0x04) in the tracker list, or null.
+void* Find(uint16_t id);
+// Entity id of an animal pointer, or -1.
+int IdOf(void* animal);
+// Test hook (console coop_kill <id>, host or solo): FuncInflictDamage with `damage`.
+bool DebugDamage(uint16_t id, float damage);
 
 }  // namespace dh2::coop::animals

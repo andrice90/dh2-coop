@@ -1,5 +1,12 @@
 # P4c — host-authoritative world events
 
+> **Lead update 2026-10-16 20:04:**
+> - Kind 2 is now `kMissionEnd`. It hooks cMission's message call (GameDll `0x91c20`), which every mission end on every map passes through.
+> - The `SetMapIsComplete` / `GetMapToBeStarted` hooks below are removed. Kind 3 `kTrophyClaim` routes a client's claim to the host.
+> - Verified end to end with two instances: host kill → client death → client claim → host script → MISSION SUCCESSFUL on both.
+> - Engine map and logs: `re/notes/lead-mission.md`.
+> - The 16:36/16:53 "crash" was the Grok Build shell's job object killing the launched games, not the mod (`docs/mod-learnings.md`).
+
 ## Why this exists
 
 User, after the position sync looked right (2026-10-16, play session 16:08–16:13):
@@ -77,6 +84,39 @@ Host `debug.log` shows `CM_YES` (CHOOSE ITEM), then `Could not set anim 'idletor
 Client `game2\Bin\dh2coop.log` starts `16:36:04.584`. Map load `16:36:05.275` while `role=offline`. Last line `16:36:05.386` `coop_status: role=offline`. No `coop: join start`, no welcome. `debug.log` stops at `SERVER loading time : 203ms`.
 
 The 16:08 session (build `b8c4032`, no profile hooks) stayed in the match for minutes. The 16:36 binary is `c10dc47` plus the event hooks. Animal mirroring was not active: the host had no peer, and the client never joined. `events::Pump` was a no-op. The new code that had run was the two hooks sitting in GameDll.
+
+## 16:53 same exit after removing GetLastmap
+
+`fe7cb4e` hooks `GetMapToBeStarted` instead. Both processes still exited. `GetMapToBeStarted` ran and returned (the next lines exist):
+
+- Host `16:52:59.154` `events: profile captured this=0xd855888`, then `coop: host start` / `hosting on UDP 27420 -> true`. Last line `16:53:01.286` tracker animal 124.
+- Client `16:53:02.106` `events: profile captured this=0x6e75888`. Last line `16:53:02.143` `coop_status: role=offline`. No `coop: join start`. No `SetMapIsComplete enter` on either side.
+
+Host `debug.log` ends:
+
+```
+[INPUT   ] Input unacquire
+[APP     ] Application received WM_ACTIVATEAPP: 0
+[APP     ] Application loses focus
+[SYSTEM  ] fn=228, fps=99; tris= 3638300, rend(0.023) game(0.000) wait(0.033) sound(0.001) input(0.000) time=3.010998
+```
+
+`run-coop-local.ps1` sleeps 3 seconds between the two processes. Engine time 3.01s is that moment. The 16:36 host log ended on the same line (`fn=229`, `time=3.011998`). No dump again.
+
+## 16:59 the same ASI joins when the client waits
+
+No code change after `fe7cb4e`. Three launches:
+
+- Solo host `run-game.ps1 -Seconds 12 -coophost` (pid 21944) reached `debug.log` `fn=1028 time=11.027` and shut down when the script closed it. Focus loss was only at that shutdown. The ASI does not die at engine time 3s by itself.
+- Solo client (`game2`, `-coopjoin 127.0.0.1`, pid 14380) logged `coop: join start 127.0.0.1:27420` and `joining -> true` with nothing listening, and was still up at 12s. It was then closed on purpose.
+- Pair with the client started 8s after the host (host pid 18608 at 16:59:50, client pid 23836 at 16:59:58). Both joined:
+  - Host `16:59:51.352` `events: profile captured this=0xd335888`, `coop: hosting on UDP 27420 -> true`. `16:59:59.536` `net: player 1 'Hunter' joined`, puppet remote 1. Last line `17:00:08.560` tracker animal 124, hp 45, puma 124 parked.
+  - Client `16:59:59.380` `profile captured this=0xd335888`, `16:59:59.502` `coop: join start`, `16:59:59.544` `net: welcomed as player 1 (tick 8063)`, puppet remote 0. Last line `17:00:08.536` tracker animal 124. Animal sync drift 0.000.
+- Host `debug.log` lost focus when the client opened (`Input unacquire`, `WM_ACTIVATEAPP: 0`, `Application loses focus`) and kept going. Last line `fn=1635 time=17.111290`. Client last line `fn=832 time=9.050109`. No `SetMapIsComplete enter`. No dump.
+
+Those two processes were gone by 17:01:52 and neither log grew past 17:00:08. A throwaway check in this shell: `Start-Process` of a 120s sleep (pid 24572) was dead after the command returned; `Win32_Process.Create` of the same sleep (pid 10748) was still alive. The 16:59 pair was closed by the tool shell's job when the launch command returned. The game had already joined and was still ticking.
+
+The 16:36 / 16:53 client logs end ~0.1s after map load because the host had already exited, the launcher threw, and the same job then closed the client. The host exit itself is earlier: it is the focus-loss frame at engine time 3.01s, while the launcher is still inside its 3s sleep.
 
 ## UNVERIFIED until the next play
 
