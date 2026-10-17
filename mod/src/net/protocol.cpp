@@ -150,6 +150,11 @@ std::optional<AnimalStates> ParseAnimalStates(const uint8_t* data, size_t len) {
         r.Bytes(raw, nameLen);
         if (!r.ok()) return std::nullopt;
         animal.state.assign(reinterpret_cast<const char*>(raw), nameLen);
+        const uint8_t armsLen = r.U8();
+        if (!r.ok() || armsLen > kMaxAnimalStateChars || static_cast<size_t>(armsLen) > r.remaining()) return std::nullopt;
+        r.Bytes(raw, armsLen);
+        if (!r.ok()) return std::nullopt;
+        animal.arms.assign(reinterpret_cast<const char*>(raw), armsLen);
         msg.animals.push_back(std::move(animal));
     }
     if (!r.ok() || r.remaining() != 0) return std::nullopt;
@@ -273,6 +278,9 @@ std::vector<uint8_t> Encode(const AnimalStates& msg) {
         const size_t nameLen = animal.state.size() > kMaxAnimalStateChars ? kMaxAnimalStateChars : animal.state.size();
         w.U8(static_cast<uint8_t>(nameLen));
         if (nameLen > 0) w.Bytes(animal.state.data(), nameLen);
+        const size_t armsLen = animal.arms.size() > kMaxAnimalStateChars ? kMaxAnimalStateChars : animal.arms.size();
+        w.U8(static_cast<uint8_t>(armsLen));
+        if (armsLen > 0) w.Bytes(animal.arms.data(), armsLen);
     }
     return w.Take();
 }

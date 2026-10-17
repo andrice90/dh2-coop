@@ -56,6 +56,11 @@ int UnlinkPart(void* owner, const char* tag);
 // cObjItemEx::Activate does). 1 ok, 0 no machine, -1 fault.
 std::string BodyStateName(void* ent);
 int SetBodyState(void* ent, const char* name, bool reset);
+// Model part count, and the body-state name of one part (part 0 is the legs). Empty if that part has no machine.
+int ModelPartCount(void* ent);
+std::string PartStateName(void* ent, int index);
+// First upper-body part state that has left its spawn pose. Empty if every part is idle or missing.
+std::string UpperBodyState(void* ent);
 // cAIHuntBrain_Animal::FreezeBrain on the entity's brain (+0x200): brain Update returns early (no senses, path,
 // body commands); animation and physics keep running.
 bool FreezeBrain(void* ent, bool freeze);

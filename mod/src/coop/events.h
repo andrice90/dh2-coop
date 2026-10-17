@@ -22,6 +22,10 @@ constexpr uint16_t kTriggerEvent = 5; // request and commit. subject = cObjTrigg
                                       // Arms a trigger (script trigger_N.Activate(), GameDll 0x68eb0).
 constexpr uint16_t kTriggerFire = 6;  // request and commit. Same subject/key. The armed trigger fired: a player entered
                                       // it and its script OnActivate() ran (GameDll 0x68130). The main story branch.
+constexpr uint16_t kPropAnim = 7;     // commit. subject = world prop entity id, key = anim name.
+                                      // Script SetAnim on a prop (MAP2A fallbridge "broken"). Not hunters, puppets, or mirrored actors.
+constexpr uint16_t kPlaySA = 8;       // commit. subject = character entity id, key = "anim|partner".
+                                      // cObjCharacterEx::PlaySA. MAP2A's bridge mesh is the partner of Hugh's "cs02".
 
 // onRequest runs on the host. onCommit runs on a client. Either may be null.
 using Handler = void (*)(const net::GameEvent&);

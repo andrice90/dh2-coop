@@ -155,8 +155,9 @@ constexpr uint8_t kFrozenOnHost = 1u << 2;
 constexpr uint8_t kNpc = 1u << 3;  // companion (obj_guide and other /npc/ models), not cScrAnimal
 }
 
-// One animal in an AnimalStates snapshot. `state` is a body-state name.
-// Encode writes at most kMaxAnimalStateChars bytes. A longer string is truncated.
+// One animal in an AnimalStates snapshot. `state` is the body-state name (legs).
+// `arms` is the NPC weapon body-state name (gun and upper body). Empty for animals.
+// Encode writes at most kMaxAnimalStateChars bytes of each. A longer string is truncated.
 struct AnimalState {
     uint16_t id = 0;
     float pos[3] = {};
@@ -164,6 +165,7 @@ struct AnimalState {
     float health = 0.f;
     uint8_t flags = 0;
     std::string state;
+    std::string arms;
 };
 
 // Host → clients, unreliable. `animals` encodes as a u8 count, at most kMaxAnimals.

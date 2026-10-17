@@ -88,6 +88,7 @@ void draw_overlay(const dh2::coop::SessionView& view) {
     ImGui::Begin("co-op    F8 hide", nullptr, flags);
 
     ImGui::Text("role %s", view.role.empty() ? "offline" : view.role.c_str());
+    if (view.role == "client") ImGui::TextUnformatted("F9 stand up at the host");
     if (view.localId == 0xFF)
         ImGui::TextUnformatted("local id -");
     else

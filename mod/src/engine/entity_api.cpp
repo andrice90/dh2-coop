@@ -355,6 +355,22 @@ bool guarded_remove(void* mgr, void* ent) {
     }
 }
 
+const char* guarded_part_state(void* ent, int index, int* count) {
+    __try {
+        void* model = *reinterpret_cast<void**>(static_cast<char*>(ent) + 0xE4);
+        if (!model) return nullptr;
+        const short parts = reinterpret_cast<short(__thiscall*)(void*)>(slot(model, 0xf8))(model);
+        if (count) *count = parts;
+        if (index < 0 || index >= parts) return nullptr;
+        void* part = reinterpret_cast<GetPartFn>(slot(model, 0xf0))(model, index);
+        if (!part) return nullptr;
+        void* sm = *reinterpret_cast<void**>(static_cast<char*>(part) + 0xd8);
+        return sm ? reinterpret_cast<const char*(__thiscall*)(void*)>(slot(sm, 0x80))(sm) : nullptr;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
+    }
+}
+
 }  // namespace
 
 bool Bind(HMODULE engine) {
@@ -427,6 +443,33 @@ std::string BodyStateName(void* ent) {
     char buf[64] = {};
     for (size_t i = 0; i + 1 < sizeof buf && s[i]; ++i) buf[i] = s[i];
     return buf;
+}
+
+std::string PartStateName(void* ent, int index) {
+    if (!ent) return {};
+    const char* s = guarded_part_state(ent, index, nullptr);
+    if (!s) return {};
+    char buf[64] = {};
+    for (size_t i = 0; i + 1 < sizeof buf && s[i]; ++i) buf[i] = s[i];
+    return buf;
+}
+
+int ModelPartCount(void* ent) {
+    int count = 0;
+    if (ent) guarded_part_state(ent, 0, &count);
+    return count;
+}
+
+std::string UpperBodyState(void* ent) {
+    const int n = ModelPartCount(ent);
+    std::string fallback;
+    for (int i = 1; i < n; ++i) {
+        const std::string s = PartStateName(ent, i);
+        if (s.empty() || s == "NoChange") continue;
+        if (fallback.empty()) fallback = s;
+        if (s != "Idle" && s != "Activate" && s != "Changein") return s;
+    }
+    return fallback;
 }
 int SetBodyState(void* ent, const char* name, bool reset) { return (ent && name) ? guarded_set_state(ent, name, reset) : 0; }
 

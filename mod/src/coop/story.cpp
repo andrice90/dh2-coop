@@ -8,14 +8,18 @@
 #include <cstring>
 #include <cmath>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #include <spdlog/spdlog.h>
 
+#include "coop/animals.h"
 #include "coop/coop.h"
 #include "coop/events.h"
 #include "coop/player_tracker.h"
+#include "coop/puppets.h"
+#include "engine/entity_api.h"
 #include "core/exports.h"
 #include "core/hook.h"
 #include "core/log.h"
@@ -34,6 +38,17 @@ constexpr uintptr_t kRvaTriggerFire = 0x68130;   // GameDll7: thiscall(cObjTrigg
 safetyhook::InlineHook* g_volume_hook = nullptr;
 safetyhook::InlineHook* g_event_hook = nullptr;
 safetyhook::InlineHook* g_task_hook = nullptr;
+safetyhook::InlineHook* g_setanim_hook = nullptr;
+safetyhook::InlineHook* g_playsa_hook = nullptr;
+bool g_in_prop = false;
+std::unordered_map<int16_t, std::string> g_prop_anim;
+std::unordered_map<int16_t, std::string> g_playsa;
+// Kept for the life of the map: PlaySA stores the anim name pointer on the partner mesh.
+struct PlayStrings {
+    std::string anim;
+    std::string partner;
+};
+std::unordered_map<int16_t, PlayStrings> g_play_keep;
 bool g_log = true;
 // Triggers whose OnActivate (0x68130) this process actually ran. The +0x1fc flag can be set
 // without that call (MAP12C cScrTask01, 2026-10-16 22:45): the host fire was then skipped and
@@ -256,6 +271,99 @@ void __fastcall hk_TriggerEvent(void* self, void*) {
     spdlog::info("story: client trigger '{}' (id {}) sent to host", name, id);
 }
 
+// cScrEntity::SetAnim. Body-state machines call this when a scripted prop changes pose.
+// MAP2A's bridge is fallbridge.SetAnim("broken") from the cutscene; the client never ran that call.
+bool IsMirroredActor(void* ent) {
+    if (!ent || ent == LocalPlayer().entity || puppets::Owns(ent)) return true;
+    for (void* a : Animals()) {
+        if (a == ent) return true;
+    }
+    for (void* n : Npcs()) {
+        if (n == ent) return true;
+    }
+    int16_t parent = -1;
+    const LocalPlayerSample& hunter = LocalPlayer();
+    if (hunter.valid && core::safe_read(static_cast<char*>(ent) + 0xA4, parent) && parent == hunter.id) return true;
+    return false;
+}
+
+void OnPropAnimCommit(const net::GameEvent& ev) {
+    void* ent = EntityById(ev.subjectId);
+    if (!ent || ev.key.empty()) {
+        spdlog::warn("story: prop anim id={} '{}': no local entity", ev.subjectId, ev.key);
+        return;
+    }
+    g_in_prop = true;
+    const bool ok = entity::SetAnim(ent, ev.key.c_str());
+    g_in_prop = false;
+    g_prop_anim[static_cast<int16_t>(ev.subjectId)] = ev.key;
+    spdlog::info("story: applied prop anim id={} '{}' name='{}' ok={}", ev.subjectId, ev.key, NameOf(ent), ok);
+}
+
+// Paired scene anim. MAP2A cutscene 2 plays "cs02" on Hugh with partner "fallbridge"; that call is what
+// swaps the bridge mesh. It does not go through SetAnim, and a frozen client brain never starts the task.
+void NotePlaySA(void* self, const char* anim, const char* partner) {
+    if (g_in_prop || !g_sync_events || !NetIsOnline() || !NetIsHost() || !anim || !anim[0]) return;
+    const int16_t id = IdOf(self);
+    if (id < 0) return;
+    std::string key = anim;
+    if (partner && partner[0]) {
+        key.push_back('|');
+        key += partner;
+    }
+    if (key.size() > 31) {
+        spdlog::warn("story: PlaySA id={} key too long '{}'", id, key);
+        return;
+    }
+    const auto it = g_playsa.find(id);
+    if (it != g_playsa.end() && it->second == key) return;
+    g_playsa[id] = key;
+    spdlog::info("story: PlaySA id={} '{}' name='{}'", id, key, NameOf(self));
+    events::Commit(events::kPlaySA, static_cast<uint16_t>(id), 0, 0.f, key, 0);
+}
+
+void __fastcall hk_PlaySA(void* self, void*, char* anim, char* partner) {
+    g_playsa_hook->unsafe_thiscall<void>(self, anim, partner);
+    NotePlaySA(self, anim, partner);
+}
+
+void OnPlaySACommit(const net::GameEvent& ev) {
+    void* ent = EntityById(ev.subjectId);
+    if (!ent || ev.key.empty() || !g_playsa_hook) {
+        spdlog::warn("story: PlaySA id={} '{}': no local entity", ev.subjectId, ev.key);
+        return;
+    }
+    PlayStrings& kept = g_play_keep[static_cast<int16_t>(ev.subjectId)];
+    kept.anim = ev.key;
+    kept.partner.clear();
+    const size_t bar = kept.anim.find('|');
+    if (bar != std::string::npos) {
+        kept.partner = kept.anim.substr(bar + 1);
+        kept.anim.resize(bar);
+    }
+    g_in_prop = true;
+    g_playsa_hook->unsafe_thiscall<void>(ent, kept.anim.data(),
+                                        kept.partner.empty() ? static_cast<char*>(nullptr) : kept.partner.data());
+    g_in_prop = false;
+    spdlog::info("story: applied PlaySA id={} anim='{}' partner='{}' name='{}'", ev.subjectId, kept.anim, kept.partner,
+                 NameOf(ent));
+    animals::HoldCutscene(ev.subjectId);
+    animals::HoldCutsceneNamed(kept.partner.c_str());
+}
+
+void __fastcall hk_SetAnim(void* self, void*, const char* anim) {
+    g_setanim_hook->unsafe_thiscall<void>(self, anim);
+    if (g_in_prop || !g_sync_events || !NetIsOnline() || !NetIsHost() || !anim || !anim[0]) return;
+    if (IsMirroredActor(self)) return;
+    const int16_t id = IdOf(self);
+    if (id < 0) return;
+    const auto it = g_prop_anim.find(id);
+    if (it != g_prop_anim.end() && it->second == anim) return;
+    g_prop_anim[id] = anim;
+    spdlog::info("story: prop anim id={} '{}' name='{}'", id, anim, NameOf(self));
+    events::Commit(events::kPropAnim, static_cast<uint16_t>(id), 0, 0.f, anim, 0);
+}
+
 void __fastcall hk_CompleteTask(void* self, void*, int task) {
     if (g_log) {
         spdlog::info("story: [{}] CompleteTask {} caller={}", Role(), task, core::describe_address(_ReturnAddress()));
@@ -303,6 +411,9 @@ public:
     void OnMapLoaded(const char*) override {
         g_ran_fire.clear();
         g_deferred_fires.clear();
+        g_prop_anim.clear();
+        g_playsa.clear();
+        g_play_keep.clear();
     }
 
     void OnFrame(float) override { PumpDeferredFires(); }
@@ -313,6 +424,8 @@ public:
         g_sync_events = GetPrivateProfileIntA("Story", "SyncTriggerEvents", 1, ini.c_str()) != 0;
         events::SetHandler(events::kTriggerEvent, &OnEventRequest, &OnEventCommit);
         events::SetHandler(events::kTriggerFire, &OnFireRequest, &OnFireCommit);
+        events::SetHandler(events::kPropAnim, nullptr, &OnPropAnimCommit);
+        events::SetHandler(events::kPlaySA, nullptr, &OnPlaySACommit);
     }
 
     void OnEngineReady(HMODULE) override {
@@ -321,6 +434,16 @@ public:
                 "cObjTrigger::OnActivate (story log)",
                 core::find_export(common, "?OnActivate@cObjTrigger@@UAEXPAVcObjScriptedEntity@@@Z"),
                 reinterpret_cast<void*>(&hk_VolumeActivate));
+            g_setanim_hook = core::install_hook(
+                "cScrEntity::SetAnim",
+                core::find_export(common, "?SetAnim@cScrEntity@@UAEXPBD@Z"),
+                reinterpret_cast<void*>(&hk_SetAnim));
+            // cScrCharacterEx::PlaySA is a thunk to this body. The body looks the partner up by name and plays the
+            // clip on both the caller and the partner (MAP2A: Hugh + fallbridge, and the same pattern on other maps).
+            g_playsa_hook = core::install_hook(
+                "cObjCharacterEx::PlaySA",
+                core::find_export(common, "?PlaySA@cObjCharacterEx@@UAEXPAD0@Z"),
+                reinterpret_cast<void*>(&hk_PlaySA));
         }
     }
 

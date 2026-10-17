@@ -56,7 +56,7 @@ $codes = @{
     UP = @(0x48, $true); DOWN = @(0x50, $true); LEFT = @(0x4B, $true); RIGHT = @(0x4D, $true)
     W = @(0x11, $false); A = @(0x1E, $false); S = @(0x1F, $false); D = @(0x20, $false)
     E = @(0x12, $false); R = @(0x13, $false); F = @(0x21, $false); Q = @(0x10, $false)
-    SHIFT = @(0x2A, $false); CTRL = @(0x1D, $false); GRAVE = @(0x29, $false)
+    SHIFT = @(0x2A, $false); CTRL = @(0x1D, $false); GRAVE = @(0x29, $false); F9 = @(0x43, $false)
     '1' = @(0x02, $false); '2' = @(0x03, $false); '3' = @(0x04, $false); '4' = @(0x05, $false)
 }
 $h = (Get-Process -Id $ProcessId).MainWindowHandle

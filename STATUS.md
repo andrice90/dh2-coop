@@ -1,6 +1,6 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-16 23:16 (America/Chicago) by the Cursor worker (Grok). User confirmed puppet arms and gun at 23:00. Lead's 21:35 handoff is below.
+**Last updated:** 2026-10-17 00:03 (America/Chicago) by the Cursor worker (Grok). User confirmed puppet arms and gun at 23:00. Lead's 21:35 handoff is below.
 
 ## Cursor worker log (lead away)
 - **21:35** Previous MAP3B pair had already shut down cleanly. That session killed both leopards and never logged a mission end.
@@ -12,6 +12,13 @@
   - Snakes were not in the 2-animal `cScrAnimal` mirror.
   - In-game pause menus are not synced. Not a small fix; user accepts the desync. See Next steps.
 - **21:56** Closed that pair and smoke-tested MAP12B, MAP12C, MAP4A, MAP11B (30 s each). All four clients were welcomed. Animals received: 1, 1, 6, 8. MAP11B's post-join `cScrTask02` arm was applied on the client. MAP12C's client crashed in `cObjNPC::Update` (guide model `mountainguide.skin`, missing `cBodyShotgun1npc`); no client screenshot. The other three had no exception in the kept lines. Shots in `re/notes/coop-local/story-s1-map*.png`.
+- **00:03** User: F9 is working. Client death no longer sticks. The key stands them up at the host (`parts='Idle,Idle'`), clears hunter `+0x6CC` and the dead bit at `+0xC1`, and the view pitch comes back off the sky (log: pitch `-4.6` then `-13.5` while the hunter moved). Host death still ends the level.
+- **23:53** Client respawn test. `coop_down` put the client hunter in `Dying`. F9 logged `respawn at (-144.9,38.3,136.9) health 100.0 ok=true state='Idle'` while the host stood at `(-143.4,38.3,136.6)`. Both processes stayed up. Host death still ends the level.
+- **23:46** Animal death during a cutscene pose. Client wolf 154 stayed in `CutScene` after the host had left it, and the mirror skipped that actor entirely, so the host death commit never called present-death (hp stayed 50). The skip now applies only while the host sample is also `CutScene`.
+- **23:44** Paired-anim hold. Every `PlaySA` (any map) now pauses pose writes on the caller and, when we mirror them, the partner, until the host body-state name changes. That covers Hugh and the other cutscene actors, not only MAP2A.
+- **23:38** World-model sync. Trigger scripts already change the objective on both sides. The bridge mesh is `PlaySA(anim, partnerName)`: the host plays it on Hugh and on `fallbridge`, and a frozen client brain never starts that task. Clients now replay the same `PlaySA` (partner looked up by name), which is the cutscene mesh path on the other maps too. `SetAnim` on named props stays the other path (rocks, traps, the skip-to-broken clip).
+- **23:33** Client crash. Forcing Hugh's handgun into `NormalToAlert` made `cModelPart::SetAnim` forward `handgun3/normaltoalert` onto the gun mesh and the engine raised its fatal dialog. The client no longer drives the NPC's weapon. Position and leg clips stay.
+- **23:31** MAP2A bridge (`cScrTask03` / `fallbridge`). A test command armed and fired that trigger at 23:29:08, before anyone reached the bridge, and the client applied the same fire. It is one-shot, so the collapse did not play again on either window. Fresh pair relaunched with the trigger unfired. Prop `SetAnim` sync (`kPropAnim`) is in this build and was not what consumed the trigger.
 - **23:16** NPC mirror. World NPCs (`/npc/` model, not puppets) ride the animal snapshot with flag `kNpc`. Clients call `cObjCharacterEx::CharacterBrainFreeze`, not the animal `FreezeBrain`, then copy position and yaw and reapply the host body-state name. MAP2A test 23:16: Hugh id 75, `CharacterBrainFreeze ok=true`. While the host walked, both logs showed him move together (`drift=0.000`) through `IdleToWalk` and `WalkForward` at the same times. Both processes stayed up. Pair left running on MAP2A.
 - **23:07** MAP3B `exit_1` loaded MAP2A on the host (`cBspTree::Load('Bsp\map2a.bsp')` 23:04:54). Client followed (`following host to 'MAP2A'`) and loaded it too. User: the map switch worked. On MAP2A, Uncle Hugh (`obj_guide`, model `objects/npc/oldhugh/oldhugh.skin`, script `cScrHugs2a`, brain `cScrBrain_NPC`) follows each window's own hunter. The animal mirror only copies `cScrAnimal` (vt `GAMEDLL7.DLL+0xff470`, 7 of them on this map). Hugh is not in that set. Next: NPC mirror. Do not call the animal `FreezeBrain` on his brain until that is checked.
 - **23:00** Puppet arms and gun. Legs already played `walk/forward`. Arms and the shotgun stayed in the idle pose because entity `SetAnim("shotgun1/...")` is the call that creates the missing `cBodyShotgun1npc`. Arm clips are now `cModelPart::SetAnim` on every part except the legs, and the gun mesh gets the matching short clip. 23:00 client log: `arms 'shotgun1/walkforwardalert' parts=3`, `weapon anim 'idlealertneutral' parts=1`. User: "animations, weapon model, all look good now!"
@@ -85,25 +92,27 @@ User: "the real goal is singleplayer… switch to getting story mode missions to
     - The "weapons off" controls were invalid (`mod/dh2coop.ini` has no `Weapons` key), so whether puppet weapons are involved is still unknown.
     - Workaround: don't replay the same map; restart the game instead.
 
-## Next steps (in order) — story first (after the 21:20 pivot)
-**Worker (now):**
-- **S1a:** done. Play-through and the four-map smoke table are in `re/notes/story-s1-map3b.md`. MAP12C's client crashed in `cObjNPC::Update` (mountain guide); the other three joined.
+## Next steps — pick up here (2026-10-17 00:03)
+
+**Playing now:** `.\run-coop-local.ps1 -Map MAP2A`. Left window is the host, right is the client. F8 hides the overlay. **F9** on a client stands that hunter up at the host. Do not write `coop_trigger` into a session the user is playing; it spends one-shot story triggers.
+
+**User-confirmed this session:**
+- Puppet legs, arms, and gun look right.
+- MAP3B `exit_1` loads MAP2A on both sides.
+- Uncle Hugh's position stays matched for the map. Leg clips follow. His gun and arms do not (driving the handgun body script raises a fatal `cModelPart::SetAnim` dialog).
+- Story objectives sync. Paired cutscene meshes sync (`PlaySA`, MAP2A bridge). The client cutscene camera plays. Pose writes pause for every `PlaySA` caller and mirrored partner until the host body-state name changes.
+- Animal deaths sync, including a wolf that was still in `CutScene` on the client.
+- **F9 works** (00:03). Client death does not end the level. Host death still does.
 
 **Lead (next session), in order:**
-1. Review `re/notes/story-s1-map3b.md`.
-2. **Story map transition (observed 21:43).** MAP3B's successful ending did not call the mission message. The host loaded `Bsp\map2a.bsp` on its own, then committed `kMapStart` `MAP2A`. The client applied that map's `cScrTask01` arm *before* `spmap` finished (`story: trigger commit id=117 'cScrTask01': no such trigger here`), then crashed in `cSndDrvDS::WaveRelease` during `StopServer`. That crash matches the known same-map-replay teardown: the attempt before this one was `Mission failed` plus `spmap MAP3B` while MAP3B was already loaded. Question: which call loads the next story map, and can `kMapStart` be committed only after the client has loaded it?
-3. **Snakes.** User: "I killed them as the client and the host and saw one per game instance, not synced across both." MAP3B's mirror tracked exactly 2 `cScrAnimal` entities (vt `GAMEDLL7.DLL+0xff470`, ids 47 and 48, the leopards). Their deaths did sync. `cObjSnake` / `cObjCobra` are separate classes. Question: which vtable are the MAP3B snakes, and should the mirror include them?
-4. **In-game pause / overlays.** User: a pause overlay does not pause in-game events; when the host pauses, client animals stop animating; they want a host pause to pause every client, and a client pause to pause nobody else. They accept the desync if it is not a small fix. It is not: the mod has no pause message. A host modal blocks the host sim, so animal snapshots freeze (that part already matches what they saw). A client modal does not block the host, so events keep arriving. Sending "host paused" requires detecting menu-open, and the game thread is inside the modal so the usual frame hook is not running. `cHUDSlowMotion::Enable` is already a no-op in co-op; this is the game's own menu, not slow-mo. Leave it for a later design.
-5. **MAP12C yeti states.** The client crash is fixed (see the worker log). Still open: the mirrored yeti rejects `Attack`, `IdleAttack`, and `Run` (`SetBodyState -> -1`). Those names are the deer set. Question: which body-state names does the MAP12C yeti actually have?
-6. **Player damage to clients (Phase 5 for story):**
-   - Host animals must be able to hurt client players. Puppets can't be attack targets (no physics → `ProcessAttackStuck` crash).
-   - Options: give puppets a physics body that physics doesn't pull back to spawn; or redirect damage meant for the host hunter.
-   - Plan: `re/notes/lead-combat.md`.
-7. **Cutscenes:** they run on both via fired triggers. Decide skip/timing policy; check `ExecuteScript` side effects. The user did reach the next-mission cutscene on the second MAP3B attempt.
-8. **Tasks/HUD:** `CompleteTask` never logged during the whole MAP3B play-through (the hook was installed). Either this map does not call it, or the success path uses something else. Check the HUD objectives against that.
-9. **NPCs** (guide, companions) on other maps: generalize the animal mirror. Same question as the snakes above.
-10. **Death policy** (user decision). The first attempt ended in `Mission failed` / `Your hunt has ended!` (code 6), and that message did sync.
-11. The hunt-map same-map-replay teardown crash. Reproduced here: MAP3B replay, then the MAP2A load killed the client in `cSndDrvDS::WaveRelease`.
+1. Play the next story maps (MAP2B onward) with `.\run-coop-local.ps1 -Map <NAME>`. Watch objectives, `PlaySA` meshes, NPC position, and animal deaths. F9 if the client dies.
+2. **NPC arms and gun.** Safe path is still open. Do not `SetBodyState` / `SetAnim` the NPC weapon entity, and do not `SetAnimOnParts` with a `handgun3/` prefix onto it (client crash 23:32, `normaltoalert` forwarded onto the gun mesh).
+3. **Snakes.** Still one per instance. `cObjSnake` / `cObjCobra`, not `cScrAnimal`.
+4. **Host animals hurting client players.** Puppets must not be attack targets (`ProcessAttackStuck`). Plan: `re/notes/lead-combat.md`.
+5. **MAP12C yeti.** Client no longer crashes, and the opening cutscene releases. `SetBodyState` of `Attack` / `IdleAttack` / `Run` still returns -1. Those names are the deer set.
+6. **Pause overlays.** Host pause freezes client animal animation because snapshots stop. A client pause pauses nobody. User accepts this until there is a real menu-open signal. The frame hook does not run inside the modal.
+7. **Same-map replay.** `spmap` of the already-loaded map, then the next teardown, crashes in `cSndDrvDS::WaveRelease`. Restart the process instead of replaying.
+8. **Story map follow.** MAP3B → MAP2A worked when it was a fresh load. A follow that arrives before the client finishes `spmap` logs `no such trigger here`. Commit `kMapStart` only after the client has the map.
 
 **Hunt-map leftovers (lower priority now):**
 0. Map flow beyond A→B→A and the P5a puma test are parked.

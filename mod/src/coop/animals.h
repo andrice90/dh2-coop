@@ -14,6 +14,10 @@ void OnAnimalStates(const net::AnimalStates& states, uint32_t localMs);
 void OnAnimalHit(const net::AnimalHit& hit);
 // Client: a host AnimalDied commit. Presents death once, then stops driving that animal.
 void OnAnimalDied(uint16_t id);
+// Client: a paired cutscene anim (PlaySA) just started. Leave this mirrored actor's pose alone
+// until the host body-state name changes. `name` is the partner's target name, held too when we mirror it.
+void HoldCutscene(uint16_t id);
+void HoldCutsceneNamed(const char* name);
 // Drop buffers and unfreeze any animal this process was driving.
 void Reset();
 // `active` is a host with at least one peer, or a connected client. The solo spike stays off while active.

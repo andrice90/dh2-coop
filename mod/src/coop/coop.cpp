@@ -28,6 +28,7 @@ void DebugActivate(const char* name);  // story.cpp
 #include "core/log.h"
 #include "core/module.h"
 #include "core/safe_mem.h"
+#include "engine/entity_api.h"
 #include "engine/console.h"
 #include "engine/console_cmds.h"
 #include "net/session.h"
@@ -146,6 +147,59 @@ void __cdecl cmd_leave() {
     RequestLeave();
 }
 
+// GameDll cScr_ModHunter death (0x50350) calls this with "Death" on every model part.
+// Part 0 can already read as Idle while the rest of the mesh is still playing Death.
+void GuardedSetAllParts(void* ent, const char* state) {
+    const HMODULE game = GetModuleHandleA("GameDll7.dll");
+    if (!game || !ent || !state) return;
+    auto* fn = reinterpret_cast<void(__thiscall*)(void*, const char*)>(reinterpret_cast<char*>(game) + 0x480f0);
+    const unsigned char* bytes = reinterpret_cast<const unsigned char*>(fn);
+    if (bytes[0] != 0x55 || bytes[1] != 0x8B || bytes[2] != 0xEC) return;
+    __try {
+        fn(ent, state);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+
+void GuardedEndCamera(void* ent) {
+    using EndCamFn = void(__thiscall*)(void*);
+    const HMODULE common = GetModuleHandleA("CommonDll7.dll");
+    if (!common || !ent) return;
+    const auto end_cam =
+        reinterpret_cast<EndCamFn>(GetProcAddress(common, "?EndCamera@cObjScriptedEntity@@UAEXXZ"));
+    if (!end_cam) return;
+    __try {
+        end_cam(ent);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+
+void GuardedProfileSet(void* profile, int attr, float value) {
+    using SetAttrFn = void(__thiscall*)(void*, int, float);
+    const HMODULE common = GetModuleHandleA("CommonDll7.dll");
+    if (!common || !profile) return;
+    const auto set = reinterpret_cast<SetAttrFn>(GetProcAddress(common, "?SetAttr@cProfile@@QAEXHM@Z"));
+    if (!set) return;
+    __try {
+        set(profile, attr, value);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+
+// Test: drop the local hunter. Does not end the level.
+void __cdecl cmd_down() {
+    LocalPlayerSample lp;
+    if (!SampleLocalNow(lp) || !lp.entity) {
+        spdlog::warn("coop_down: no hunter");
+        return;
+    }
+    void* profile = nullptr;
+    core::safe_read(static_cast<char*>(lp.entity) + 0x1F8, profile);
+    GuardedProfileSet(profile, 9, 0.f);
+    entity::SetBodyState(lp.entity, "Dying", true);
+    spdlog::info("coop_down: hunter state='{}'", entity::BodyStateName(lp.entity));
+}
+
 // Test commands. coop_kill <id> [damage]: FuncInflictDamage on that animal. On the host or solo it is
 // the real damage; on a client it hits the local mirror like a bullet would, so the mirror reports an
 // AnimalHit to the host. coop_claim <id>: run the trophy-claim path as if the claim key had fired.
@@ -257,6 +311,7 @@ public:
             console_cmds::AddCommandStr("coop_host", &cmd_host);
             console_cmds::AddCommandStr("coop_join", &cmd_join);
             console_cmds::AddCommand0("coop_leave", &cmd_leave);
+            console_cmds::AddCommand0("coop_down", &cmd_down);
             console_cmds::AddCommandStr("coop_kill", &cmd_kill);
             console_cmds::AddCommandStr("coop_claim", &cmd_claim);
             console_cmds::AddCommandStr("coop_trigger", &cmd_trigger);
@@ -284,6 +339,7 @@ public:
             log_accum_ = 0.f;
             LogRemotes();
         }
+        PollClientRespawn();
     }
 
     // No OnShutdown: it runs on the lifecycle thread and would race Service() on the game thread.
@@ -437,6 +493,109 @@ private:
         st.weaponId = s.weapon;
         st.health = 100;
         g_session.SendPlayerState(st);
+    }
+
+    // F9 on a client: stand up at the host, with the health and stamina seen while alive.
+    // Host death still ends the level. A client death does not.
+    using SetAttrFn = void(__thiscall*)(void*, int, float);
+    using GetAttrFn = float(__thiscall*)(void*, int);
+    SetAttrFn set_attr_ = nullptr;
+    GetAttrFn get_attr_ = nullptr;
+    float full_health_ = 0.f;
+    float full_stamina_ = 0.f;
+    bool f9_down_ = false;
+
+    void BindAttr() {
+        if (set_attr_ && get_attr_) return;
+        const HMODULE common = GetModuleHandleA("CommonDll7.dll");
+        if (!common) return;
+        set_attr_ = reinterpret_cast<SetAttrFn>(GetProcAddress(common, "?SetAttr@cProfile@@QAEXHM@Z"));
+        get_attr_ = reinterpret_cast<GetAttrFn>(GetProcAddress(common, "?GetAttr@cProfile@@QAEMH@Z"));
+    }
+
+    static float GuardedGet(GetAttrFn fn, void* profile, int attr) {
+        if (!fn || !profile) return 0.f;
+        __try {
+            return fn(profile, attr);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            return 0.f;
+        }
+    }
+
+    static bool GuardedSet(SetAttrFn fn, void* profile, int attr, float value) {
+        if (!fn || !profile) return false;
+        __try {
+            fn(profile, attr, value);
+            return true;
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            return false;
+        }
+    }
+
+    void RememberStats() {
+        if (g_session.IsHost() || !g_session.IsConnected()) return;
+        BindAttr();
+        const LocalPlayerSample& lp = LocalPlayer();
+        if (!lp.valid || !lp.entity) return;
+        void* profile = nullptr;
+        if (!core::safe_read(static_cast<char*>(lp.entity) + 0x1F8, profile) || !profile) return;
+        const float health = GuardedGet(get_attr_, profile, 9);
+        const float stamina = GuardedGet(get_attr_, profile, 5);
+        if (health > full_health_) full_health_ = health;
+        if (stamina > full_stamina_) full_stamina_ = stamina;
+    }
+
+    void PollClientRespawn() {
+        RememberStats();
+        const bool down = (GetAsyncKeyState(VK_F9) & 0x8000) != 0;
+        const bool pressed = down && !f9_down_;
+        f9_down_ = down;
+        if (!pressed || g_session.IsHost() || !g_session.IsConnected()) return;
+
+        const auto host = g_remotes.find(0);
+        if (host == g_remotes.end() || host->second.received == 0) {
+            spdlog::info("coop: F9 respawn ignored, no host position yet");
+            return;
+        }
+        LocalPlayerSample lp;
+        if (!SampleLocalNow(lp) || !lp.entity) return;
+        const net::PlayerState& host_state = host->second.last;
+        const float yaw_rad = host_state.yaw * 3.14159265f / 180.f;
+        entity::Vec3 pos{host_state.pos[0] + std::cos(yaw_rad) * 1.5f, host_state.pos[1],
+                         host_state.pos[2] - std::sin(yaw_rad) * 1.5f};
+
+        void* profile = nullptr;
+        core::safe_read(static_cast<char*>(lp.entity) + 0x1F8, profile);
+        const float health = full_health_ > 1.f ? full_health_ : 100.f;
+        const bool health_ok = GuardedSet(set_attr_, profile, 9, health);
+        const bool stamina_ok = full_stamina_ > 1.f && GuardedSet(set_attr_, profile, 5, full_stamina_);
+
+        char buf[96];
+        std::snprintf(buf, sizeof buf, "%.2f %.2f %.2f", pos.x * 100.f, pos.y * 100.f, pos.z * 100.f);
+        entity::HandleKey(lp.entity, "position", buf);
+        std::snprintf(buf, sizeof buf, "0 %.2f 0", host_state.yaw);
+        entity::HandleKey(lp.entity, "angle", buf);
+        entity::SetPos(lp.entity, pos);
+        entity::SetAngle(lp.entity, entity::Vec3{0.f, host_state.yaw, 0.f});
+        entity::BspUpdate(lp.entity);
+        // "Death" is applied to every part. Idle on part 0 leaves the mesh in the death pose.
+        GuardedSetAllParts(lp.entity, "Idle");
+        entity::SetAnim(lp.entity, "idlenormalneutral");
+        // +0x6CC blocks the player update and the mouse look. +0xC1 bit 2 is the dead-entity bit.
+        int dead_flag = -1;
+        core::safe_read(static_cast<char*>(lp.entity) + 0x6CC, dead_flag);
+        const int alive = 0;
+        std::memcpy(static_cast<char*>(lp.entity) + 0x6CC, &alive, sizeof alive);
+        unsigned char marks = 0;
+        if (core::safe_read(static_cast<char*>(lp.entity) + 0xC1, marks)) {
+            marks = static_cast<unsigned char>(marks & ~0x4);
+            std::memcpy(static_cast<char*>(lp.entity) + 0xC1, &marks, sizeof marks);
+        }
+        GuardedEndCamera(lp.entity);
+        spdlog::info(
+            "coop: F9 respawn at ({:.1f},{:.1f},{:.1f}) health {:.1f} ok={} stamina={} deadflag={} parts='{},{},{},{}'",
+            pos.x, pos.y, pos.z, health, health_ok, stamina_ok, dead_flag, entity::PartStateName(lp.entity, 0),
+            entity::PartStateName(lp.entity, 1), entity::PartStateName(lp.entity, 2), entity::PartStateName(lp.entity, 3));
     }
 
     void LogRemotes() {

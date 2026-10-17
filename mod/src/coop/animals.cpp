@@ -11,6 +11,7 @@
 #include <intrin.h>
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -124,6 +125,7 @@ struct AnimalSample {
     float health = 0.f;
     uint8_t flags = 0;
     std::string state;
+    std::string arms;
 };
 
 class AnimalBuffer {
@@ -159,6 +161,7 @@ public:
         out.health = b.state.health;
         out.flags = b.state.flags;
         out.state = b.state.state;
+        out.arms = b.state.arms;
         return true;
     }
 
@@ -176,6 +179,7 @@ private:
         out.health = s.health;
         out.flags = s.flags;
         out.state = s.state;
+        out.arms = s.arms;
         return true;
     }
 
@@ -208,7 +212,93 @@ struct Mirror {
     bool have_target = false;
     bool death_presented = false;
     bool is_npc = false;
+    bool hold_pose = false;
+    std::string pose_at_play;
 };
+
+// Guide legs (GUIDELEGS.SCR Begin) and the NPC weapon script (RIFLENPC/HGUNNPC) are separate
+// state machines. Freezing the character brain stops the weapon machine, so the gun and arms
+// stay in the spawn pose while the legs follow the host state.
+const char* NpcLegClip(const std::string& state) {
+    if (state == "Idle" || state == "NoChange") return "idlenormalneutral";
+    if (state == "WalkForward") return "walk/forward";
+    if (state == "WalkBackward" || state == "RunBackward") return "walk/backward";
+    if (state == "WalkLeft" || state == "RunLeft") return "walk/left";
+    if (state == "WalkRight" || state == "RunRight") return "walk/right";
+    if (state == "RunForward") return "run/forward";
+    if (state == "WalkForwardLimp") return "walk/forwardlimp";
+    if (state == "IdleToWalk") return "idletowalk";
+    if (state == "WalkToIdle") return "walktoidle";
+    if (state == "IdleToRun") return "idletorun";
+    if (state == "RunToIdle") return "runtoidle";
+    if (state == "Hurt") return "hurt";
+    if (state == "Fall") return "fall";
+    if (state == "Liedead" || state == "FinalLiedead") return "liedead";
+    if (state == "Followme" || state == "Hello") return "followme";
+    if (state == "Followmeleft") return "followmeleft";
+    if (state == "Followmeright") return "followmeright";
+    if (state == "Conversation") return "conversation";
+    if (state == "Pickup") return "pickup";
+    if (state == "Find") return "find";
+    if (state == "Point") return "point";
+    if (state == "Cover") return "cover";
+    if (state == "Uncover") return "uncover";
+    if (state == "Coveridle" || state == "FinalCover") return "coveridle";
+    if (state == "IdleScare" || state == "CoverScare" || state == "Scare") return "scare";
+    if (state.rfind("Turnnormal", 0) == 0 && state.size() > 10) {
+        static char buf[32];
+        const std::string rest = state.substr(10);
+        if (rest.size() + 4 >= sizeof buf) return nullptr;
+        buf[0] = 't';
+        buf[1] = 'u';
+        buf[2] = 'r';
+        buf[3] = 'n';
+        for (size_t i = 0; i < rest.size(); ++i) buf[4 + i] = static_cast<char>(std::tolower(static_cast<unsigned char>(rest[i])));
+        buf[4 + rest.size()] = 0;
+        return buf;
+    }
+    return nullptr;
+}
+
+bool WeaponModel(const std::string& model) {
+    std::string m = model;
+    for (char& c : m) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return m.find("handgun") != std::string::npos || m.find("rifle") != std::string::npos ||
+           m.find("shotgun") != std::string::npos || m.find("/weapons/") != std::string::npos;
+}
+
+void NpcWeapons(int16_t npcId, std::vector<void*>& out) {
+    out.clear();
+    void* mgr = EntityManager();
+    int count = 0;
+    void** arr = nullptr;
+    if (!mgr || !core::safe_read(reinterpret_cast<char*>(mgr) + 0x08, count) ||
+        !core::safe_read(reinterpret_cast<char*>(mgr) + 0x04, arr) || !arr || count <= 0 || count > 0x400)
+        return;
+    for (int i = 0; i < count; ++i) {
+        void* ent = nullptr;
+        int16_t parent = -1;
+        char* model = nullptr;
+        if (!core::safe_read(arr + i, ent) || !ent) continue;
+        if (!core::safe_read(static_cast<char*>(ent) + 0xA4, parent) || parent != npcId) continue;
+        if (!core::safe_read(static_cast<char*>(ent) + 0xE0, model) || !model) continue;
+        if (!WeaponModel(core::safe_cstr(model, 160))) continue;
+        out.push_back(ent);
+    }
+}
+
+// Prefer a weapon that has left its spawn state, so a holstered gun does not hide the drawn one.
+std::string NpcWeaponState(int16_t npcId) {
+    std::vector<void*> weapons;
+    NpcWeapons(npcId, weapons);
+    std::string best;
+    for (void* w : weapons) {
+        const std::string s = entity::BodyStateName(w);
+        if (s.empty()) continue;
+        if (best.empty() || best == "Idle" || best == "Activate" || best == "Changein" || best == "Changeout") best = s;
+    }
+    return best;
+}
 
 void* FindAnimal(uint16_t id) {
     auto match = [&](void* a) {
@@ -418,7 +508,22 @@ public:
                 tr.yaw = NormYaw(ang.y);
                 char* model = nullptr;
                 core::safe_read(static_cast<char*>(npc) + 0xE0, model);
-                spdlog::info("animals: npc id={} model='{}'", uid, model ? core::safe_cstr(model, 120) : "");
+                std::vector<void*> weapons;
+                NpcWeapons(id, weapons);
+                std::string wmodel;
+                if (!weapons.empty()) {
+                    char* wm = nullptr;
+                    core::safe_read(static_cast<char*>(weapons[0]) + 0xE0, wm);
+                    if (wm) wmodel = core::safe_cstr(wm, 120);
+                }
+                const int parts = entity::ModelPartCount(npc);
+                std::string states;
+                for (int i = 0; i < parts && i < 8; ++i) {
+                    if (i) states += ',';
+                    states += entity::PartStateName(npc, i);
+                }
+                spdlog::info("animals: npc id={} model='{}' weapons={} weapon='{}' parts={} states='{}'", uid,
+                             model ? core::safe_cstr(model, 120) : "", weapons.size(), wmodel, parts, states);
             } else {
                 const float dx = p.x - tr.prev.x;
                 const float dz = p.z - tr.prev.z;
@@ -433,6 +538,8 @@ public:
             st.yaw = tr.yaw;
             st.health = hp;
             st.state = entity::BodyStateName(npc);
+            st.arms = NpcWeaponState(id);
+            if (st.arms.empty()) st.arms = entity::UpperBodyState(npc);
             st.flags = net::animal_flag::kNpc;
             if (p.y < -1000.f) st.flags |= net::animal_flag::kParked;
             msg.animals.push_back(std::move(st));
@@ -522,6 +629,29 @@ public:
         if (dead_.insert(id).second) spdlog::info("animals: death event id={}", id);
     }
 
+    void HoldCutscene(uint16_t id) {
+        if (hosting_ || !session_active_ || !FindAnimal(id)) return;
+        Mirror& m = mirrors_[id];
+        m.hold_pose = true;
+        m.pose_at_play.clear();
+        spdlog::info("animals: cutscene hold id={}", id);
+    }
+
+    void HoldCutsceneNamed(const char* name) {
+        if (!name || !name[0]) return;
+        auto match = [&](void* ent) {
+            char* stored = nullptr;
+            if (!core::safe_read(static_cast<char*>(ent) + 0x198, stored) || !stored) return;
+            if (core::safe_cstr(stored, 48) != name) return;
+            int16_t id = -1;
+            if (core::safe_read(static_cast<char*>(ent) + kEntId, id) && id >= 0) HoldCutscene(static_cast<uint16_t>(id));
+        };
+        for (void* ent : Animals()) match(ent);
+        for (void* ent : Npcs()) {
+            if (!puppets::Owns(ent)) match(ent);
+        }
+    }
+
     void Place() {
         if (session_active_) {
             if (!hosting_ && events::SameMapAsHost()) ApplyMirror();
@@ -603,7 +733,14 @@ private:
             // MAP12C's opening cutscene WaitForTask's the yeti. Freezing that brain, or pinning
             // the yeti to the host pose, never lets the task finish, so the client stays in the
             // cutscene camera (player 2 could see their character and could not move, 22:48).
-            if (entity::BodyStateName(ent) == "CutScene") {
+            // Only while the host is in that same pose. MAP2A wolf 154 stayed CutScene on the
+            // client after the host had left it, and the later death commit never presented (23:45).
+            AnimalSample early;
+            const bool have_early = m.buffer.Sample(t, early);
+            const bool host_cutscene = !have_early || early.state == "CutScene";
+            const bool host_dead = dead_.count(id) != 0 ||
+                                   (have_early && ((early.flags & net::animal_flag::kDead) != 0 || early.health <= 0.f));
+            if (!m.is_npc && !host_dead && host_cutscene && entity::BodyStateName(ent) == "CutScene") {
                 if (m.frozen) {
                     entity::FreezeBrain(ent, false);
                     m.frozen = false;
@@ -682,17 +819,31 @@ private:
                 --m.place_burst;
             }
             if (m.have_rel) PlaceEntity(ent, pos, yaw, m.rel);
-            const float step_x = m.have_target ? pos.x - m.last_target.x : 0.f;
-            const float step_z = m.have_target ? pos.z - m.last_target.z : 0.f;
             m.last_target = pos;
             m.last_yaw = yaw;
             m.have_target = true;
 
             // Re-apply when the live name drifts. FreezeBrain stops pathing, but the state machine can
             // still leave the host's state (deer 121 showed IdleAttack for ~4 s while the host stayed CutScene).
-            if (m.is_npc) {
+            if (m.hold_pose) {
+                if (m.pose_at_play.empty()) m.pose_at_play = sample.state;
+                else if (!sample.state.empty() && sample.state != m.pose_at_play) {
+                    m.hold_pose = false;
+                    m.applied_state.clear();
+                    spdlog::info("animals: cutscene done id={} state='{}'", id, sample.state);
+                }
+            }
+            if (m.hold_pose) {
+                // PlaySA is posing this actor. A body-state write replaces the paired clip.
+            } else if (m.is_npc) {
                 if (!sample.state.empty() && entity::BodyStateName(ent) != sample.state)
                     entity::SetBodyState(ent, sample.state.c_str(), true);
+                if (m.applied_state != sample.state) {
+                    if (const char* clip = NpcLegClip(sample.state)) entity::SetAnim(ent, clip);
+                    m.applied_state = sample.state;
+                }
+                // The handgun's own body script SetAnims clips like handgun3/normaltoalert onto its legs
+                // part and the engine raises a fatal dialog (client 23:32). Leave the gun alone.
             } else if (!sample.state.empty() && entity::BodyStateName(ent) != sample.state) {
                 const int r = entity::SetBodyState(ent, sample.state.c_str(), false);
                 if (r == 1) {
@@ -700,14 +851,6 @@ private:
                 } else if (sample.state != m.warned_state) {
                     m.warned_state = sample.state;
                     spdlog::warn("animals: SetBodyState id={} '{}' -> {}", id, sample.state, r);
-                }
-            }
-            if (m.is_npc && entity::BodyStateName(ent) != sample.state) {
-                const char* clip = (step_x * step_x + step_z * step_z) > 0.0025f ? "walk/forward" : "idlenormalneutral";
-                const std::string key = std::string("leg:") + clip;
-                if (m.applied_state != key) {
-                    entity::SetAnim(ent, clip);
-                    m.applied_state = key;
                 }
             }
         }
@@ -868,6 +1011,15 @@ void OnAnimalHit(const net::AnimalHit& hit) {
 }
 void OnAnimalDied(uint16_t id) {
     if (g_self) g_self->NoteDeath(id);
+}
+
+void HoldCutscene(uint16_t id) {
+    if (!g_self) return;
+    g_self->HoldCutscene(id);
+}
+
+void HoldCutsceneNamed(const char* name) {
+    if (g_self) g_self->HoldCutsceneNamed(name);
 }
 void Reset() {
     if (g_self) g_self->Reset();
