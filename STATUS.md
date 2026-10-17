@@ -34,7 +34,9 @@ Host log: `D:\scary hunt\Activision Value\Magic Wand\DNGH2\Bin\dh2coop.log`. The
 | Host pause shows a pause screen on the client | Unknown | Repro: `session-repro` |
 | Drop-in player: no damage, no cutscenes, no bear | The cutscene part is the forwarded auto-skip; damage unknown (no animal hits from that session, only the Hugh flood) | Repro: `session-repro` |
 | Bolt-action on puppets misaligned, frozen muzzle flash | Puppet uses `rifle1.skin` for every rifle; the local gun is `rifle2` | Cursor `rifle-puppet` (worktree `D:\scary hunt\dh2coop-rifle`) |
-| Bottles / stumps only shootable by the host | — | Research: Cursor `props-research`; user intent to confirm |
+| Bottles / stumps only shootable by the host | — | **User decision 15:45:** a client's shot on any world interactable (stump, bottle, snake, ...) propagates to every session, and goal items count toward the goal for everyone. Research: Cursor `props-research`; snakes need the animal mirror for `cObjSnake`/`cObjCobra`. |
+| "Pause" screen on the client | User 15:45: only at mission end, so it is the client's results screen (then stuck when the host continued) | Repro: `session-repro` task 2 |
+| MAP2A Uncle Hugh's protect-objective health differs on host and client, and drops on both at different rates | The mirror copies `+0x19C`, but the host's `+0x19C` is rewritten from another field every frame; the client's own scripts also damage him | Research: Cursor `npc-health-re` (Ghidra slot V) |
 
 Found while reading the code: with 3+ players, every join re-sent the host's journal to *all* clients, so the existing clients `spmap`ed their current map (the replay crash) and replayed `PlaySA`/mission end. Fixed by the per-client sync.
 
