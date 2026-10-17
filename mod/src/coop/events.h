@@ -38,6 +38,9 @@ constexpr uint16_t kPlayerKnockEnd = 14; // commit. subject = player id: the syn
                                          // kPlayerKnock with an empty key is a player's hit: i0 = attacker player id,
                                          // the victim picks its map's clip and stands up on its own timer.
 constexpr uint16_t kKnockRequest = 15;   // request. subject = victim player id, i0 = 1 shot / 2 melee.
+constexpr uint16_t kPropHit = 16;        // request and commit. subject = cObjTarget entity id, i0 = 1 stump / 0 bottle.
+                                         // Journaled, so a late joiner breaks the same props during catch-up.
+                                         // Not sent with Send: a broken bottle or stump stays broken.
 
 // onRequest runs on the host. onCommit runs on a client. Either may be null.
 using Handler = void (*)(const net::GameEvent&);
