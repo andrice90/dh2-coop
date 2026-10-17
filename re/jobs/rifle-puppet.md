@@ -1,0 +1,19 @@
+# Job: rifle-puppet — the bolt-action rifle on another player's puppet: wrong model/alignment and a frozen muzzle flash (C++; git worktree; solo game launches)
+
+## Problem (two-PC user test 2026-10-17)
+"Bolt action pickup gun model is not aligned to character and there is a constant frozen muzzle flash seen on the other puppets."
+Evidence from the host log: the local player's bolt-action is `objects/items/game/weapons/rifle21st/rifle2.skin` (first-person). `player_tracker.cpp` `weapon_kind()` maps any model containing `rifle` to `net::kWeaponRifle` (3), and `puppets.cpp` `weapon_model()` attaches `objects/items/game/weapons/rifle1/rifle1.skin` to the puppet's `BipLHand` for kind 3. Arm/gun clips come from `choose_clips()` (`shotgun1/` prefix for rifles, gun clips `idlealertneutral`, `fire`, `reload1`, walk/run names).
+
+## Where you work
+Git worktree `D:\scary hunt\dh2coop-rifle` on branch `rifle-puppet` (the lead creates it). Build there with `.\mod\build.ps1` (it installs into that worktree's `game\Bin`). First-time game copy: `robocopy "D:\scary hunt\dh2coop\game" "D:\scary hunt\dh2coop-rifle\game" /MIR /XF *.log dh2coop.cmd /R:1 /W:1 /NFL /NDL /NP` (exit codes below 8 are success). Never write to `D:\scary hunt\dh2coop\` or `D:\scary hunt\Activision Value\`.
+
+## Tasks
+1. Find the third-person models of each player weapon. List `OBJECTS\ITEMS\GAME\WEAPONS\*` under `re/extracted` (the `*1ST` folders are first-person). Which third-person skin matches `rifle2` (bolt-action), `handgun5`, `rifle1`, the shotguns, and the melee weapons? Which hand and which clip pack the NPC weapon scripts use for each (`SCRIPTS/MODELS/NPC/...`: `RIFLENPC.SCR`, `SGUNNPC.SCR`, `HGUNNPC.SCR`; `py re\scripts\ap_list.py` on the weapon `.AP` packs, `re/notes/anim-names.md`).
+2. **Model per weapon.** Make the puppet show the matching third-person model. If the 5 `WeaponKind` values are not enough, add values to `net::WeaponKind` in `mod/src/net/protocol.h` (append only; `weaponId` is a `uint8_t`, old values keep their meaning) and map models to them in `player_tracker.cpp` `weapon_kind()`; `puppets.cpp` `weapon_model()` / `choose_clips()` follow.
+3. **Muzzle flash.** Find why the flash stays on: a gun clip name that does not exist in that weapon's pack (so the gun mesh stays on the `fire` clip's last frame), or a flash part/bone the weapon script hides (`Hide`/`Show`/`SetPartVisible`-style calls in the NPC weapon scripts, or a `muzzle`/`flash` part in the skin). Fix it so the flash shows only while firing.
+4. **Alignment.** Make the rifle sit in the puppet's hands like the NPC scripts do (hand bone, any attach offset or second-hand link they use).
+5. **Test.** Add `[Puppets] SpikeWeapon=<kind>` (default 0 = none) so the solo test puppet (`[Puppets] Spike=1 SpikeSway=0`, 3 m in front of the camera) holds that weapon and fires every 3 s. Solo MAP3B run (`run-game.ps1`, or start `Main7.exe` with `+mod data -nointro -developper -cheats -spmap MAP3B` through `Win32_Process.Create`), screenshots (`tools-src\capture-window.ps1 -NoFocus`) for each weapon kind: idle, during a shot, 1 s after. Check `debug.log` for `Could not` lines (a missing clip on a weapon mesh can raise a fatal engine dialog: never `SetBodyState`/`SetAnim` the weapon entity with a prefixed name; see `re/notes/anim-names.md`).
+Before launching check `Get-Process Main7`; wait (poll 30 s, up to 20 min) if any runs; close only your own game.
+
+## Deliverables
+Code in the worktree (`mod/src/coop/puppets.cpp`, `mod/src/coop/player_tracker.cpp`, `mod/src/net/protocol.h`, `mod/dh2coop.ini` for the new key), `re/notes/rifle-puppet.md` (findings, model/hand/clip table, test record with screenshot names). Commit on the branch (author `andri <andrice90@gmail.com>`, trailer `Co-Authored-By: Grok 4.7 <noreply@x.ai>`). Do not merge.
