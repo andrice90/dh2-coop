@@ -38,6 +38,7 @@ constexpr uintptr_t kEntPos = 0xE8;
 constexpr uintptr_t kInSA = 0x368;           // cObjCharacterEx: inside a sync attack (PlaySA .. OnEndSA)
 constexpr uintptr_t kHunterDead = 0x6CC;     // cObjHunter::OnDie sets it; Hurt returns at once while it is set
 constexpr uintptr_t kRvaHunterVt = 0x106ff0; // GameDll7 cScr_ModHunter
+constexpr uintptr_t kRvaPilotVt = 0x109d48;  // GameDll7 cObjPilot (MAP11A / MAP11C helicopter maps)
 constexpr int kSlotHurt = 0x14C / 4;
 constexpr int kSlotPlaySA = 0x210 / 4;
 constexpr int kSlotEndSA = 0x214 / 4;
@@ -144,7 +145,9 @@ void __fastcall hk_OnEndSA(void* self, void*) {
 void* LocalHunter() {
     void* h = LocalPlayer().entity;
     uintptr_t vt = 0;
-    if (!h || !g_game_base || !core::safe_read(h, vt) || vt != g_game_base + kRvaHunterVt) return nullptr;
+    if (!h || !g_game_base || !core::safe_read(h, vt) ||
+        (vt != g_game_base + kRvaHunterVt && vt != g_game_base + kRvaPilotVt))
+        return nullptr;
     return h;
 }
 
@@ -231,6 +234,11 @@ void EndKnock(const char* why) {
 bool StartKnock(const std::string& clip, float yawDeg, uint32_t endAfterMs, const char* why) {
     void* hunter = LocalHunter();
     if (!hunter || Dead(hunter) || clip.empty()) return false;
+    // A pilot sits in the helicopter (body state "Heli"): a knock-down clip there would pull it off its seat.
+    if (LocalPlayer().pilot) {
+        spdlog::info("combat: knock ({}) ignored: the local player is a pilot", why);
+        return false;
+    }
     if (g_knocked) EndKnock("new knock");
     // The task's basis: rows 0-2 rotation (right, up, forward), row 3 the victim position.
     const float yaw = yawDeg * 3.14159265f / 180.f;

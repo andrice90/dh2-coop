@@ -51,6 +51,10 @@ void DumpClassesOnce(void* mgr) {
 }
 // GameDll7 vtable RVAs (Track B)
 constexpr uintptr_t kVtHunterRva = 0x106ff0;  // cScr_ModHunter
+// cObjPilot (script cScr_ModPilot): the player on the helicopter maps MAP11A / MAP11C (WORLD.SCR mod_player_cls).
+// Its ctor 0x64660 runs the hunter ctor and then writes this vtable; cObjPilot::Spawn 0x65370 attaches it to the
+// entity "helicopter" at tag "masscenter" and takes it out of the animals' attack list (re/notes/audit-maps-c.md 0.1).
+constexpr uintptr_t kVtPilotRva = 0x109d48;
 constexpr uintptr_t kVtAnimalRva = 0xff470;   // cScrAnimal
 constexpr uintptr_t kVtCobraRva = 0x10e920;   // cObjCobra (mission cobras). Not cObjSnake +0x10e470.
 
@@ -284,6 +288,13 @@ public:
             g_view_cam_valid = true;
         }
         g_frame_cam_taken = false;
+        // The 1 s scan's position ran 2.5-5 m behind a seat in the MAP4A truck, and a pilot flies faster: keep the
+        // sample's transform and view live (same entity, read every frame; the scan still decides which entity).
+        if (g_local.valid && g_local.entity) {
+            read_vec(g_local.entity, kEntPos, g_local.pos);
+            read_vec(g_local.entity, kEntAngle, g_local.angle);
+            read_camera(g_local);
+        }
         PollActions();
         since_scan_ += dt;
         if (since_scan_ < 1.f) return;
@@ -312,6 +323,7 @@ private:
         }
 
         const uintptr_t vtHunter = game + kVtHunterRva;
+        const uintptr_t vtPilot = game + kVtPilotRva;
         const uintptr_t vtAnimal = game + kVtAnimalRva;
         const uintptr_t vtCobra = game + kVtCobraRva;
         std::map<uintptr_t, int> hist;
@@ -319,6 +331,7 @@ private:
         std::vector<void*> npcs;
         std::vector<void*> children;  // candidates; filtered to the hunter's children below
         void* hunter = nullptr;
+        bool pilot = false;
 
         for (int i = 0; i < count; ++i) {
             void* ent = nullptr;
@@ -326,7 +339,10 @@ private:
             uintptr_t vt = 0;
             if (!core::safe_read(ent, vt) || !vt) continue;
             ++hist[vt];
-            if (vt == vtHunter && !hunter) hunter = ent;
+            if ((vt == vtHunter || vt == vtPilot) && !hunter) {
+                hunter = ent;
+                pilot = vt == vtPilot;
+            }
             children.push_back(ent);
             if (diff_hunter_) DiffEntityAngle(i, ent, vt);
             if (vt == vtAnimal || vt == vtCobra) animals.push_back(ent);
@@ -375,6 +391,7 @@ private:
             LocalPlayerSample s;
             s.valid = true;
             s.entity = hunter;
+            s.pilot = pilot;
             core::safe_read(reinterpret_cast<char*>(hunter) + kEntId, s.id);
             read_vec(hunter, kEntPos, s.pos);
             read_vec(hunter, kEntAngle, s.angle);
@@ -385,7 +402,7 @@ private:
                 const char* model = nullptr;
                 core::safe_read(reinterpret_cast<char*>(hunter) + kEntModelName, model);
                 g_hunter_model = model ? core::safe_cstr(model, 200) : "";
-                spdlog::info("tracker: local hunter entity {:#x} id={} parent={} model_name='{}'",
+                spdlog::info("tracker: local {} entity {:#x} id={} parent={} model_name='{}'", pilot ? "pilot" : "hunter",
                              reinterpret_cast<uintptr_t>(hunter), s.id, parent, g_hunter_model);
             }
             g_local = s;

@@ -959,6 +959,10 @@ private:
         }
         LocalPlayerSample lp;
         if (!SampleLocalNow(lp) || !lp.entity) return;
+        if (lp.pilot) {  // nothing hurts a pilot, and the revive would lift it out of the helicopter
+            spdlog::info("coop: F9 respawn ignored: the local player is a pilot");
+            return;
+        }
         const net::PlayerState& host_state = host->second.last;
 
         void* profile = nullptr;
@@ -1341,6 +1345,12 @@ bool TeleportToHost(const char* why) {
     }
     LocalPlayerSample lp;
     if (!SampleLocalNow(lp) || !lp.entity) return false;
+    // A pilot rides its helicopter (MAP11A / MAP11C): the host's helicopter flight brings it along (heli.cpp).
+    // Moving the attached entity would only fight the attachment.
+    if (lp.pilot) {
+        spdlog::info("coop: teleport to host ({}) skipped: the local player is a pilot", why ? why : "");
+        return false;
+    }
     const entity::Vec3 pos = place_near(lp.entity, host->second.last);
     spdlog::info("coop: teleport to host ({}) from ({:.1f},{:.1f},{:.1f}) to ({:.1f},{:.1f},{:.1f})", why ? why : "",
                  lp.pos.x, lp.pos.y, lp.pos.z, pos.x, pos.y, pos.z);

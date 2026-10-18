@@ -24,6 +24,9 @@ struct LocalPlayerSample {
     bool valid = false;
     void* entity = nullptr;
     int16_t id = -1;
+    // cObjPilot (GameDll7 vtable 0x109d48) instead of cScr_ModHunter: MAP11A / MAP11C. The pilot sits in the
+    // entity "helicopter" (+0xA4 parent), is not an attack target, and must not be moved, knocked or revived.
+    bool pilot = false;
     Vec3 pos;     // cObjEntity +0xE8 (world)
     Vec3 angle;   // cObjEntity +0xF4 (world Euler; component order/units being established)
     // World render camera of the last frame (cRender::SetCamera hook): live view direction even while standing
