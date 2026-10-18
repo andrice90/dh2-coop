@@ -504,6 +504,23 @@ void __cdecl cmd_knock(const char* arg) {
     else events::Request(events::kKnockRequest, static_cast<uint16_t>(victim), 2, 0.f, "");
 }
 
+// Test (host): coop_animalknock <player>:<clip> sends that player the knock-down an animal's sync attack would
+// (kPlayerKnock with the animal's own clip name, e.g. 1:wb_syncattack1 or 1:yeti_syncattack1; the client falls back to
+// the map's pl_* clip when its hunter lacks it). <player>:end sends the stand-up (kPlayerKnockEnd).
+void __cdecl cmd_animalknock(const char* arg) {
+    const std::string a = core::safe_cstr(arg, 64);
+    const size_t colon = a.find(':');
+    const int victim = std::atoi(a.c_str());
+    const std::string clip = colon == std::string::npos ? std::string() : a.substr(colon + 1);
+    if (!NetIsHost() || victim <= 0 || victim >= net::kMaxPlayers || clip.empty()) {
+        spdlog::warn("coop_animalknock: host only, usage coop_animalknock <player 1-3>:<clip>|end");
+        return;
+    }
+    spdlog::info("coop_animalknock: player {} '{}'", victim, clip);
+    if (clip == "end") events::Send(events::kPlayerKnockEnd, static_cast<uint16_t>(victim), 0, 0.f, "", 0);
+    else events::Send(events::kPlayerKnock, static_cast<uint16_t>(victim), 0, 0.f, clip, 0);
+}
+
 void TryKnock(bool melee) {
     const uint8_t victim = PickVictim(melee);
     if (victim == net::kInvalidPlayerId) return;
@@ -872,6 +889,7 @@ public:
     void OnFrame(float) override {
         if (!cmd_registered_ && console_cmds::Ready()) {
             cmd_registered_ = console_cmds::AddCommandStr("coop_knock", &cmd_knock);
+            console_cmds::AddCommandStr("coop_animalknock", &cmd_animalknock);
             console_cmds::AddCommand0("coop_targets", &cmd_targets);
         }
         const uint32_t now = GetTickCount();
