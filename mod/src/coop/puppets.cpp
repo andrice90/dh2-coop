@@ -156,6 +156,29 @@ bool riding_spot(uint8_t id, const LocalPlayerSample& local, float heading_deg, 
     return true;
 }
 
+// Pilot maps (MAP11A / MAP11C): every player is a cObjPilot at the "masscenter" of their own copy of the helicopter,
+// and heli.cpp keeps the copies on the host's flight. The pilot looks out of the door along the helicopter's yaw
+// (+0xF4.y of the helicopter = the pilot's view yaw while the mouse rests, MAP11A logs 2026-10-18). A partner drawn at
+// their own reported spot stood in that door, in the middle of the view: stand them beside us and a little back
+// ([Puppets] PilotSide / PilotBack metres), alternating sides by player id, so they show up when we look aside.
+float g_pilot_side = 1.2f;
+float g_pilot_back = 0.5f;
+
+bool pilot_spot(uint8_t id, const LocalPlayerSample& local, entity::Vec3& out) {
+    Vec3 seat{};
+    int16_t parent = -1;
+    if (!seat_position(local, seat) || !core::safe_read(static_cast<char*>(local.entity) + 0xA4, parent)) return false;
+    void* heli = EntityById(parent);
+    Vec3 ang{};
+    if (!heli || !core::safe_read(static_cast<char*>(heli) + 0xF4, ang)) return false;
+    const float side = (id & 1) ? g_pilot_side : -g_pilot_side;
+    const float back = (id >= 2) ? g_pilot_back + 0.8f : g_pilot_back;
+    const float y = ang.y * 3.14159265f / 180.f;
+    const float fx = std::sin(y), fz = std::cos(y), rx = std::cos(y), rz = -std::sin(y);
+    out = {seat.x + rx * side - fx * back, seat.y, seat.z + rz * side - fz * back};
+    return true;
+}
+
 constexpr uintptr_t kEntWorldBox = 0xC4;  // float[6] min xyz, max xyz — used by cBspTree::UpdateEntity
 constexpr uintptr_t kEntBspLink = 0x124;  // int, -1 = not linked into BSP leaves
 
@@ -642,6 +665,10 @@ void load_settings() {
     g_y_offset = static_cast<float>(std::atof(yoff));
     GetPrivateProfileStringA("Puppets", "PhysicsKeyY", "0", yoff, sizeof yoff, ini.c_str());
     g_phys_key_y = static_cast<float>(std::atof(yoff));
+    GetPrivateProfileStringA("Puppets", "PilotSide", "1.2", yoff, sizeof yoff, ini.c_str());
+    g_pilot_side = static_cast<float>(std::atof(yoff));
+    GetPrivateProfileStringA("Puppets", "PilotBack", "0.5", yoff, sizeof yoff, ini.c_str());
+    g_pilot_back = static_cast<float>(std::atof(yoff));
     char crouch[64] = {};
     GetPrivateProfileStringA("Puppets", "CrouchClip", g_crouch_clip.c_str(), crouch, sizeof crouch, ini.c_str());
     g_crouch_clip = crouch;
@@ -780,7 +807,7 @@ public:
             bool seated = false;
             if (riding) {
                 entity::Vec3 seat;
-                seated = riding_spot(id, local, ride_heading_, seat);
+                seated = local.pilot ? pilot_spot(id, local, seat) : riding_spot(id, local, ride_heading_, seat);
                 if (seated) spot = seat;
                 // Standing in the bed: the truck's speed is not walking.
                 s.velocity[0] = s.velocity[1] = s.velocity[2] = 0.f;
