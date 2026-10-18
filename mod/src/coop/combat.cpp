@@ -15,6 +15,7 @@
 #include <cstring>
 #include <map>
 #include <string>
+#include <vector>
 
 #include <spdlog/spdlog.h>
 
@@ -505,6 +506,9 @@ GetEntFn g_get_target = nullptr;
 GetEntFn g_closest = nullptr;
 SetTargetFn g_set_target = nullptr;
 BrainHurtFn g_brain_hurt = nullptr;
+using InListFn = int(__thiscall*)(void* iface, void* ent);
+InListFn g_in_list = nullptr;
+void** g_iface = nullptr;  // CommonDll7 0x1aea7c, the cAIHuntAnimalInterface singleton
 constexpr float kRetargetMargin = 3.f;  // metres closer before an animal switches player
 constexpr uintptr_t kEntBrain = 0x200;  // cObjCharacterEx brain (entity_api FreezeBrain)
 constexpr uintptr_t kBrainTask = 0x158; // current task
@@ -551,7 +555,10 @@ bool BindBrain() {
         core::find_export(common, "?SetTarget@cAIHuntBrain_Animal@@QAEXPAVcObjEntity@@M@Z"));
     g_brain_hurt = reinterpret_cast<BrainHurtFn>(
         core::find_export(common, "?OnHurt@cAIHuntBrain_Animal@@UAEXPAVcObjEntity@@@Z"));
-    return g_get_target && g_closest && g_set_target && g_brain_hurt;
+    g_in_list = reinterpret_cast<InListFn>(
+        core::find_export(common, "?IsAttackTargetInList@cAIHuntAnimalInterface@@QAEHPAVcObjEntity@@@Z"));
+    g_iface = reinterpret_cast<void**>(reinterpret_cast<char*>(common) + 0x1aea7c);
+    return g_get_target && g_closest && g_set_target && g_brain_hurt && g_in_list;
 }
 
 bool PuppetsAreTargets() { return NetIsHost() && entity::AttackTargetCount() > 1; }
@@ -568,25 +575,90 @@ float DistSq(void* a, void* b) {
     return dx * dx + dy * dy + dz * dz;
 }
 
+// Spread: with [Scale] adding pack animals per player, every attacker that the script aims at "hunter" starts on the
+// same (nearest) player. Each other attacker already on a player counts as kSpreadMetres of extra distance to that
+// player ([Combat] AttackerSpreadMetres; 0 = nearest player only). An animal switches when another player scores
+// kRetargetMargin better than its current one, its own entry not counted on either side, so the switch it just made
+// never looks better undone. Two players side by side end up with 2+1 of three wolves; a player 10 m behind the
+// other draws attackers only from the fifth wolf on.
+float g_spread_m = 4.f;
+std::map<void*, uint32_t> g_switched_ms;  // animal -> last switch (2 s rest against jitter)
+
+bool InAttackList(void* ent) {
+    if (!g_in_list || !g_iface || !*g_iface || !ent) return false;
+    __try {
+        return g_in_list(*g_iface, ent) == 1;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+uint8_t PlayerIdOf(void* ent) {
+    const uint8_t who = puppets::PlayerOf(ent);
+    return who == net::kInvalidPlayerId ? 0 : who;  // the host's own hunter is player 0
+}
+
 void RetargetToNearestPlayer() {
     if (!PuppetsAreTargets() || !BindBrain()) return;
+    // The players animals may go for: the host's hunter and the living puppets that are in the attack list.
+    struct Cand {
+        void* ent;
+        int on;  // animals whose target is this player
+    };
+    Cand cands[net::kMaxPlayers + 1];
+    int nc = 0;
+    if (void* h = LocalPlayer().entity; h && InAttackList(h)) cands[nc++] = {h, 0};
+    puppets::SenseInfo list[4];
+    const int np = puppets::List(list, 4);
+    for (int i = 0; i < np && nc < static_cast<int>(std::size(cands)); ++i) {
+        if (!list[i].dead && InAttackList(list[i].entity)) cands[nc++] = {list[i].entity, 0};
+    }
+    if (nc < 2) return;
+    struct Chase {
+        void* animal;
+        void* brain;
+        int cur;  // index into cands
+    };
+    std::vector<Chase> chases;
     for (void* animal : Animals()) {
         void* brain = nullptr;
         if (!core::safe_read(static_cast<char*>(animal) + kEntBrain, brain) || !brain) continue;
-        void* cur = guarded_get(g_get_target, brain);
-        if (!IsPlayerEntity(cur)) continue;  // not chasing a player (or a scripted target): leave it alone
-        void* best = guarded_get(g_closest, brain);
-        if (!best || best == cur || !IsPlayerEntity(best)) continue;
-        const float d_cur = std::sqrt(DistSq(animal, cur)), d_best = std::sqrt(DistSq(animal, best));
-        if (d_cur - d_best < kRetargetMargin) continue;
+        void* t = guarded_get(g_get_target, brain);
+        if (!IsPlayerEntity(t)) continue;  // not chasing a player (or a scripted target): leave it alone
+        for (int c = 0; c < nc; ++c) {
+            if (cands[c].ent != t) continue;
+            ++cands[c].on;
+            chases.push_back({animal, brain, c});
+        }
+    }
+    const uint32_t now = GetTickCount();
+    for (const Chase& ch : chases) {
+        const auto rest = g_switched_ms.find(ch.animal);
+        if (rest != g_switched_ms.end() && now - rest->second < 2000) continue;
+        float score[net::kMaxPlayers + 1] = {};
+        float dist[net::kMaxPlayers + 1] = {};
+        int best = ch.cur;
+        for (int c = 0; c < nc; ++c) {
+            dist[c] = std::sqrt(DistSq(ch.animal, cands[c].ent));
+            score[c] = dist[c] + g_spread_m * static_cast<float>(cands[c].on - (c == ch.cur ? 1 : 0));
+            if (score[c] < score[best]) best = c;
+        }
+        if (best == ch.cur || score[ch.cur] - score[best] < kRetargetMargin) continue;
         void* task = nullptr;
-        core::safe_read(static_cast<char*>(brain) + kBrainTask, task);
+        core::safe_read(static_cast<char*>(ch.brain) + kBrainTask, task);
         int task_state = 0;
         if (task) core::safe_read(static_cast<char*>(task) + 4, task_state);
         if (task && task_state != 1) continue;  // ProcessAttackStuck only switches a task in state 1
-        const bool ok = guarded_switch(brain, task, cur, best);
-        spdlog::info("combat: animal id {} switches to the nearer player {} ({:.1f} m, was {:.1f} m) ok={}", IdOf(animal),
-                     puppets::PlayerOf(best) == net::kInvalidPlayerId ? 0 : puppets::PlayerOf(best), d_best, d_cur, ok);
+        const bool ok = guarded_switch(ch.brain, task, cands[ch.cur].ent, cands[best].ent);
+        if (ok) {
+            --cands[ch.cur].on;
+            ++cands[best].on;
+            g_switched_ms[ch.animal] = now;
+        }
+        spdlog::info("combat: animal id {} switches to player {} ({:.1f} m, {} other(s) on them) from player {} ({:.1f} m, "
+                     "{} other(s)) ok={}",
+                     IdOf(ch.animal), PlayerIdOf(cands[best].ent), dist[best], cands[best].on - (ok ? 1 : 0),
+                     PlayerIdOf(cands[ch.cur].ent), dist[ch.cur], cands[ch.cur].on - (ok ? 0 : 1), ok);
     }
 }
 
@@ -731,8 +803,13 @@ public:
         g_pvp_knock_ms = static_cast<uint32_t>(GetPrivateProfileIntA("Combat", "KnockMs", 2600, ini.c_str()));
         g_follow_host_flag = GetPrivateProfileIntA("Combat", "FollowHostAttackable", 1, ini.c_str()) != 0;
         g_puppet_deny = GetPrivateProfileIntA("Combat", "PuppetDenySA", 1, ini.c_str()) != 0;
-        spdlog::info("combat: knock on shot={} melee={} ms={} followHostAttackable={} puppetDenySA={}", g_knock_on_shot,
-                     g_knock_on_melee, g_pvp_knock_ms, g_follow_host_flag, g_puppet_deny);
+        {
+            char spread[32] = {};
+            GetPrivateProfileStringA("Combat", "AttackerSpreadMetres", "4", spread, sizeof spread, ini.c_str());
+            g_spread_m = std::max(0.f, static_cast<float>(std::atof(spread)));
+        }
+        spdlog::info("combat: knock on shot={} melee={} ms={} followHostAttackable={} puppetDenySA={} spread={:.1f} m", g_knock_on_shot,
+                     g_knock_on_melee, g_pvp_knock_ms, g_follow_host_flag, g_puppet_deny, g_spread_m);
     }
 
     void OnEngineReady(HMODULE) override {
@@ -766,6 +843,7 @@ public:
         attackable_ = -1;
         for (uint32_t& t : g_deny_until) t = 0;
         g_canplay_checked = false;
+        g_switched_ms.clear();
     }
 
     void OnFrame(float) override {
