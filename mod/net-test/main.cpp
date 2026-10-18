@@ -257,6 +257,28 @@ void TestCodec(Tally& t) {
                 "v2 hello decodes");
     }
     {
+        VehicleStates vs;
+        vs.tickMs = 123456;
+        vs.mapSerial = 7;
+        VehicleState v;
+        v.id = 68;
+        for (int i = 0; i < 9; ++i) v.rot[i] = static_cast<float>(i) * 0.5f;
+        v.pos[0] = -312.5f;
+        v.pos[1] = 0.65f;
+        v.pos[2] = -64.25f;
+        vs.vehicles.push_back(v);
+        auto b = Encode(vs);
+        auto d = Decode(b.data(), b.size());
+        t.Check(b.size() == kVehicleStatesHeaderBytes + kVehicleStateBytes && d &&
+                    std::holds_alternative<VehicleStates>(*d) && std::get<VehicleStates>(*d).vehicles.size() == 1 &&
+                    std::get<VehicleStates>(*d).vehicles[0].id == 68 &&
+                    std::get<VehicleStates>(*d).vehicles[0].rot[8] == 4.f &&
+                    std::get<VehicleStates>(*d).vehicles[0].pos[2] == -64.25f && std::get<VehicleStates>(*d).mapSerial == 7,
+                "vehicle states round trip");
+        t.Check(!IsReliable(MsgId::VehicleStates) && ChannelFor(MsgId::VehicleStates) == kChannelState,
+                "vehicle states unreliable on the state channel");
+    }
+    {
         AnimalStates s;
         s.mapSerial = 0xBEEF;
         auto b = Encode(s);

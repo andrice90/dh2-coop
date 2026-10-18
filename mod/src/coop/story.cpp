@@ -443,8 +443,18 @@ void PumpGather() {
     }
 }
 
+// A client trigger waiting for the host calls Fire every frame: one FIRE line per trigger every 2 s is enough.
+bool LogFireNow(void* self) {
+    static std::unordered_map<void*, uint32_t> last;
+    const uint32_t now = GetTickCount();
+    auto it = last.find(self);
+    if (it != last.end() && now - it->second < 2000) return false;
+    last[self] = now;
+    return true;
+}
+
 void __fastcall hk_TriggerFire(void* self, void*, void* activator) {
-    if (g_log) {
+    if (g_log && (g_in_apply || NetIsHost() || LogFireNow(self))) {
         spdlog::info("story: [{}] trigger FIRE {} activator={}{}", Role(), Describe(self), Describe(activator),
                      g_in_apply ? " (host commit)" : "");
     }
@@ -466,7 +476,18 @@ void __fastcall hk_TriggerFire(void* self, void*, void* activator) {
         return;
     }
     // Already decided: the host's fire ran here, or it is waiting behind our cutscene camera.
-    if (g_ran_fire.count(id) != 0) return;
+    if (g_ran_fire.count(id) != 0) {
+        // The trigger's update keeps calling Fire every frame while its state (+0x1fc) is still pending (2), which
+        // flooded the client log with one FIRE line per frame (MAP4A cScrTask01, audit-b G10). It ran here: done.
+        int state = 0;
+        if (core::safe_read(static_cast<char*>(self) + 0x1fc, state) && state != 1) {
+            const int fired = 1;
+            std::memcpy(static_cast<char*>(self) + 0x1fc, &fired, sizeof fired);
+            spdlog::info("story: '{}' (id {}) ran here already; trigger state {} -> 1 (stops the per-frame Fire)", name,
+                         id, state);
+        }
+        return;
+    }
     for (const net::GameEvent& pending : g_deferred_fires) {
         if (pending.subjectId == static_cast<uint16_t>(id)) return;
     }

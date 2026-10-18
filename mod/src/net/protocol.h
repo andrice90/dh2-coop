@@ -18,7 +18,8 @@ namespace net {
 // v2 (2026-10-17): Hello + modBuild/passHash, Reject + hostBuild, AnimalStates + mapSerial. v1 had grown event
 // kinds 7-16 and the NPC arms string without a bump.
 // v3 (2026-10-17 lobby): Hello + model, PlayerJoined + model (the puppet body each player picked).
-constexpr uint8_t kProtocolVersion = 3;
+// v4 (2026-10-18): VehicleStates (the host's truck pose, MAP4A / MAP5).
+constexpr uint8_t kProtocolVersion = 4;
 constexpr uint16_t kGameBuild = 434;
 constexpr uint16_t kDefaultPort = 27420;
 constexpr int kMaxPlayers = 4;
@@ -53,10 +54,11 @@ enum class MsgId : uint8_t {
     Pong = 8,
     AnimalStates = 9,
     AnimalHit = 10,
+    VehicleStates = 11,
     GameEvent = 48,
 };
 
-// Ids 11-15 are unused. Ranges below stay unused except 48 (GameEvent). Do not send them.
+// Ids 12-15 are unused. Ranges below stay unused except 48 (GameEvent). Do not send them.
 // See docs/net-protocol.md.
 constexpr uint8_t kReservedControlBegin = 16;  // 16-31
 constexpr uint8_t kAnimalStateBegin = 32;      // 32-47
@@ -70,6 +72,9 @@ constexpr uint8_t kMaxAnimalStateChars = 31;
 constexpr size_t kAnimalStatesHeaderBytes = 10;  // id + seq + tickMs + mapSerial + count
 constexpr size_t kAnimalStateFixedBytes = 25;   // one entry, empty state and arms (24 before the arms string)
 constexpr size_t kAnimalHitBytes = 20;
+constexpr uint8_t kMaxVehicles = 4;
+constexpr size_t kVehicleStatesHeaderBytes = 8;  // id + tickMs + mapSerial + count
+constexpr size_t kVehicleStateBytes = 50;        // entity id + 3x3 orientation + position
 constexpr size_t kGameEventHeaderBytes = 18;  // id through key length, empty key
 constexpr uint8_t kMaxGameEventKeyChars = 31;
 
@@ -150,6 +155,7 @@ struct PlayerState {
 constexpr uint16_t kFlagCrouched = 1u << 0;
 constexpr uint16_t kFlagReloading = 1u << 1;
 constexpr uint16_t kFlagFiring = 1u << 2;
+constexpr uint16_t kFlagRiding = 1u << 3;   // hunter attached to a vehicle (+0xA4 parent set: MAP4A / MAP5 truck seat)
 constexpr uint16_t kFlagDead = 1u << 4;     // hunter +0x6CC set (OnDie); the host stops animals targeting the puppet
 constexpr uint16_t kFlagKnocked = 1u << 5;  // hunter inside a sync attack (+0x368): puppets show the knocked-down pose
 constexpr int kShotCounterShift = 8;
@@ -205,6 +211,20 @@ struct AnimalStates {
     std::vector<AnimalState> animals;
 };
 
+// One vehicle's physics chassis: rotation rows (cPhysicsObject body +4, m3x3) and position (body +0x28).
+struct VehicleState {
+    uint16_t id = 0;  // BSP entity id, the same on every peer
+    float rot[9] = {};
+    float pos[3] = {};
+};
+
+// Host → clients, unreliable. Clients drive their copy of each vehicle from this (vehicles.cpp).
+struct VehicleStates {
+    uint32_t tickMs = 0;
+    uint16_t mapSerial = 0;
+    std::vector<VehicleState> vehicles;  // at most kMaxVehicles
+};
+
 // Client → host, reliable. The host sets shooterId from the sending peer's player id.
 struct AnimalHit {
     uint8_t shooterId = kInvalidPlayerId;
@@ -236,15 +256,17 @@ struct GameEvent {
 };
 
 using Message = std::variant<Hello, Welcome, Reject, PlayerJoined, PlayerLeft, PlayerState, Ping, Pong, AnimalStates,
-                              AnimalHit, GameEvent>;
+                              AnimalHit, GameEvent, VehicleStates>;
 
 constexpr uint8_t ChannelFor(MsgId id) {
-    if (id == MsgId::PlayerState || id == MsgId::AnimalStates) return kChannelState;
+    if (id == MsgId::PlayerState || id == MsgId::AnimalStates || id == MsgId::VehicleStates) return kChannelState;
     if (id == MsgId::AnimalHit || id == MsgId::GameEvent) return kChannelEvents;
     return kChannelControl;
 }
 
-constexpr bool IsReliable(MsgId id) { return id != MsgId::PlayerState && id != MsgId::AnimalStates; }
+constexpr bool IsReliable(MsgId id) {
+    return id != MsgId::PlayerState && id != MsgId::AnimalStates && id != MsgId::VehicleStates;
+}
 
 inline void SetName(char (&dst)[kNameBytes], std::string_view src) {
     for (size_t i = 0; i < kNameBytes; ++i) dst[i] = 0;
@@ -311,6 +333,7 @@ std::vector<uint8_t> Encode(const Pong& msg);
 std::vector<uint8_t> Encode(const AnimalStates& msg);
 std::vector<uint8_t> Encode(const AnimalHit& msg);
 std::vector<uint8_t> Encode(const GameEvent& msg);
+std::vector<uint8_t> Encode(const VehicleStates& msg);
 std::vector<uint8_t> Encode(const Message& msg);
 
 // Matching id, every field inside the span, no trailing bytes. Otherwise nullopt.

@@ -367,6 +367,11 @@ void OnKnockRequest(const net::GameEvent& ev) { RouteKnock(ev.actorId, static_ca
 uint8_t PickVictim(bool melee) {
     const LocalPlayerSample& lp = LocalPlayer();
     if (!lp.valid || !lp.viewValid) return net::kInvalidPlayerId;
+    // Nobody is knocked over on a ride (MAP4A / MAP5 truck): every rider reports the same seat of their own copy of
+    // the truck, which is where our own eye is, so every shot "hit" the other players (user, 2026-10-18).
+    int16_t parent = -1;
+    if (lp.entity && core::safe_read(static_cast<char*>(lp.entity) + 0xA4, parent) && parent >= 0)
+        return net::kInvalidPlayerId;
     const float yaw = lp.viewYaw * 3.14159265f / 180.f, pitch = lp.viewPitch * 3.14159265f / 180.f;
     const float d[3] = {std::sin(yaw) * std::cos(pitch), std::sin(pitch), std::cos(yaw) * std::cos(pitch)};
     const SessionView v = Snapshot();
@@ -374,7 +379,7 @@ uint8_t PickVictim(bool melee) {
     float best_t = melee ? 2.2f : 80.f;
     for (int i = 0; i < v.remoteCount; ++i) {
         const RemoteView& r = v.remotes[i];
-        if (r.packets == 0) continue;
+        if (r.packets == 0 || (r.flags & net::kFlagRiding)) continue;
         if (melee) {
             const float dx = r.pos[0] - lp.pos.x, dz = r.pos[2] - lp.pos.z;
             const float dist = std::sqrt(dx * dx + dz * dz);

@@ -67,7 +67,92 @@ struct Puppet {
     uint32_t drift_log_ms = 0;
     int model = -1;              // puppet_models.h index the player picked (-1 = [Puppets] Model)
     int spawned_model = -1;      // the index the current entity was made with
+    bool coll_off = false;       // riding: physics body collides with nothing (coll_saved holds the words)
+    uint32_t coll_saved[3] = {};
+    uint32_t gravity_saved = 0;  // body +0x110 while riding (zeroed, as cObjVehicle::Freeze does)
 };
+
+// Riding (kFlagRiding: the remote hunter sits in a vehicle). Every machine drives its own copy of the MAP4A / MAP5
+// truck, so a remote rider's reported position is somewhere else on the same road, often right in front of our truck.
+// There the puppet's physics body was an obstacle: the truck that drove into it flipped over (MAP4A, 2026-10-17 23:50,
+// both directions). A riding puppet stands in the bed of *our* truck instead and collides with nothing.
+// Without collision the body still falls: gravity kept adding speed, and every physics step carried the drawn
+// model metres from where place() put it (8-9 m off the truck after ~10 s, MAP4A ride log 2026-10-18). Riding
+// bodies get no gravity (+0x110, what cObjVehicle::Freeze zeroes) and no velocity (+0x34 linear, +0x40 angular).
+// Every frame, not only when riding starts: a sync attack on the puppet (PlaySA) writes its own collision words back
+// (MAP4A host: a lioness tackled the riding puppet, which then sat 9 m off the truck for the rest of the ride).
+void hold_body(Puppet& p) {
+    char* phys = nullptr;
+    char* body = nullptr;
+    if (!p.entity || !core::safe_read(static_cast<char*>(p.entity) + 0x118, phys) || !phys ||
+        !core::safe_read(phys + 4, body) || !body)
+        return;
+    const uint32_t none[3] = {0, 0, 0};
+    std::memcpy(phys + 0x20, none, sizeof none);
+    const uint32_t no_gravity = 0;
+    std::memcpy(body + 0x110, &no_gravity, sizeof no_gravity);
+    const float zero[6] = {};
+    std::memcpy(body + 0x34, zero, 12);
+    std::memcpy(body + 0x40, zero, 12);
+    // The body keeps two more states at *(+0xc0) / *(+0xc4) (cPhysicsObject::SetPosition fills all three when it first
+    // places a body). Moving only the current one left the drawn rider trailing behind the truck and snapping back
+    // (the rider log had the entity on target every time, MAP4A 2026-10-18). Keep them on the same spot.
+    float pos[3] = {};
+    if (!core::safe_copy(body + 0x28, pos, sizeof pos)) return;
+    for (uintptr_t slot : {uintptr_t{0xc0}, uintptr_t{0xc4}}) {
+        char* state = nullptr;
+        if (core::safe_read(body + slot, state) && state) {
+            float probe[3] = {};
+            if (core::safe_copy(state + 0x28, probe, sizeof probe)) std::memcpy(state + 0x28, pos, sizeof pos);
+        }
+    }
+}
+
+void set_collision(Puppet& p, bool on) {
+    char* phys = nullptr;
+    if (!g_physics || !p.entity || !core::safe_read(static_cast<char*>(p.entity) + 0x118, phys) || !phys) return;
+    char* body = nullptr;
+    core::safe_read(phys + 4, body);
+    if (!on && !p.coll_off) {
+        core::safe_copy(phys + 0x20, p.coll_saved, sizeof p.coll_saved);
+        const uint32_t none[3] = {0, 0, 0};
+        std::memcpy(phys + 0x20, none, sizeof none);
+        if (body && core::safe_read(body + 0x110, p.gravity_saved)) {
+            const uint32_t zero = 0;
+            std::memcpy(body + 0x110, &zero, sizeof zero);
+        }
+        p.coll_off = true;
+        spdlog::info("puppets: puppet {:#x} rides a vehicle: collision and gravity off (was {:#x} {:#x} {:#x}, g {:#x})",
+                     reinterpret_cast<uintptr_t>(p.entity), p.coll_saved[0], p.coll_saved[1], p.coll_saved[2],
+                     p.gravity_saved);
+    } else if (on && p.coll_off) {
+        std::memcpy(phys + 0x20, p.coll_saved, sizeof p.coll_saved);
+        if (body) std::memcpy(body + 0x110, &p.gravity_saved, sizeof p.gravity_saved);
+        p.coll_off = false;
+        spdlog::info("puppets: puppet {:#x} left the vehicle: collision and gravity back on",
+                     reinterpret_cast<uintptr_t>(p.entity));
+    }
+}
+
+// The seated hunter's live position (+0xE8). LocalPlayer().pos is sampled for the network and ran 2.5-5 m behind
+// the truck at speed (MAP4A rider log, 2026-10-18): riders seated from it trailed the truck.
+bool seat_position(const LocalPlayerSample& local, Vec3& out) {
+    int16_t parent = -1;
+    return local.entity && core::safe_read(static_cast<char*>(local.entity) + 0xA4, parent) && parent >= 0 &&
+           core::safe_read(static_cast<char*>(local.entity) + 0xE8, out);
+}
+
+// Bed slots beside and behind our own seat, per player id (right, forward metres in the truck's frame).
+bool riding_spot(uint8_t id, const LocalPlayerSample& local, float heading_deg, entity::Vec3& out) {
+    Vec3 seat{};
+    if (!seat_position(local, seat)) return false;
+    static const float kSlots[4][2] = {{-0.8f, -0.9f}, {0.8f, -0.9f}, {-0.8f, -1.8f}, {0.8f, -1.8f}};
+    const float* sl = kSlots[id & 3];
+    const float y = heading_deg * 3.14159265f / 180.f;
+    const float fx = std::sin(y), fz = std::cos(y), rx = std::cos(y), rz = -std::sin(y);
+    out = {seat.x + rx * sl[0] + fx * sl[1], seat.y, seat.z + rz * sl[0] + fz * sl[1]};
+    return true;
+}
 
 constexpr uintptr_t kEntWorldBox = 0xC4;  // float[6] min xyz, max xyz — used by cBspTree::UpdateEntity
 constexpr uintptr_t kEntBspLink = 0x124;  // int, -1 = not linked into BSP leaves
@@ -583,6 +668,20 @@ public:
         if (g_spike) Spike(dt, local);
 
         const uint32_t now = now_ms();
+        // Our vehicle's heading from our own seat's movement (the attached hunter's angle does not follow the
+        // puppet yaw convention). Kept while the vehicle stands still.
+        Vec3 seat{};
+        if (seat_position(local, seat)) {
+            if (have_last_local_ && dt > 0.f) {
+                const float dx = seat.x - last_local_.x, dz = seat.z - last_local_.z;
+                if (dx * dx + dz * dz > (0.5f * dt) * (0.5f * dt))
+                    ride_heading_ = std::atan2(dx, dz) * 180.f / 3.14159265f;
+            }
+            last_local_ = seat;
+            have_last_local_ = true;
+        } else {
+            have_last_local_ = false;
+        }
         for (auto& [id, p] : g_puppets) {
             net::InterpSample s;
             if (!p.buffer.Sample(now, s)) continue;
@@ -597,9 +696,47 @@ public:
             if (!p.entity) continue;
             // A dead player is not prey: animals drop list entries only through RemoveAttackTarget.
             p.dead = (s.flags & net::kFlagDead) != 0;
-            if (p.dead) unregister_target(p);
+            const bool riding = (s.flags & net::kFlagRiding) != 0;
+            // A rider is not prey either: a lion's sync attack on a puppet we keep moving back into the truck bed
+            // left the lion waiting on its partner and threw the puppet off the truck (MAP4A host, 2026-10-18).
+            // Lions on a ride go for the host's own hunter; riders still shoot.
+            if (p.dead || riding) unregister_target(p);
             else register_target(p);
-            place(p, {s.pos[0], s.pos[1] + g_y_offset, s.pos[2]}, s.yaw);
+            set_collision(p, !riding);
+            entity::Vec3 spot{s.pos[0], s.pos[1] + g_y_offset, s.pos[2]};
+            bool seated = false;
+            if (riding) {
+                entity::Vec3 seat;
+                seated = riding_spot(id, local, ride_heading_, seat);
+                if (seated) spot = seat;
+                // Standing in the bed: the truck's speed is not walking.
+                s.velocity[0] = s.velocity[1] = s.velocity[2] = 0.f;
+            }
+            place(p, spot, s.yaw);
+            if (riding) hold_body(p);
+            if (riding && now - ride_log_ms_ >= 2000 && ride_logs_ < 40) {
+                ride_log_ms_ = now;
+                ++ride_logs_;
+                Vec3 at{}, hunter{}, chassis{}, body_pos{};
+                core::safe_read(static_cast<char*>(p.entity) + 0xE8, at);
+                core::safe_read(static_cast<char*>(local.entity) + 0xE8, hunter);
+                int16_t parent = -1;
+                char *veh = nullptr, *vphys = nullptr, *vbody = nullptr, *pphys = nullptr, *pbody = nullptr;
+                if (core::safe_read(static_cast<char*>(local.entity) + 0xA4, parent) && parent >= 0 &&
+                    (veh = static_cast<char*>(EntityById(parent))) && core::safe_read(veh + 0x118, vphys) && vphys &&
+                    core::safe_read(vphys + 4, vbody) && vbody)
+                    core::safe_read(vbody + 0x28, chassis);
+                if (core::safe_read(static_cast<char*>(p.entity) + 0x118, pphys) && pphys &&
+                    core::safe_read(pphys + 4, pbody) && pbody)
+                    core::safe_read(pbody + 0x28, body_pos);
+                auto d = [](const Vec3& a, const Vec3& b) {
+                    return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z));
+                };
+                spdlog::info("puppets: rider {} seated={} to chassis: target {:.2f} entity {:.2f} body {:.2f} hunter {:.2f} "
+                             "tracker-hunter {:.2f} | heading={:.1f}",
+                             id, seated, d({spot.x, spot.y, spot.z}, chassis), d(at, chassis), d(body_pos, chassis),
+                             d(hunter, chassis), d(local.pos, chassis), ride_heading_);
+            }
             sync_weapon(p, s.weaponId);
             place_weapon(p);
             pick_anim(p, choose_clips(p, s, now));
@@ -719,6 +856,11 @@ private:
     // [Puppets] SpikeSway=0 holds the test puppet still (same spot in every screenshot, for A/B pictures).
     bool spike_sway_ = GetPrivateProfileIntA("Puppets", "SpikeSway", 1,
                                              (core::self_dir() / "dh2coop.ini").string().c_str()) != 0;
+    Vec3 last_local_{};
+    bool have_last_local_ = false;
+    float ride_heading_ = 0.f;
+    uint32_t ride_log_ms_ = 0;
+    int ride_logs_ = 0;
     float log_accum_ = 0.f;
     float diag_accum_ = 0.f;
     float draw_accum_ = 0.f;

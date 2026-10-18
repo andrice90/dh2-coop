@@ -28,6 +28,7 @@ enum class EventType : uint8_t {
     AnimalStates,
     AnimalHit,
     GameEvent,
+    VehicleStates,
 };
 
 struct Event {
@@ -46,6 +47,7 @@ struct Event {
     AnimalStates animalStates{};
     AnimalHit animalHit{};
     GameEvent gameEvent{};
+    VehicleStates vehicleStates{};
 };
 
 struct PeerStats {
@@ -100,6 +102,8 @@ public:
 
     // Host only. Broadcasts on the unreliable snapshot channel. Returns false on a client.
     bool SendAnimalStates(const AnimalStates& states);
+    // Host only, unreliable on the snapshot channel: the vehicles' chassis poses.
+    bool SendVehicleStates(const VehicleStates& states);
     // Client only. Reliable to the host. Returns false on the host.
     // The host writes shooterId from the sending peer before the event is queued.
     bool SendAnimalHit(const AnimalHit& hit);

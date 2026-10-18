@@ -17,6 +17,7 @@ const char* ToString(MsgId id) {
     case MsgId::Pong: return "Pong";
     case MsgId::AnimalStates: return "AnimalStates";
     case MsgId::AnimalHit: return "AnimalHit";
+    case MsgId::VehicleStates: return "VehicleStates";
     case MsgId::GameEvent: return "GameEvent";
     }
     return "Unknown";
@@ -122,6 +123,28 @@ std::optional<T> ParseExact(const uint8_t* data, size_t len, size_t expect, MsgI
     ByteReader r(data + 1, len - 1);
     T msg{};
     fill(r, msg);
+    if (!r.ok() || r.remaining() != 0) return std::nullopt;
+    return msg;
+}
+
+std::optional<VehicleStates> ParseVehicleStates(const uint8_t* data, size_t len) {
+    if (data == nullptr || len < kVehicleStatesHeaderBytes || data[0] != static_cast<uint8_t>(MsgId::VehicleStates)) {
+        return std::nullopt;
+    }
+    ByteReader r(data + 1, len - 1);
+    VehicleStates msg;
+    msg.tickMs = r.U32();
+    msg.mapSerial = r.U16();
+    const uint8_t count = r.U8();
+    if (!r.ok() || count > kMaxVehicles || len != kVehicleStatesHeaderBytes + count * kVehicleStateBytes) {
+        return std::nullopt;
+    }
+    msg.vehicles.resize(count);
+    for (auto& v : msg.vehicles) {
+        v.id = r.U16();
+        for (float& f : v.rot) f = r.F32();
+        for (float& f : v.pos) f = r.F32();
+    }
     if (!r.ok() || r.remaining() != 0) return std::nullopt;
     return msg;
 }
@@ -306,6 +329,22 @@ std::vector<uint8_t> Encode(const AnimalHit& msg) {
     return w.Take();
 }
 
+std::vector<uint8_t> Encode(const VehicleStates& msg) {
+    ByteWriter w;
+    w.U8(static_cast<uint8_t>(MsgId::VehicleStates));
+    w.U32(msg.tickMs);
+    w.U16(msg.mapSerial);
+    const size_t n = msg.vehicles.size() < kMaxVehicles ? msg.vehicles.size() : kMaxVehicles;
+    w.U8(static_cast<uint8_t>(n));
+    for (size_t i = 0; i < n; ++i) {
+        const VehicleState& v = msg.vehicles[i];
+        w.U16(v.id);
+        for (float f : v.rot) w.F32(f);
+        for (float f : v.pos) w.F32(f);
+    }
+    return w.Take();
+}
+
 std::vector<uint8_t> Encode(const GameEvent& msg) {
     ByteWriter w;
     w.U8(static_cast<uint8_t>(MsgId::GameEvent));
@@ -427,6 +466,11 @@ std::optional<Message> Decode(const uint8_t* data, size_t len) {
             o.hitPos[1] = r.F32();
             o.hitPos[2] = r.F32();
         });
+        if (!m) return std::nullopt;
+        return Message{std::move(*m)};
+    }
+    case MsgId::VehicleStates: {
+        auto m = ParseVehicleStates(data, len);
         if (!m) return std::nullopt;
         return Message{std::move(*m)};
     }

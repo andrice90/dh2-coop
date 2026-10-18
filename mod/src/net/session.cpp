@@ -438,6 +438,15 @@ struct Session::Impl {
         Push(ev);
     }
 
+    void On(Remote& remote, const VehicleStates& states) {
+        if (hosting) return;
+        Event ev;
+        ev.type = EventType::VehicleStates;
+        ev.playerId = remote.playerId;
+        ev.vehicleStates = states;
+        Push(ev);
+    }
+
     void On(Remote& remote, const AnimalHit& hit) {
         if (!hosting || !remote.active) return;
         AnimalHit fixed = hit;
@@ -636,6 +645,16 @@ struct Session::Impl {
         return true;
     }
 
+    bool SendVehicles(const VehicleStates& states) {
+        if (!host || !hosting) return false;
+        const auto bytes = Encode(states);
+        for (auto& rp : remotes) {
+            if (!rp->active) continue;
+            Send(rp.get(), bytes, kChannelState, false);
+        }
+        return true;
+    }
+
     bool SendHit(const AnimalHit& hit) {
         if (!host || hosting || !connected) return false;
         Remote* remote = From(server);
@@ -817,6 +836,7 @@ bool Session::SendPlayerState(const PlayerState& state) { return impl_->SendStat
 bool Session::SendPing(uint32_t token) { return impl_->SendPing(token); }
 
 bool Session::SendAnimalStates(const AnimalStates& states) { return impl_->SendAnimals(states); }
+bool Session::SendVehicleStates(const VehicleStates& states) { return impl_->SendVehicles(states); }
 
 bool Session::SendAnimalHit(const AnimalHit& hit) { return impl_->SendHit(hit); }
 

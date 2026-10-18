@@ -8,6 +8,7 @@ namespace net {
 struct AnimalStates;
 struct AnimalHit;
 struct GameEvent;
+struct VehicleStates;
 }
 
 namespace dh2::coop {
@@ -36,6 +37,7 @@ struct RemoteView {
     float yaw = 0.f;
     uint32_t packets = 0;
     uint32_t rttMs = 0;
+    uint16_t flags = 0;  // last PlayerState flags (net::kFlag*)
 };
 struct SessionView {
     std::string role;  // "offline" | "host" | "client"
@@ -108,6 +110,7 @@ std::string StatusLine();
 
 // Game thread. Host broadcast / client hit report. False when this process has the wrong role.
 bool BroadcastAnimalStates(const net::AnimalStates& states);
+bool BroadcastVehicleStates(const net::VehicleStates& states);
 bool ReportAnimalHit(const net::AnimalHit& hit);
 bool SendGameEvent(const net::GameEvent& ev);
 // Host: a commit to one client only (catch-up after a join or a map change).

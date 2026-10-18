@@ -46,6 +46,7 @@ namespace {
 constexpr uintptr_t kEntId = 0x04;
 constexpr uintptr_t kEntPos = 0xE8;
 constexpr uintptr_t kEntAngle = 0xF4;
+constexpr uintptr_t kEntParent = 0xA4;  // int16 parent entity id, -1 = free in the world
 constexpr uintptr_t kEntWorldBox = 0xC4;
 constexpr uintptr_t kEntHealth = 0x19C;
 // cObjCobra (re/notes/snake.md). +0x728 null makes Update return before the bite and the death timer.
@@ -126,6 +127,8 @@ void SetNpcProfileHealth(void* npc, float hp) {
 // Client: a mirrored NPC takes no local damage (cObjNPC::OnHurt GameDll 0x5eeb0, vt +0x14C): the host's health
 // arrives every frame. Two-PC test: Hugh's bar dropped at different rates on host and client.
 safetyhook::InlineHook* g_npc_hurt_hook = nullptr;
+safetyhook::InlineHook* g_movetopos_hook = nullptr;
+int __fastcall hk_MoveToPos(void* self, void*, int mode, int arg);  // below (needs the module's mirror table)
 bool IsMirroredNpc(void* ent);  // below (needs the module's mirror table)
 
 void __fastcall hk_NpcHurt(void* self, void*, void* attacker, float dmg, int type, const void* pos, const void* dir) {
@@ -263,6 +266,8 @@ struct Mirror {
     AnimalBuffer buffer;
     bool frozen = false;
     bool freeze_logged = false;
+    int refreeze_logged = 0;
+    std::map<std::string, int> state_fails;  // body-state name -> failed SetBodyState calls on this copy
     uint32_t last_hit_ms = 0;  // client: last AnimalHit sent for this animal
     bool missing_logged = false;
     float rel[6] = {};
@@ -526,6 +531,13 @@ public:
 
     void OnGameDllLoaded(HMODULE game) override {
         static const uint8_t kPrologue[5] = {0x55, 0x8b, 0xec, 0x6a, 0xff};
+        void* mtp = reinterpret_cast<char*>(game) + 0x14610;  // cScrAnimal vt +0x158 (script MoveToPos reset)
+        uint8_t mtp_bytes[5] = {};
+        if (core::safe_copy(mtp, mtp_bytes, sizeof mtp_bytes) && std::memcmp(mtp_bytes, kPrologue, sizeof mtp_bytes) == 0)
+            g_movetopos_hook = core::install_hook("cScrAnimal MoveToPos reset (0x14610)", mtp,
+                                                  reinterpret_cast<void*>(&hk_MoveToPos));
+        else
+            spdlog::error("animals: MoveToPos reset at GameDll7+0x14610 has unexpected bytes; not hooked");
         void* fn = reinterpret_cast<char*>(game) + 0x5eeb0;  // cObjNPC::OnHurt
         uint8_t got[5] = {};
         if (!core::safe_copy(fn, got, sizeof got) || std::memcmp(got, kPrologue, sizeof got) != 0) {
@@ -822,6 +834,15 @@ public:
         if (dead_.insert(id).second) spdlog::info("animals: death event id={}", id);
     }
 
+    // Client: an animal this module holds frozen (brain off, the host's pose applied every frame).
+    bool IsFrozenMirrorAnimal(void* ent) {
+        if (hosting_ || !session_active_ || !ent) return false;
+        int16_t id = -1;
+        if (!core::safe_read(static_cast<char*>(ent) + kEntId, id) || id < 0) return false;
+        const auto it = mirrors_.find(static_cast<uint16_t>(id));
+        return it != mirrors_.end() && it->second.frozen && !it->second.is_npc;
+    }
+
     bool IsMirroredNpcEntity(void* ent) {
         if (hosting_ || !ent) return false;
         int16_t id = -1;
@@ -981,6 +1002,20 @@ private:
                     m.have_rel = CaptureRel(ent, m.rel);
                     if (!m.have_rel) spdlog::warn("animals: mirror id={} world box unreadable", id);
                 }
+            } else if (!m.is_npc && !IsCobra(ent) && !host_cutscene) {
+                // A replayed script MoveToPos (0x14610) clears brain +0x79, the FreezeBrain byte: this copy then ran its
+                // own AI, attacked the local hunter and fought the mirror's body states until the script VM faulted
+                // (MAP4A client, cLionesse "Attack chain", 2026-10-18; audit-a G5 / audit-b G2). Freeze it again.
+                char* brain = nullptr;
+                uint8_t frozen_byte = 1;
+                if (core::safe_read(static_cast<char*>(ent) + 0x200, brain) && brain &&
+                    core::safe_read(brain + 0x79, frozen_byte) && frozen_byte == 0) {
+                    const bool ok = entity::FreezeBrain(ent, true);
+                    if (m.refreeze_logged < 3) {
+                        ++m.refreeze_logged;
+                        spdlog::info("animals: mirror id={} brain woke up (script MoveToPos); frozen again ok={}", id, ok);
+                    }
+                }
             }
             if (IsCobra(ent)) {
                 void* bite = nullptr;
@@ -1062,7 +1097,11 @@ private:
                 yaw = m.first_yaw;
                 --m.place_burst;
             }
-            if (m.have_rel) PlaceEntity(ent, pos, yaw, m.rel);
+            // An actor attached to something here (the MAP4A driver in this client's own truck) rides with it. Moving
+            // it to the host's seat position pulled it out of the truck whenever the two trucks were apart (audit-a G10).
+            int16_t parent = -1;
+            const bool attached = core::safe_read(static_cast<char*>(ent) + kEntParent, parent) && parent >= 0;
+            if (m.have_rel && !attached) PlaceEntity(ent, pos, yaw, m.rel);
             m.last_target = pos;
             m.last_yaw = yaw;
             m.have_target = true;
@@ -1101,12 +1140,26 @@ private:
                     m.applied_state = sample.state;
                     continue;
                 }
-                const int r = entity::SetBodyState(ent, sample.state.c_str(), false);
+                // A state this copy cannot enter is not retried every frame: each failed GotoState runs the body
+                // script into a missing clip (lioness "idleattack1"), and hundreds of those a second ended in a script
+                // VM fault (MAP4A client, EngineDll7+0x29a8bf, 2026-10-18). Three tries per state name, then leave it.
+                int& fails = m.state_fails[sample.state];
+                if (fails >= 3) continue;
+                int r = entity::SetBodyState(ent, sample.state.c_str(), false);
+                // From some states the machine refuses a direct jump (the lioness copy after a tackle stood frozen in
+                // one pose, sliding along with the host's lioness). A reset first is how the NPC mirror enters states.
+                if (r != 1) r = entity::SetBodyState(ent, sample.state.c_str(), true);
                 if (r == 1) {
                     m.applied_state = sample.state;
-                } else if (sample.state != m.warned_state) {
+                    fails = 0;
+                } else {
+                    if (++fails >= 3)
+                        spdlog::warn("animals: SetBodyState id={} '{}' -> {} (copy is in '{}'); not tried again on this "
+                                     "animal",
+                                     id, sample.state, r, entity::BodyStateName(ent));
+                    else if (sample.state != m.warned_state)
+                        spdlog::warn("animals: SetBodyState id={} '{}' -> {}", id, sample.state, r);
                     m.warned_state = sample.state;
-                    spdlog::warn("animals: SetBodyState id={} '{}' -> {}", id, sample.state, r);
                 }
             }
         }
@@ -1259,6 +1312,24 @@ void prerender() {
 }
 
 bool IsMirroredNpc(void* ent) { return g_self && g_self->IsMirroredNpcEntity(ent); }
+
+// Client: a replayed script MoveToPos resets the animal (health, dead bits, IdleAttack) and clears brain +0x79. The
+// per-frame re-freeze in ApplyMirror came one AI tick too late on MAP4A: that tick started a lion's attack chain
+// on the local hunter, and the sync attack later faulted (EngineDll7+0x28b337). Freeze before the AI ever runs.
+int __fastcall hk_MoveToPos(void* self, void*, int mode, int arg) {
+    const int r = g_movetopos_hook->unsafe_thiscall<int>(self, mode, arg);
+    if (g_self && g_self->IsFrozenMirrorAnimal(self)) {
+        const bool ok = entity::FreezeBrain(self, true);
+        static int logged = 0;
+        if (logged < 8) {
+            ++logged;
+            int16_t id = -1;
+            core::safe_read(static_cast<char*>(self) + kEntId, id);
+            spdlog::info("animals: MoveToPos on mirror id={}: brain frozen again at once ok={}", id, ok);
+        }
+    }
+    return r;
+}
 
 DH2_MODULE(AnimalsModule)
 

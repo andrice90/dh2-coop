@@ -25,6 +25,7 @@
 #include "coop/player_tracker.h"
 #include "coop/puppet_models.h"
 #include "coop/puppets.h"
+#include "coop/vehicles.h"
 
 namespace dh2::coop::story {
 void DebugActivate(const char* name);  // story.cpp
@@ -781,6 +782,10 @@ private:
             case net::EventType::AnimalHit:
                 animals::OnAnimalHit(ev.animalHit);
                 return;
+            case net::EventType::VehicleStates:
+                if (!events::SnapshotIsCurrent(ev.vehicleStates.mapSerial)) return;
+                vehicles::OnStates(ev.vehicleStates, now_ms());
+                return;
             case net::EventType::GameEvent:
                 events::OnNet(ev.gameEvent);
                 return;
@@ -864,14 +869,17 @@ private:
         prev_tick_ = st.tickMs;
         have_prev_ = true;
         // Hunter +0x6CC: cObjHunter::OnDie. +0x368: inside a sync attack (an animal knocked this hunter down).
+        // +0xA4: parent entity id, set while the hunter sits in a vehicle (GetIn attaches it to a place_N tag).
         int dead = 0, in_sa = 0;
+        int16_t parent = -1;
         if (s.entity) {
             core::safe_read(static_cast<char*>(s.entity) + 0x6CC, dead);
             core::safe_read(static_cast<char*>(s.entity) + 0x368, in_sa);
+            core::safe_read(static_cast<char*>(s.entity) + 0xA4, parent);
         }
         st.flags = static_cast<uint16_t>((s.crouched ? net::kFlagCrouched : 0) | (s.reloading ? net::kFlagReloading : 0) |
                                          (s.firing ? net::kFlagFiring : 0) | (dead ? net::kFlagDead : 0) |
-                                         (in_sa ? net::kFlagKnocked : 0) |
+                                         (in_sa ? net::kFlagKnocked : 0) | (parent >= 0 ? net::kFlagRiding : 0) |
                                          ((s.shots << net::kShotCounterShift) & net::kShotCounterMask));
         st.weaponId = s.weapon;
         st.health = 100;
@@ -1081,6 +1089,7 @@ SessionView Snapshot() {
         rv.pos[2] = r.last.pos[2];
         rv.yaw = r.last.yaw;
         rv.packets = r.received;
+        rv.flags = r.last.flags;
         // Host sees each client as a peer; a client has one peer (the host) whose rtt applies to everyone.
         auto it = rtt.find(id);
         rv.rttMs = it != rtt.end() ? it->second : (rtt.empty() ? 0 : rtt.begin()->second);
@@ -1299,6 +1308,8 @@ bool HostNextLevel() {
     spdlog::info("coop: host skips '{}' -> '{}': {} -> {}", map, next, cmd, console::Exec(cmd.c_str()));
     return true;
 }
+
+bool BroadcastVehicleStates(const net::VehicleStates& states) { return g_session.SendVehicleStates(states); }
 
 bool BroadcastAnimalStates(const net::AnimalStates& states) {
     net::AnimalStates stamped = states;
