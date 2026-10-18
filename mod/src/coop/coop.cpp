@@ -213,6 +213,10 @@ void load_settings() {
     GetPrivateProfileStringA("Coop", "Password", "", buf, sizeof buf, ini.c_str());
     g_settings.password = buf;
     g_settings.model = static_cast<int>(GetPrivateProfileIntA("Coop", "PuppetModel", 0, ini.c_str()));
+    // run-coop-local writes 127.0.0.1 here: test copies then never ask Windows Firewall for network access.
+    GetPrivateProfileStringA("Coop", "BindAddress", "", buf, sizeof buf, ini.c_str());
+    net::Session::SetBindAddress(buf);
+    if (buf[0]) spdlog::info("coop: sockets bind to {} only ([Coop] BindAddress)", buf);
     static const char kSalt[] = "dh2coop-password";
     g_pass_hash = g_settings.password.empty()
                       ? 0

@@ -751,6 +751,24 @@ Session::~Session() {
     if (impl_) impl_->Close();
 }
 
+namespace {
+std::string g_bind_address;  // Session::SetBindAddress ("" = ENET_HOST_ANY)
+
+// The bind address for a new socket, or false when it does not parse (then all interfaces).
+bool bind_host(enet_uint32& out) {
+    if (g_bind_address.empty()) return false;
+    ENetAddress a{};
+    if (enet_address_set_host_ip(&a, g_bind_address.c_str()) != 0) {
+        spdlog::warn("net: BindAddress '{}' is not an IPv4 address; binding all interfaces", g_bind_address);
+        return false;
+    }
+    out = a.host;
+    return true;
+}
+}  // namespace
+
+void Session::SetBindAddress(const std::string& ip) { g_bind_address = ip; }
+
 bool Session::StartHost(uint16_t port, int maxClients, Identity id) {
     impl_->RequestClose();
     if (maxClients < 1) maxClients = 1;
@@ -763,6 +781,7 @@ bool Session::StartHost(uint16_t port, int maxClients, Identity id) {
     ENetAddress addr;
     addr.host = ENET_HOST_ANY;
     addr.port = port;
+    const bool local_only = bind_host(addr.host);
     // Extra slots so a full lobby can still accept a connection long enough to Reject it.
     const size_t peers = static_cast<size_t>(maxClients) + 4;
     impl_->host = enet_host_create(&addr, peers, kChannelCount, 0, 0);
@@ -784,7 +803,8 @@ bool Session::StartHost(uint16_t port, int maxClients, Identity id) {
     ev.playerId = 0;
     ev.name = impl_->identity.name;
     impl_->Push(ev);
-    spdlog::info("net: hosting udp {} (max {} clients)", static_cast<int>(impl_->boundPort), maxClients);
+    spdlog::info("net: hosting udp {} (max {} clients){}", static_cast<int>(impl_->boundPort), maxClients,
+                 local_only ? " on " + g_bind_address + " only" : std::string());
     return true;
 }
 
@@ -795,7 +815,10 @@ bool Session::Join(const std::string& host, uint16_t port, Identity id) {
     impl_->acquired = true;
     impl_->identity = std::move(id);
 
-    impl_->host = enet_host_create(nullptr, 1, kChannelCount, 0, 0);
+    ENetAddress local{};
+    local.port = 0;  // any free port
+    const bool local_only = bind_host(local.host);
+    impl_->host = enet_host_create(local_only ? &local : nullptr, 1, kChannelCount, 0, 0);
     if (!impl_->host) {
         spdlog::error("net: client socket failed");
         ReleaseLib();

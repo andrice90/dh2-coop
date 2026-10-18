@@ -202,6 +202,9 @@ function Install-TreeFiles([string]$Tree, [string]$PlayerName) {
         $text = [regex]::Replace($text, '(?m)^AttackTarget=\d', 'AttackTarget=1')
         [System.IO.File]::WriteAllText($iniDest, $text, (New-Object System.Text.ASCIIEncoding))
     }
+    # Every window of a local session talks over 127.0.0.1: loopback-only sockets never raise the Windows
+    # Firewall "allow access" prompt for a new game copy. -Set 'Coop.BindAddress=' restores all interfaces.
+    [void][Dh2Ini]::WritePrivateProfileString('Coop', 'BindAddress', '127.0.0.1', $iniDest)
     foreach ($kv in $Set) {
         if ($kv -notmatch '^([^.]+)\.([^=]+)=(.*)$') { throw "bad -Set '$kv' (Section.Key=Value)" }
         [void][Dh2Ini]::WritePrivateProfileString($Matches[1], $Matches[2], $Matches[3], $iniDest)

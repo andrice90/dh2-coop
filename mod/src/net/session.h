@@ -79,6 +79,10 @@ public:
     Session(const Session&) = delete;
     Session& operator=(const Session&) = delete;
 
+    // Local address every later StartHost / Join socket binds to ("" = all interfaces, the default). Local test
+    // sessions use "127.0.0.1": a socket bound to loopback never asks Windows Firewall for network access.
+    static void SetBindAddress(const std::string& ip);
+
     // maxClients is clamped to 1..3 so the lobby stays at or under 4 players.
     bool StartHost(uint16_t port = kDefaultPort, int maxClients = kDefaultMaxClients, Identity id = {});
     bool Join(const std::string& host, uint16_t port = kDefaultPort, Identity id = {});

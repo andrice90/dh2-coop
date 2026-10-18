@@ -1171,6 +1171,8 @@ Digest TestLoopback(Tally& t, bool* sectionOk) {
 int main() {
     spdlog::set_level(spdlog::level::warn);
     spdlog::set_pattern("[%l] %v");
+    // Every test socket stays on loopback, so a new build path never raises the Windows Firewall prompt.
+    net::Session::SetBindAddress("127.0.0.1");
 
     const char* names[] = {
         "codec round-trip",     "truncated buffers", "interp + yaw wrap", "handshake ids 0..3",
