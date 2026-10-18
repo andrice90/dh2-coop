@@ -195,19 +195,11 @@ int __fastcall hk_CreateRender(void* self, void*, HWND hwnd) {
     int w = g_width;
     int h = g_height;
     if (w <= 0 || h <= 0) {
-        RECT work{};
-        if (g_windowed && SystemParametersInfoA(SPI_GETWORKAREA, 0, &work, 0)) {
-            w = work.right - work.left;
-            h = work.bottom - work.top;
-        } else {
-            w = GetSystemMetrics(SM_CXSCREEN);
-            h = GetSystemMetrics(SM_CYSCREEN);
-        }
-        if (g_windowed) {
-            // SetWindowSize inflates the outer window by the caption. Keep the frame on the desktop.
-            w -= 16;
-            h -= 40;
-        }
+        // The screen's own size. The game's window is a borderless popup at (0,0) (WS_POPUP, no caption: checked
+        // 2026-10-18), so windowed at this size is borderless full screen. Real pixels need the process to be DPI
+        // aware (MakeDpiAware); the old work area minus a 16x40 "frame" left the taskbar and a gap showing.
+        w = GetSystemMetrics(SM_CXSCREEN);
+        h = GetSystemMetrics(SM_CYSCREEN);
     }
     if (w < 640) w = 640;
     if (h < 480) h = 480;
