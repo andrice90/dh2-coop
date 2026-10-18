@@ -314,12 +314,12 @@ void follow(Track& t, void* heli, uint32_t now) {
     if (ahead > static_cast<int32_t>(kMaxExtrapMs)) ahead = static_cast<int32_t>(kMaxExtrapMs);
     const float target = h.elapsed + h.speed * static_cast<float>(ahead) / 1000.f;
     const float length = h.length > 0.f ? h.length : p.length;
-    if (length > 0.f && target >= length * kEndGuard) return;
+    if (!(length > 0.f) || !(target >= 0.f) || target >= length * kEndGuard) return;  // no known clip length: no snap
     const float err = p.elapsed - target;
     if (std::fabs(err) > std::fabs(t.max_dt_err)) t.max_dt_err = err;
     if (std::fabs(err) > kSnapSeconds) {
         guarded_set_elapsed(p.part, target);
-        if (t.corrections++ < 10 || std::fabs(err) > 1.f)
+        if (t.corrections++ < 10 || (std::fabs(err) > 1.f && t.corrections < 200))
             spdlog::info("heli: id={} '{}' clip time {:.3f}s -> host {:.3f}s (error {:+.3f}s)", id_of(heli), h.anim,
                          p.elapsed, target, err);
     }
@@ -479,6 +479,8 @@ DH2_MODULE(HeliModule)
 
 void OnStates(const net::HeliStates& states, uint32_t localMs) {
     for (const net::HeliState& h : states.helis) {
+        // A map has one or two helicopters; ids beyond a small bound are not ours to track.
+        if (g_tracks.count(h.id) == 0 && g_tracks.size() >= 2u * net::kMaxHelis) continue;
         Track& t = g_tracks[h.id];
         // Unreliable channel: drop a packet older than the newest we have.
         if (t.count > 0 && static_cast<int32_t>(states.tickMs - t.samples[t.count - 1].tick) <= 0) continue;

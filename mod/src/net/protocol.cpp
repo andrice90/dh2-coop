@@ -1,5 +1,6 @@
 #include "net/protocol.h"
 
+#include <cmath>
 #include <cstring>
 #include <utility>
 
@@ -156,7 +157,22 @@ bool ReadShortString(ByteReader& r, std::string& out) {
     uint8_t raw[kMaxHeliNameChars];
     r.Bytes(raw, n);
     if (!r.ok()) return false;
+    // Body-state and clip names go to engine name lookups: printable ASCII only, no NUL.
+    for (uint8_t i = 0; i < n; ++i) {
+        if (raw[i] < 0x20 || raw[i] > 0x7e) return false;
+    }
     out.assign(reinterpret_cast<const char*>(raw), n);
+    return true;
+}
+
+// A helicopter sample's clip clock: finite and within a sane range (the longest MAP11 clip is under a minute).
+bool SaneHeliClock(const HeliState& h) {
+    if (!std::isfinite(h.elapsed) || !std::isfinite(h.speed) || !std::isfinite(h.length)) return false;
+    if (h.elapsed < 0.f || h.elapsed > 600.f || h.length < 0.f || h.length > 600.f) return false;
+    if (h.speed < 0.f || h.speed > 10.f) return false;
+    for (float f : h.pos) {
+        if (!std::isfinite(f) || std::fabs(f) > 1.0e5f) return false;
+    }
     return true;
 }
 
@@ -181,6 +197,7 @@ std::optional<HeliStates> ParseHeliStates(const uint8_t* data, size_t len) {
         for (float& f : h.pos) f = r.F32();
         h.flags = r.U8();
         if (!r.ok() || !ReadShortString(r, h.state) || !ReadShortString(r, h.anim)) return std::nullopt;
+        if (!SaneHeliClock(h)) return std::nullopt;
     }
     if (!r.ok() || r.remaining() != 0) return std::nullopt;
     return msg;

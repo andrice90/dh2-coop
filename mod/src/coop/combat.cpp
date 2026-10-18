@@ -196,6 +196,11 @@ void OnHurtCommit(const net::GameEvent& ev) {
     if (ev.subjectId != NetLocalId()) return;
     void* hunter = LocalHunter();
     if (!hunter || Dead(hunter)) return;
+    // A pilot is not an animal target (cObjPilot::Spawn takes it off the attack list): no forwarded animal damage.
+    if (LocalPlayer().pilot) {
+        spdlog::info("combat: hurt from animal ignored: the local player is a pilot");
+        return;
+    }
     const int16_t aid = static_cast<int16_t>(ev.i0 & 0xFFFF);
     const int type = static_cast<int>((ev.i0 >> 16) & 0xFF);
     void* attacker = EntityById(aid);  // this process's mirror of the animal
