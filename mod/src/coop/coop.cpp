@@ -512,8 +512,12 @@ private:
             case Pending::Kind::Host:
                 g_session.Disconnect();
                 g_remotes.clear();
-                spdlog::info("coop: hosting on UDP {} -> {}", p.port, g_session.StartHost(p.port, net::kDefaultMaxClients, id));
+            {
+                const bool ok = g_session.StartHost(p.port, net::kDefaultMaxClients, id);
+                spdlog::info("coop: hosting on UDP {} -> {}", p.port, ok);
+                if (!ok) show_notice(fmt::format("Could not host on UDP port {}. Another program (or another copy of the game) already uses it.", p.port), 30000);
                 return;
+            }
             case Pending::Kind::Join:
                 g_session.Disconnect();
                 g_remotes.clear();

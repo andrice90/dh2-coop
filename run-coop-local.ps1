@@ -503,13 +503,17 @@ function Get-LatestEngineTime([string]$DebugPath) {
 }
 
 function Wait-HostInMap([System.Diagnostics.Process]$Proc, [string]$DebugPath) {
-    # Hosting starts in OnMapLoaded ("coop: host start"). The log path is beside debug.log.
+    # Hosting starts in OnMapLoaded ("coop: hosting on UDP <port> -> true|false"). The log path is beside debug.log.
+    # "-> false" is a failed bind: another game (often another checkout) already hosts on that port.
     $logPath = Join-Path (Split-Path -Parent $DebugPath) 'dh2coop.log'
     $deadline = (Get-Date).AddSeconds(90)
     while ((Get-Date) -lt $deadline) {
         try { $Proc.Refresh() } catch { throw "game pid=$($Proc.Id) disappeared during startup" }
         if ($Proc.HasExited) { throw "game pid=$($Proc.Id) exited during startup (code $($Proc.ExitCode))" }
-        $line = Find-LogLine $logPath 'coop: host start'
+        $line = Find-LogLine $logPath 'coop: hosting on UDP'
+        if ($line -and $line -notmatch '-> true') {
+            throw "host pid=$($Proc.Id) could not listen ($line). Another game already hosts on UDP $Port; pass a free -Port."
+        }
         if ($line) {
             $engine = Get-LatestEngineTime $DebugPath
             Write-Run ("host ready pid={0} engineTime={1:N3} (listening) | {2}" -f $Proc.Id, $engine, $line)
@@ -517,7 +521,7 @@ function Wait-HostInMap([System.Diagnostics.Process]$Proc, [string]$DebugPath) {
         }
         Start-Sleep -Milliseconds 200
     }
-    throw "host pid=$($Proc.Id) did not log 'coop: host start' within 90s"
+    throw "host pid=$($Proc.Id) did not log 'coop: hosting on UDP' within 90s"
 }
 
 function Wait-ClientWelcomed([System.Diagnostics.Process]$Proc, [string]$LogPath, [string]$Role, [datetime]$StartedAt) {
