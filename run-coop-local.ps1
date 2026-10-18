@@ -18,6 +18,7 @@
 # -Combat     Forces [Puppets] Physics=1 AttackTarget=1 in every copied ini (host animals attack the nearest
 #             player, clients included). Both are the mod\dh2coop.ini defaults since 2026-10-17, so this only
 #             matters if you turned them off there. re/notes/lead-combat.md.
+# -Set        ini overrides 'Section.Key=Value' written into every copied ini, e.g. -Set 'Puppets.Weapons=0'.
 # -Players    2 (default) through 4. Trees: game (host), game2, game3, game4.
 #             Names written into each Bin\dh2coop.ini: Host, P2, P3, P4. Every client joins 127.0.0.1.
 # -LateJoin   Seconds to wait, after the previous client is welcomed (or after host start, when the
@@ -46,7 +47,8 @@ param(
     [int]$AddClient = 0,
     [switch]$Combat,
     [int]$Port = 27420,
-    [switch]$Lobby
+    [switch]$Lobby,
+    [string[]]$Set = @()
 )
 if ($Lobby) { $Map = 'MENU' }
 $ErrorActionPreference = 'Stop'
@@ -92,6 +94,15 @@ public static class Dh2Arrange {
 "@
 }
 [void][Dh2Arrange]::SetProcessDPIAware()
+if (-not ('Dh2Ini' -as [type])) {
+    Add-Type @"
+using System.Runtime.InteropServices;
+public static class Dh2Ini {
+    [DllImport("kernel32.dll", CharSet=CharSet.Ansi)]
+    public static extern bool WritePrivateProfileString(string section, string key, string value, string file);
+}
+"@
+}
 
 $script:runLog = $null
 $script:instances = @()
@@ -190,6 +201,10 @@ function Install-TreeFiles([string]$Tree, [string]$PlayerName) {
         $text = [regex]::Replace($text, '(?m)^Physics=\d', 'Physics=1')
         $text = [regex]::Replace($text, '(?m)^AttackTarget=\d', 'AttackTarget=1')
         [System.IO.File]::WriteAllText($iniDest, $text, (New-Object System.Text.ASCIIEncoding))
+    }
+    foreach ($kv in $Set) {
+        if ($kv -notmatch '^([^.]+)\.([^=]+)=(.*)$') { throw "bad -Set '$kv' (Section.Key=Value)" }
+        [void][Dh2Ini]::WritePrivateProfileString($Matches[1], $Matches[2], $Matches[3], $iniDest)
     }
     # A command file left by a crashed test would otherwise run in the new game (dh2coop.cmd channel).
     Remove-Item (Join-Path $bin 'dh2coop.cmd') -ErrorAction SilentlyContinue
