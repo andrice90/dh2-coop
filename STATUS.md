@@ -28,6 +28,8 @@ Merged by the lead 09:4x:
 - Routed review M1/M2 (NPC mirror death / thaw with the animal FreezeBrain) to `life`.
 - `79d0545`: `EntityById` is a direct slot lookup (id == manager index), scan as fallback (review M3 lookup half; list pruning not done). MAP3B two-window smoke OK.
 
+Running now (Sonnet, 14:5x): triggers-test, flow-test, smoke (from before); new: vehicles-test (`dh2coop-truck`, port 27650), beasts-test (`dh2coop-beasts`, 27630, also wires the clip checks into `ApplyMirror`), bosses-test (`dh2coop-yeti`, 27680, writes `yeti-bosses.md`).
+
 ### life-test merged (14:5x): `a0de31e`..`c0c1ad1`
 **Kill credit fixed** (client kills count: MAP2A task 5, MAP4B to MISSION SUCCESSFUL), **second lives** (`kAnimalRevive` 20: MAP2A, MAP2B siege, MAP3A hyenas, MAP11B boars), same-frame kill reports queued, host `[Scale]` settings win (`kScaleConfig` 21), `ReuseKilled=1` default, client corpse put back when its own fade parks it early, NPC mirror M1/M2, animals/beasts OnHit hooks chain (beasts' dart hook had silently failed its prologue check). Integration: life worktree reset to main, build + net-test pass, MAP2A two windows synced and scale config applied. Open from life: protected-animal client bullet and dart overdose need real input; clip-coverage call sites (`beasts::MirrorStateOk`/`NpcLegClipFor` in `ApplyMirror`) are in beasts WIP `f92caf9`, not in main; MAP9 dingoes, MAP4A lioness fallback not run.
 
