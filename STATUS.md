@@ -28,6 +28,9 @@ Merged by the lead 09:4x:
 - Routed review M1/M2 (NPC mirror death / thaw with the animal FreezeBrain) to `life`.
 - `79d0545`: `EntityById` is a direct slot lookup (id == manager index), scan as fallback (review M3 lookup half; list pruning not done). MAP3B two-window smoke OK.
 
+### life-test merged (14:5x): `a0de31e`..`c0c1ad1`
+**Kill credit fixed** (client kills count: MAP2A task 5, MAP4B to MISSION SUCCESSFUL), **second lives** (`kAnimalRevive` 20: MAP2A, MAP2B siege, MAP3A hyenas, MAP11B boars), same-frame kill reports queued, host `[Scale]` settings win (`kScaleConfig` 21), `ReuseKilled=1` default, client corpse put back when its own fade parks it early, NPC mirror M1/M2, animals/beasts OnHit hooks chain (beasts' dart hook had silently failed its prologue check). Integration: life worktree reset to main, build + net-test pass, MAP2A two windows synced and scale config applied. Open from life: protected-animal client bullet and dart overdose need real input; clip-coverage call sites (`beasts::MirrorStateOk`/`NpcLegClipFor` in `ApplyMirror`) are in beasts WIP `f92caf9`, not in main; MAP9 dingoes, MAP4A lioness fallback not run.
+
 ### Lead fixes during the test wave (2026-10-18 afternoon)
 - `eccc1ef`: local test sessions bind to 127.0.0.1 (`[Coop] BindAddress`, written by `run-coop-local.ps1`; net-test too): no more Windows Firewall prompts per game copy (user request). Agents were told to cherry-pick it.
 - `01a3da7`: **rifle scope split in two** (user screenshots, from the 4:3 HUD remap / icon shrink): no remap while `cHUDZoom::Draw` runs. **User-verified "scope fixed!"** on MAP11C. Agents' windows show the old split scope until they rebase.
