@@ -134,11 +134,45 @@ function Set-PlayerNameIni([string]$Path, [string]$Name) {
     [System.IO.File]::WriteAllText($Path, $updated, $ascii)
 }
 
+# Width=0 means one window at the desktop size. Two of those do not fit side by side, so a
+# multi-window launch writes a tile that does. An explicit Width in mod\dh2coop.ini is left alone.
+function Set-TiledDisplay([string]$IniPath) {
+    if ($script:Players -lt 2) { return }
+    $text = [System.IO.File]::ReadAllText($IniPath)
+    $section = ''
+    if ($text -match '(?s)\[Display\](.*?)(\r?\n\[|\z)') { $section = $Matches[1] }
+    $width = 0
+    if ($section -match '(?m)^Width=(\d+)') { $width = [int]$Matches[1] }
+    if ($width -gt 0) { return }
+    $cols = 2
+    $rows = $(if ($script:Players -le 2) { 1 } else { 2 })
+    $sw = [Dh2Arrange]::GetSystemMetrics(0)
+    $sh = [Dh2Arrange]::GetSystemMetrics(1)
+    $w = [Math]::Max(640, [int]($sw / $cols) - 24)
+    $h = [Math]::Max(480, [int]($sh / $rows) - 80)
+    if ($text -notmatch '(?m)^\[Display\]') {
+        $text += "`r`n[Display]`r`nEnabled=1`r`nWidth=$w`r`nHeight=$h`r`nWindowed=1`r`nHorPlus=1`r`nLockHud=1`r`n"
+    } else {
+        if ($section -match '(?m)^Width=') {
+            $text = [regex]::Replace($text, '(?m)^Width=.*$', "Width=$w", 1)
+        } else {
+            $text = $text -replace '(?m)^\[Display\]', "[Display]`r`nWidth=$w"
+        }
+        if ($text -match '(?m)^Height=') {
+            $text = [regex]::Replace($text, '(?m)^Height=.*$', "Height=$h", 1)
+        } else {
+            $text = $text -replace '(?m)^\[Display\]', "[Display]`r`nHeight=$h"
+        }
+    }
+    [System.IO.File]::WriteAllText($IniPath, $text, (New-Object System.Text.ASCIIEncoding))
+}
+
 function Install-TreeFiles([string]$Tree, [string]$PlayerName) {
     $bin = Join-Path $Tree 'Bin'
     Copy-Item $asi (Join-Path $bin 'dh2coop.asi') -Force
     $iniDest = Join-Path $bin 'dh2coop.ini'
     Copy-Item $ini $iniDest -Force
+    Set-TiledDisplay $iniDest
     Set-PlayerNameIni $iniDest $PlayerName
     if ($Port -ne 27420) {
         $text = [System.IO.File]::ReadAllText($iniDest)

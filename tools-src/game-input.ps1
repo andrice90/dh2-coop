@@ -9,11 +9,11 @@ param(
     [Parameter(Mandatory)][string[]]$Keys
 )
 $ErrorActionPreference = 'Stop'
-if (-not ('Dh2InputV3' -as [type])) {
+if (-not ('Dh2InputV4' -as [type])) {
     Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public static class Dh2InputV3 {
+public static class Dh2InputV4 {
     // Full union so Marshal.SizeOf(INPUT) is right on both x86 (28) and x64 (40) PowerShell.
     [StructLayout(LayoutKind.Sequential)]
     struct MOUSEINPUT { public int dx; public int dy; public uint data; public uint dwFlags; public uint time; public IntPtr extra; }
@@ -26,6 +26,24 @@ public static class Dh2InputV3 {
     [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint n, INPUT[] inputs, int size);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] static extern bool AttachThreadInput(uint a, uint b, bool attach);
+    [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+    public static void Focus(IntPtr h) {
+        uint unused;
+        uint fore = GetWindowThreadProcessId(GetForegroundWindow(), out unused);
+        uint self = GetCurrentThreadId();
+        bool attached = fore != 0 && fore != self && AttachThreadInput(fore, self, true);
+        keybd_event(0x12, 0, 0, UIntPtr.Zero); // ALT lets SetForegroundWindow succeed from a background process
+        ShowWindow(h, 9);
+        BringWindowToTop(h);
+        SetForegroundWindow(h);
+        keybd_event(0x12, 0, 2, UIntPtr.Zero);
+        if (attached) AttachThreadInput(fore, self, false);
+    }
     public static uint Key(ushort scan, bool extended, bool up) {
         var i = new INPUT[1];
         i[0].type = 1;  // INPUT_KEYBOARD
@@ -60,15 +78,15 @@ $codes = @{
     '1' = @(0x02, $false); '2' = @(0x03, $false); '3' = @(0x04, $false); '4' = @(0x05, $false)
 }
 $h = (Get-Process -Id $ProcessId).MainWindowHandle
-if ([Dh2InputV3]::GetForegroundWindow() -ne $h) {
-    [void][Dh2InputV3]::SetForegroundWindow($h)
-    Start-Sleep -Milliseconds 300
+if ([Dh2InputV4]::GetForegroundWindow() -ne $h) {
+    [Dh2InputV4]::Focus($h)
+    Start-Sleep -Milliseconds 400
 }
 # SendInput goes to whatever window is in front. Windows often refuses SetForegroundWindow while the user works in
 # another app; the keys then landed in that app (2026-10-17: "wwww...sss" typed into the user's chat). Never send
 # unless the game is in front, and check again before every key.
 function Assert-GameInFront([string]$what) {
-    if ([Dh2InputV3]::GetForegroundWindow() -ne $h) {
+    if ([Dh2InputV4]::GetForegroundWindow() -ne $h) {
         throw "game-input: pid $ProcessId is not the foreground window; not sending $what (click the game window, or retry)"
     }
 }
@@ -80,29 +98,29 @@ foreach ($k in $Keys) {
     if ($name -eq 'LMB' -or $name -eq 'RMB') {
         # LMB / RMB[:ms] - mouse button click (hold ms, default 60)
         $down, $up = if ($name -eq 'LMB') { 0x0002, 0x0004 } else { 0x0008, 0x0010 }
-        [void][Dh2InputV3]::MouseButton([uint32]$down)
+        [void][Dh2InputV4]::MouseButton([uint32]$down)
         Start-Sleep -Milliseconds $(if ($ms) { [int]$ms } else { 60 })
-        [void][Dh2InputV3]::MouseButton([uint32]$up)
+        [void][Dh2InputV4]::MouseButton([uint32]$up)
         Start-Sleep -Milliseconds 80
         continue
     }
     if ($name -eq 'MOUSE') {
         # MOUSE:dx,dy - relative move, sent in 10 steps 15 ms apart (DirectInput reads relative deltas)
         $dx, $dy = $ms.Split(',') | ForEach-Object { [int]$_ }
-        for ($s = 0; $s -lt 10; $s++) { [void][Dh2InputV3]::MouseMove([int]($dx / 10), [int]($dy / 10)); Start-Sleep -Milliseconds 15 }
+        for ($s = 0; $s -lt 10; $s++) { [void][Dh2InputV4]::MouseMove([int]($dx / 10), [int]($dy / 10)); Start-Sleep -Milliseconds 15 }
         Start-Sleep -Milliseconds 80
         continue
     }
     $c = $codes[$name.ToUpper()]
     if (-not $c) { throw "unknown key '$name'" }
     $hold = if ($ms) { [int]$ms } else { 60 }
-    [void][Dh2InputV3]::Key([uint16]$c[0], $c[1], $false)
+    [void][Dh2InputV4]::Key([uint16]$c[0], $c[1], $false)
     # A long hold ends early (key released) if the user brings another window to the front meanwhile.
     for ($left = $hold; $left -gt 0; $left -= 50) {
         Start-Sleep -Milliseconds ([Math]::Min(50, $left))
-        if ([Dh2InputV3]::GetForegroundWindow() -ne $h) { break }
+        if ([Dh2InputV4]::GetForegroundWindow() -ne $h) { break }
     }
-    [void][Dh2InputV3]::Key([uint16]$c[0], $c[1], $true)
+    [void][Dh2InputV4]::Key([uint16]$c[0], $c[1], $true)
     Start-Sleep -Milliseconds 80
 }
-"sent $($Keys -join ' ') to pid $ProcessId (foreground ok=$([Dh2InputV3]::GetForegroundWindow() -eq $h))"
+"sent $($Keys -join ' ') to pid $ProcessId (foreground ok=$([Dh2InputV4]::GetForegroundWindow() -eq $h))"

@@ -2,6 +2,7 @@
 #include "core/module.h"
 #include "core/log.h"
 #include "core/safe_mem.h"
+#include "display/display.h"
 #include "coop/coop.h"
 #include "coop/player_tracker.h"
 #include "engine/d3d8_hooks.h"
@@ -277,7 +278,7 @@ void draw_one_marker(ImDrawList* dl, const dh2::coop::ViewCamera& cam, float sca
 void draw_markers(const dh2::coop::SessionView& view, ImVec2 disp) {
     const dh2::coop::ViewCamera cam = dh2::coop::LastViewCamera();
     if (!cam.valid || cam.proj != 0) return;
-    const float scale = marker_scale(cam.fov, disp.x);
+    const float scale = marker_scale(dh2::display::EffectiveHorizontalFov(cam.fov), disp.x);
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
     const dh2::coop::Vec3 hunter{view.hunterPos[0], view.hunterPos[1], view.hunterPos[2]};
     for (int i = 0; i < view.remoteCount && i < 4; ++i) {

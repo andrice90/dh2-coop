@@ -23,3 +23,4 @@ re/notes/coop-local/
 re/jobs/*.prompt.md
 re/notes/story-inventory.md
 dist/
+*.png

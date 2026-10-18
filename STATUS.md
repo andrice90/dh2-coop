@@ -1,6 +1,17 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-17 evening (America/Chicago) by the lead (Opus). Fan-out section first, then the earlier 2026-10-17 session, then the Cursor worker's night log.
+**Last updated:** 2026-10-17 evening by Grok. Display section first, then the fan-out, then the earlier 2026-10-17 session.
+
+## Helicopter arena (scoped only, 2026-10-17)
+Not built. `re/notes/heli-arena.md`: copied MAPARENA, host-moved helicopter orbiting the nearest player, bombs via `kPlayerHurt`, full-auto gun is a new `autogun_1st` that reuses the handgun 3 viewmodel. Story insert waits until `-spmap` playtests pass.
+
+## Display (2026-10-17 evening)
+`[Display]` in `dh2coop.ini` sets the back buffer (0 = desktop work area, windowed) and keeps the HUD in a centered 4:3 rectangle. Wider screens keep the 4:3 vertical field of view. The standalone FOV-fix ASI is renamed `.asi.off` in this checkout's game bins so it does not widen the view twice. Detail: `re/notes/display.md`. Local multi-window launches tile when Width is 0.
+
+MAP1 is running for the user (pid 25408, `run-game.ps1 -spmap MAP1`). Log: `display: CreateRender 3424x1352 windowed=1`, `display: hud 1803x1352 at (811,0) inside 3424x1352`, `Bsp\MAP1.bsp` loaded. Co-op hooks are unchanged. Not committed.
+
+## Player-count scaling (research only, 2026-10-17)
+Method is written, not built: `re/notes/player-scale.md`. Bosses (`MakeBoss` → entity `+0x3C0`: yeti, hogzilla, big grim) and a wave of one large animal (MAP2B/MAP2C grizzly, MAP2B cougar) get `+25%` max health per extra player, on `+0x19C` and `+0x4C0`, so the cutscene `MoveToPos` keeps it. They stay one body. Wolves, hyenas, dingoes, leopards, and boars get one extra body per extra player and no health scale, even when the wave is a single wolf. MAP2A's two wolves become 3 / 4 / 5. Reserves must not count toward `SetTaskAnimalToShoot`. Retail `SetDiffProps(HEALTH_ANIMAL, 10, 11, 12)` is `×1.0 / 1.1 / 1.2` on every `SetHealth` (`re/notes/scale-decomp.c`).
 
 ## Fan-out 2026-10-17 evening: rest of the game + re-opened items (user moved to Claude Max)
 User: extend the MAP1/MAP2 fixes to every other map, all weapon models; Grok/cursor workers replaced by Claude subagents (Opus 5.5 / Sonnet 5.5 / Haiku 5.5); "fan out", "go in depth", "re-open any old closed items". Shared brief: `re/jobs/_claude-rules.md`; lessons list: `re/notes/coop-checklist.md`. Tooling made parallel-safe (`f45f1a3`): `run-coop-local.ps1 -Port`, `build.ps1` and the launcher only look at their own checkout's games.

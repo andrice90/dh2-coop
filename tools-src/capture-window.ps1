@@ -5,7 +5,8 @@ param(
     [Parameter(Mandatory)][string]$Out,
     [switch]$NoFocus  # side-by-side windows are visible without focus; focusing would steal DirectInput
 )
-$Out = [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $Out))  # GDI+ resolves relative paths against the process cwd
+if (-not [System.IO.Path]::IsPathRooted($Out)) { $Out = Join-Path (Get-Location) $Out }
+$Out = [System.IO.Path]::GetFullPath($Out)
 Add-Type -AssemblyName System.Drawing
 Add-Type @"
 using System;
