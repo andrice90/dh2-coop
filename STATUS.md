@@ -36,7 +36,7 @@ Merged into main (lead):
 - beasts tranq `12f1682` (MAP6 verified; its cobra-hit hook `0x80440` is in the same commit and untested), `4afad1f` (dropped beasts' duplicate `coop_tasks`); triggers `coop_tasks` (story.cpp).
 Running (Sonnet): life-test (`dh2coop-life`, rebase + kill credit / lives tests), triggers-test (`dh2coop-trig`, rebase + MAP1/2A/4A regressions + MAP3A/7/8), flow-test (`dh2coop-flow`, rebase + guide death / retry / chapter change / MAP11A exit / MAP12C end / ammo), smoke (resumed, MAP6–MAP12C on current main).
 Next round (not started): vehicles WIP `3b4d04c` (MAP5 boarding, riders as targets), beasts WIP `f92caf9` (crocs, claim, clip checks), bosses WIP `88d35d1` (no note yet; `bosses.cpp` NPC PlayAnim beats, MAP12B falling trees, yeti throws).
-User decisions asked: tranq overdose rule (keep game rule `TranqOverdoseFromClients=1` or ignore the second player's dart); `HunterNearest` on or off.
+User decisions 14:2x: **another player's dart is ignored** (`TranqOverdoseFromClients=0`, host tracks who tranquilized each animal; verified MAP7 tiger1), **client animal AI targeting on** (`HunterNearest=1`, code default too; `NpcFollowNearest=0` until companions can switch). `28352f1`. Seen in that run: the client's copy of a slept tiger stays at the park spot (-10000) while the host corpse lies in place (cosmetic, routed to life-test).
 
 ### Resume the wave (session limit hit ~09:55, 2026-10-18)
 All 12 agents were told at ~09:55 to stop, commit (unverified code as `WIP:` commits), and write their notes. **Agents do not survive the session**: a new session starts fresh agents from these files. Per agent, check `git -C "D:\scary hunt\<worktree>" log --oneline main..HEAD`, `git -C ... status --short`, and its note:
