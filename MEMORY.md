@@ -185,3 +185,12 @@ RVAs: EngineDll7 unless noted (CommonDll7 = "C", GameDll7 = "G").
 - **Compass dial:** `cHUDCompass::Draw` (GameDll `0xdfe90`) calls the HUD drawer at `*(GameDll+0x1657ec)` (vtable GameDll `0x117a00`) slot `+0x28` = `0xc6be0` (stdcall(rect, uv, tex, color, angle, centered, virtual)): corners go pixel → camera space (`cRender::Transform2dTo3dCameraSpace`), a Z rotation (`0xc5ac0`), and back. Those read `cRender +0x4a4` / `+0x4a8` (tan of the half FOVs; ortho `+0x4ac` / `+0x4b0`, mode `+0x48c`); `DrawTriangle2D` reads them too. Slot `+0x24` = `0xc6530` is the partial-fill quad (not the dial). The cRender GameDll draws through is EngineDll export `?render@@3PAVcRender@@A`; CommonDll `+0x11f2d4` is a different object (fields read 0). At 2560x1080 the camera holds tanX 1.778 / tanY 1.344 (ratio 1.32, not 2.37).
 - The user hosts real games from the retail install on UDP 27420; local test sessions use another `-Port` (a second bind fails: `coop: hosting on UDP 27420 -> false`).
 - Windows PowerShell: `rd` is an alias of `Remove-Item`; never name a helper function `rd`.
+
+## Lobby, input, puppet bodies (verified 2026-10-17 late)
+- Game DirectInput devices are `NONEXCLUSIVE|BACKGROUND` (keyboard and mouse): the Windows cursor moves normally and the window still gets `WM_CHAR` / `WM_KEYDOWN`. The lobby uses `imgui_impl_win32` through a `GWLP_WNDPROC` subclass and blanks the game's DirectInput reads while open.
+- `console_cmds::AddCommandStr` handlers get one word: `coop_lobby join 1.2.3.4` is dropped silently (Exec still returns 1). Use one-token arguments (`coop_tp x:y:z:yaw` style).
+- ENet keeps retrying an unanswered connect for well over 10 s; the lobby gives up after 8 s.
+- Puppet bodies that animate with `game.ap,shotgun1.ap,handgun3.ap`: mountainguide, oldhugh (Hugh), reginald, hamisi, ausranger1, siberian1, wirake, triballeader, benedeck, survivor. `poacher.skin` makes `HandleKey("model_name")` fault and the spawn fail.
+- Melee item skins: `objects/items/game/weapons/knife1st/knife.skin`, `macheta1st/macheta.skin` (the MAP3B player blade, folder name "macheta"), `mbranch/mbranch.skin` (third-person). Attached to `BipRHand` they show but lie flat to the side.
+- Tailscale adapter while logged out: Up, IPv4 169.254.x only. Logged in: 100.64/10 address on the adapter named "Tailscale".
+- `capture-window.ps1` copies the screen rectangle; another window on top ends up in the shot. `-PrintWindow` asks the window to draw itself.

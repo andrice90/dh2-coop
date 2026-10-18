@@ -9,8 +9,12 @@ Done in main:
 - `0178722`: `run-coop-local` waits for `coop: hosting on UDP <p> -> true` and stops on a failed bind; the host shows a notice. (The 21:53 "different mod build" reject was the user's retail game hosting on 27420; the reject path itself worked.)
 - `3732bd1`: start from the main menu (clients follow with `mod_spmap`, see MEMORY "Main menu"), menu banner, `-Map MENU`; F8 shows the tailnet IP; compass ring round at every heading (`[Display] CompassFix=1`). The two-window MAP1 check of protocol v2 passed: same build id, welcome in 1.7 s, animals mirrored; windowed minimize keeps frames running (the Flip pump only matters for fullscreen, still unverified).
 
+- `8ea801f`: **co-op lobby** (F8; opens by itself at the main menu): name, puppet model, HOST, JOIN (IP + port), status line (no answer after 8 s, reject reasons), tailnet IP with Copy, player list with roles, models and ping. Protocol v3 carries the model. Ten puppet bodies verified on MAP3B. Knife / machete / branch now drawn on puppets (machete verified; held flat, no orientation offset). Kit: one **DH2 COOP** shortcut; `dist\dh2coop-kit.zip` built 23:1x.
+- Verified on two local windows (port 27425): lobby host/join, failed join message, model shown to the other player, host map start followed from the menu.
+
+**For the user (real test):** run `install.bat` from `dist\dh2coop-kit.zip` on both PCs (Tailscale on both), DH2 COOP, HOST on one, JOIN with the host's tailnet IP on the other, host closes the lobby (F8) and starts New Game or Load. Still unverified: clicking the lobby with a real mouse (all automated runs used `coop_lobby`), New Game / Load through the real menu (automated runs used `mod_spmap`), a remote PC over Tailscale.
+
 In progress:
-- **Lobby overlay** (lead, main): F8 / auto at the main menu, HOST / JOIN, IP, port, name, puppet model, status, player list. Single DH2 COOP shortcut.
 - **Player-count scaling** (Opus agent, `dh2coop-scale` branch `scale`, port 27520, slot S): `re/notes/player-scale.md`; deliverable `re/notes/scale.md` in that worktree.
 
 ### Paused for the next phase (agents stopped 22:0x; worktrees kept, resume each with its context)
