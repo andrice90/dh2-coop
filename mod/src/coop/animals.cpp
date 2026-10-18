@@ -1503,7 +1503,11 @@ private:
             const bool host_dead = dead_.count(id) != 0 ||
                                    (!fresh_life && have_early &&
                                     ((early.flags & net::animal_flag::kDead) != 0 || early.health <= 0.f));
-            if (!m.is_npc && !host_dead && host_cutscene && entity::BodyStateName(ent) == "CutScene") {
+            // beasts.cpp: a water crocodile copy is never thawed for the host's sync attack: its own brain would start a second
+            // attack ring on a local hunter or puppet, and the ring outlives the host's (MAP8 client, "Could not forward
+            // animation run from Legs to Legs", 2026-10-18).
+            if (!m.is_npc && !host_dead && host_cutscene && entity::BodyStateName(ent) == "CutScene" &&
+                !beasts::NoCutSceneThaw(ent)) {
                 if (m.frozen) {
                     entity::FreezeBrain(ent, false);
                     m.frozen = false;

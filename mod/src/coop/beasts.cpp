@@ -722,6 +722,8 @@ bool MirrorStateOk(void* ent, const std::string& state) {
     return true;
 }
 
+bool NoCutSceneThaw(void* ent) { return HasVt(ent, kVtCrocodileRva); }
+
 const char* NpcLegClipFor(void* ent, const char* preferred) {
     if (!preferred || !g_clip_check || !ent) return preferred;
     void* part = GuardedPart0(ent);
