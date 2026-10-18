@@ -22,6 +22,7 @@
 
 #include "coop/animals.h"
 #include "coop/events.h"
+#include "coop/heli.h"
 #include "coop/player_tracker.h"
 #include "coop/puppet_models.h"
 #include "coop/puppets.h"
@@ -787,6 +788,10 @@ private:
                 if (!events::SnapshotIsCurrent(ev.vehicleStates.mapSerial)) return;
                 vehicles::OnStates(ev.vehicleStates, now_ms());
                 return;
+            case net::EventType::HeliStates:
+                if (!events::SnapshotIsCurrent(ev.heliStates.mapSerial)) return;
+                heli::OnStates(ev.heliStates, now_ms());
+                return;
             case net::EventType::GameEvent:
                 events::OnNet(ev.gameEvent);
                 return;
@@ -1316,6 +1321,7 @@ bool HostNextLevel() {
 }
 
 bool BroadcastVehicleStates(const net::VehicleStates& states) { return g_session.SendVehicleStates(states); }
+bool BroadcastHeliStates(const net::HeliStates& states) { return g_session.SendHeliStates(states); }
 
 bool BroadcastAnimalStates(const net::AnimalStates& states) {
     net::AnimalStates stamped = states;

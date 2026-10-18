@@ -279,6 +279,37 @@ void TestCodec(Tally& t) {
                 "vehicle states unreliable on the state channel");
     }
     {
+        HeliStates hs;
+        hs.tickMs = 98765;
+        hs.mapSerial = 3;
+        HeliState h;
+        h.id = 66;
+        h.state = "Loop1";
+        h.anim = "loop1";
+        h.elapsed = 4.5f;
+        h.speed = 1.f;
+        h.length = 12.25f;
+        h.pos[1] = 31.5f;
+        h.flags = heli_flag::kVisible;
+        hs.helis.push_back(h);
+        auto b = Encode(hs);
+        auto d = Decode(b.data(), b.size());
+        t.Check(b.size() == kHeliStatesHeaderBytes + kHeliStateFixedBytes + 5 + 5 && d &&
+                    std::holds_alternative<HeliStates>(*d) && std::get<HeliStates>(*d).helis.size() == 1 &&
+                    std::get<HeliStates>(*d).helis[0].id == 66 && std::get<HeliStates>(*d).helis[0].state == "Loop1" &&
+                    std::get<HeliStates>(*d).helis[0].anim == "loop1" &&
+                    std::get<HeliStates>(*d).helis[0].elapsed == 4.5f &&
+                    std::get<HeliStates>(*d).helis[0].length == 12.25f &&
+                    std::get<HeliStates>(*d).helis[0].pos[1] == 31.5f &&
+                    std::get<HeliStates>(*d).helis[0].flags == heli_flag::kVisible &&
+                    std::get<HeliStates>(*d).mapSerial == 3 && std::get<HeliStates>(*d).tickMs == 98765,
+                "heli states round trip");
+        b.pop_back();
+        t.Check(!Decode(b.data(), b.size()), "truncated heli states rejected");
+        t.Check(!IsReliable(MsgId::HeliStates) && ChannelFor(MsgId::HeliStates) == kChannelState,
+                "heli states unreliable on the state channel");
+    }
+    {
         AnimalStates s;
         s.mapSerial = 0xBEEF;
         auto b = Encode(s);

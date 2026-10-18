@@ -18,6 +18,7 @@ const char* ToString(MsgId id) {
     case MsgId::AnimalStates: return "AnimalStates";
     case MsgId::AnimalHit: return "AnimalHit";
     case MsgId::VehicleStates: return "VehicleStates";
+    case MsgId::HeliStates: return "HeliStates";
     case MsgId::GameEvent: return "GameEvent";
     }
     return "Unknown";
@@ -144,6 +145,42 @@ std::optional<VehicleStates> ParseVehicleStates(const uint8_t* data, size_t len)
         v.id = r.U16();
         for (float& f : v.rot) f = r.F32();
         for (float& f : v.pos) f = r.F32();
+    }
+    if (!r.ok() || r.remaining() != 0) return std::nullopt;
+    return msg;
+}
+
+bool ReadShortString(ByteReader& r, std::string& out) {
+    const uint8_t n = r.U8();
+    if (!r.ok() || n > kMaxHeliNameChars || static_cast<size_t>(n) > r.remaining()) return false;
+    uint8_t raw[kMaxHeliNameChars];
+    r.Bytes(raw, n);
+    if (!r.ok()) return false;
+    out.assign(reinterpret_cast<const char*>(raw), n);
+    return true;
+}
+
+std::optional<HeliStates> ParseHeliStates(const uint8_t* data, size_t len) {
+    if (data == nullptr || len < kHeliStatesHeaderBytes || data[0] != static_cast<uint8_t>(MsgId::HeliStates)) {
+        return std::nullopt;
+    }
+    ByteReader r(data + 1, len - 1);
+    HeliStates msg;
+    msg.tickMs = r.U32();
+    msg.mapSerial = r.U16();
+    const uint8_t count = r.U8();
+    if (!r.ok() || count > kMaxHelis || static_cast<size_t>(count) * kHeliStateFixedBytes > r.remaining()) {
+        return std::nullopt;
+    }
+    msg.helis.resize(count);
+    for (auto& h : msg.helis) {
+        h.id = r.U16();
+        h.elapsed = r.F32();
+        h.speed = r.F32();
+        h.length = r.F32();
+        for (float& f : h.pos) f = r.F32();
+        h.flags = r.U8();
+        if (!r.ok() || !ReadShortString(r, h.state) || !ReadShortString(r, h.anim)) return std::nullopt;
     }
     if (!r.ok() || r.remaining() != 0) return std::nullopt;
     return msg;
@@ -345,6 +382,32 @@ std::vector<uint8_t> Encode(const VehicleStates& msg) {
     return w.Take();
 }
 
+std::vector<uint8_t> Encode(const HeliStates& msg) {
+    ByteWriter w;
+    w.U8(static_cast<uint8_t>(MsgId::HeliStates));
+    w.U32(msg.tickMs);
+    w.U16(msg.mapSerial);
+    const size_t n = msg.helis.size() < kMaxHelis ? msg.helis.size() : kMaxHelis;
+    w.U8(static_cast<uint8_t>(n));
+    auto name = [&w](const std::string& s) {
+        const size_t len = s.size() > kMaxHeliNameChars ? kMaxHeliNameChars : s.size();
+        w.U8(static_cast<uint8_t>(len));
+        if (len > 0) w.Bytes(s.data(), len);
+    };
+    for (size_t i = 0; i < n; ++i) {
+        const HeliState& h = msg.helis[i];
+        w.U16(h.id);
+        w.F32(h.elapsed);
+        w.F32(h.speed);
+        w.F32(h.length);
+        for (float f : h.pos) w.F32(f);
+        w.U8(h.flags);
+        name(h.state);
+        name(h.anim);
+    }
+    return w.Take();
+}
+
 std::vector<uint8_t> Encode(const GameEvent& msg) {
     ByteWriter w;
     w.U8(static_cast<uint8_t>(MsgId::GameEvent));
@@ -471,6 +534,11 @@ std::optional<Message> Decode(const uint8_t* data, size_t len) {
     }
     case MsgId::VehicleStates: {
         auto m = ParseVehicleStates(data, len);
+        if (!m) return std::nullopt;
+        return Message{std::move(*m)};
+    }
+    case MsgId::HeliStates: {
+        auto m = ParseHeliStates(data, len);
         if (!m) return std::nullopt;
         return Message{std::move(*m)};
     }

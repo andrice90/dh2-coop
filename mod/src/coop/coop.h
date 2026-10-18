@@ -9,6 +9,7 @@ struct AnimalStates;
 struct AnimalHit;
 struct GameEvent;
 struct VehicleStates;
+struct HeliStates;
 }
 
 namespace dh2::coop {
@@ -111,6 +112,7 @@ std::string StatusLine();
 // Game thread. Host broadcast / client hit report. False when this process has the wrong role.
 bool BroadcastAnimalStates(const net::AnimalStates& states);
 bool BroadcastVehicleStates(const net::VehicleStates& states);
+bool BroadcastHeliStates(const net::HeliStates& states);
 bool ReportAnimalHit(const net::AnimalHit& hit);
 bool SendGameEvent(const net::GameEvent& ev);
 // Host: a commit to one client only (catch-up after a join or a map change).

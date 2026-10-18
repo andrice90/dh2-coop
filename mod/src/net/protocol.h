@@ -55,10 +55,11 @@ enum class MsgId : uint8_t {
     AnimalStates = 9,
     AnimalHit = 10,
     VehicleStates = 11,
+    HeliStates = 12,
     GameEvent = 48,
 };
 
-// Ids 12-15 are unused. Ranges below stay unused except 48 (GameEvent). Do not send them.
+// Ids 13-15 are unused. Ranges below stay unused except 48 (GameEvent). Do not send them.
 // See docs/net-protocol.md.
 constexpr uint8_t kReservedControlBegin = 16;  // 16-31
 constexpr uint8_t kAnimalStateBegin = 32;      // 32-47
@@ -75,6 +76,10 @@ constexpr size_t kAnimalHitBytes = 20;
 constexpr uint8_t kMaxVehicles = 4;
 constexpr size_t kVehicleStatesHeaderBytes = 8;  // id + tickMs + mapSerial + count
 constexpr size_t kVehicleStateBytes = 50;        // entity id + 3x3 orientation + position
+constexpr uint8_t kMaxHelis = 2;
+constexpr uint8_t kMaxHeliNameChars = 31;
+constexpr size_t kHeliStatesHeaderBytes = 8;     // id + tickMs + mapSerial + count
+constexpr size_t kHeliStateFixedBytes = 29;      // entity id, elapsed, speed, length, position, flags, two empty names
 constexpr size_t kGameEventHeaderBytes = 18;  // id through key length, empty key
 constexpr uint8_t kMaxGameEventKeyChars = 31;
 
@@ -225,6 +230,32 @@ struct VehicleStates {
     std::vector<VehicleState> vehicles;  // at most kMaxVehicles
 };
 
+// One helicopter (GameDll cObjHelicopter, MAP11A / MAP11C "helicopter"): its flight is a baked clip on the fly model's
+// part 0, so the clip and its time are the pose. `state` is the body state (cBodyHelicopter Ani1/Loop1/...), `anim`
+// the current clip name; elapsed = part +0x84 (seconds), speed = part +0x88. pos is the entity (+0xE8), for drift logs.
+struct HeliState {
+    uint16_t id = 0;  // BSP entity id, the same on every peer
+    float elapsed = 0.f;
+    float speed = 0.f;
+    float length = 0.f;  // the clip's length (cModelAnim +0xC)
+    float pos[3] = {};
+    uint8_t flags = 0;   // heli_flag
+    std::string state;
+    std::string anim;
+};
+
+namespace heli_flag {
+constexpr uint8_t kTaskDone = 1u << 0;  // cScrHelicopter +0x30 (CompleteTask) was set when sampled
+constexpr uint8_t kVisible = 1u << 1;   // entity +0x234 (MakeVisible)
+}
+
+// Host → clients, unreliable. Clients play their copy at the host's clip and time (heli.cpp).
+struct HeliStates {
+    uint32_t tickMs = 0;
+    uint16_t mapSerial = 0;
+    std::vector<HeliState> helis;  // at most kMaxHelis
+};
+
 // Client → host, reliable. The host sets shooterId from the sending peer's player id.
 struct AnimalHit {
     uint8_t shooterId = kInvalidPlayerId;
@@ -256,16 +287,18 @@ struct GameEvent {
 };
 
 using Message = std::variant<Hello, Welcome, Reject, PlayerJoined, PlayerLeft, PlayerState, Ping, Pong, AnimalStates,
-                              AnimalHit, GameEvent, VehicleStates>;
+                              AnimalHit, GameEvent, VehicleStates, HeliStates>;
 
 constexpr uint8_t ChannelFor(MsgId id) {
-    if (id == MsgId::PlayerState || id == MsgId::AnimalStates || id == MsgId::VehicleStates) return kChannelState;
+    if (id == MsgId::PlayerState || id == MsgId::AnimalStates || id == MsgId::VehicleStates || id == MsgId::HeliStates)
+        return kChannelState;
     if (id == MsgId::AnimalHit || id == MsgId::GameEvent) return kChannelEvents;
     return kChannelControl;
 }
 
 constexpr bool IsReliable(MsgId id) {
-    return id != MsgId::PlayerState && id != MsgId::AnimalStates && id != MsgId::VehicleStates;
+    return id != MsgId::PlayerState && id != MsgId::AnimalStates && id != MsgId::VehicleStates &&
+           id != MsgId::HeliStates;
 }
 
 inline void SetName(char (&dst)[kNameBytes], std::string_view src) {
@@ -334,6 +367,7 @@ std::vector<uint8_t> Encode(const AnimalStates& msg);
 std::vector<uint8_t> Encode(const AnimalHit& msg);
 std::vector<uint8_t> Encode(const GameEvent& msg);
 std::vector<uint8_t> Encode(const VehicleStates& msg);
+std::vector<uint8_t> Encode(const HeliStates& msg);
 std::vector<uint8_t> Encode(const Message& msg);
 
 // Matching id, every field inside the span, no trailing bytes. Otherwise nullopt.
