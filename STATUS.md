@@ -20,7 +20,12 @@ User: extend the MAP4A lessons (movers, riders, NPC/animal sync) and the earlier
 | bosses (Opus) | `dh2coop-yeti` / `yeti` (rebase) | 27680 / W | yeti, Hogzilla, Big Grimm, NPC PlayAnim beats |
 | smoke (Sonnet) | `dh2coop-smoke` / `smoke-pass` | 27690 / G | baseline 2-window smoke on all 21 story maps, F5/F6, 3 players |
 
-Lead: review + cherry-pick every branch into main; merge `replay-crash` and `puppet-polish` now; integration test; route research findings to owners.
+Lead: review + cherry-pick every branch into main; integration test; route research findings to owners.
+
+Merged by the lead 09:4x:
+- `13cf306`, `a5558d9` (branch `replay-crash`): **same-map replay crash fixed**. A replay (results-screen retry, F5, `spmap` of the loaded map) now runs Main7's map-change cleanup (`0xf8f0`) before the loader (`0x101d0`), so it is a full load (`[Coop] FullReloadOnReplay=1`). `e38f9dc`: the `cSndDrvDS::WaveRelease` hook also skips a release on an empty slot. Verified `replay-coop-test.ps1` MAP1 → MAP1 → MAP1 → MAP2A → MAP1 on two windows: RESULT ok, no crash. Handled first-chance AVs in `display.cpp` `gameplay_icon_scale` (guarded `safe_copy` on the loading thread) are harmless.
+- `038afc0`..`a1e9212` (branch `puppet-polish`): `coop_fake*` test sender, no first-chance AV on weapon unlink on story maps (scripted state machine hidden from `SetSyncWith(nullptr)`), a leaving player's puppet is parked (hidden, frozen, y = -10000) and reused by the next joiner with the **same model** (lead change: also on a model swap, collision restored if parked while riding). Verified MAP2A: model swap, leave, rejoin, swap again: bodies reused, no exceptions.
+- Routed review M1/M2 (NPC mirror death / thaw with the animal FreezeBrain) to `life`.
 
 ## Pivot to real testing (2026-10-17 late night)
 User: pause the wide fan-out; make install and host/join very easy; start real testing over Tailscale; implement player-count scaling; fix the compass; then a lobby overlay (one DH2 COOP shortcut → main menu → lobby with HOST / JOIN).
