@@ -166,7 +166,6 @@ bool IsMirroredNpc(void* ent);  // below (needs the module's mirror table)
 // ---- kill credit, lives and mission reports (re/notes/life.md) ----
 // GameDll7 v1.0 RVAs; every body starts 55 8b ec 6a ff (checked before hooking).
 constexpr uintptr_t kRvaAnimalOnHit = 0x1a680;    // cScrAnimal::OnHit (vt +0x8c), thiscall(animal, bullet, pos*, dir*)
-constexpr uintptr_t kRvaCobraOnHit = 0x80440;     // cObjCobra::OnHit, same signature: Death + timer, no health change
 constexpr uintptr_t kRvaPresentDeath = 0x1e8b0;   // cScrAnimal vt +0x154, fastcall(animal)
 constexpr uintptr_t kRvaMissionReport = 0x91e80;  // thiscall(cMission*, int action, int species): records one report
 constexpr uintptr_t kRvaMissionUpdate = 0x94ba0;  // cMission vt +0x44 Update(float dt): hands the report to the tasks
@@ -183,14 +182,11 @@ constexpr uintptr_t kEntEventMode = 0x500;    // 2 = event animal (MoveToPos mod
 constexpr uintptr_t kEntDeadGuard = 0x600;    // 1 after present-death or a flee; MoveToPos clears it
 constexpr uintptr_t kEntProtected = 0x604;    // IsProtected(): a bullet fails the mission, a second dart overdoses
 constexpr uintptr_t kBulletKind = 0x1b4;      // mod_obj_bullet: 2 = melee (knife), no protected-animal check
-constexpr uintptr_t kCobraDeathTimerOff = 0x738;
 constexpr uintptr_t kMissionReportAction = 0x1dc;  // the report waiting for the next Update (0 = none)
 constexpr uintptr_t kMissionFleeAction = 0x1ec;    // SetMissionOnFleePointReachedAction
-constexpr uintptr_t kMissionStatus = 0x254;
 constexpr int kActionKill = 1;               // MISSION_ACTION_KILL
 
 safetyhook::InlineHook* g_onhit_hook = nullptr;
-safetyhook::InlineHook* g_cobra_onhit_hook = nullptr;
 safetyhook::InlineHook* g_death_hook = nullptr;
 safetyhook::InlineHook* g_report_hook = nullptr;
 safetyhook::InlineHook* g_mission_update_hook = nullptr;
@@ -354,10 +350,8 @@ const char* HitKindName(float kind) {
 
 void OnReviveCommitThunk(const net::GameEvent& ev);  // below (module)
 void __cdecl CmdLivesThunk();
-void __cdecl CmdTasksThunk();
 void __fastcall hk_PresentDeath(void* ent);                                         // below (mirror table)
 void __fastcall hk_AnimalOnHit(void* self, void*, void* bullet, void* pos, void* dir);  // below
-void __fastcall hk_CobraOnHit(void* self, void*, void* bullet, void* pos, void* dir);   // below
 
 void __fastcall hk_NpcHurt(void* self, void*, void* attacker, float dmg, int type, const void* pos, const void* dir) {
     if (NetIsOnline() && !NetIsHost() && IsMirroredNpc(self)) return;
@@ -798,9 +792,6 @@ public:
         if (void* p = checked(kRvaAnimalOnHit, "cScrAnimal::OnHit"))
             g_onhit_hook = core::install_hook("cScrAnimal::OnHit (client hit kinds, 0x1a680)", p,
                                               reinterpret_cast<void*>(&hk_AnimalOnHit));
-        if (void* p = checked(kRvaCobraOnHit, "cObjCobra::OnHit"))
-            g_cobra_onhit_hook = core::install_hook("cObjCobra::OnHit (client cobra hits, 0x80440)", p,
-                                                    reinterpret_cast<void*>(&hk_CobraOnHit));
         g_fn_mission_fail = checked(kRvaMissionFail, "cMission fail");
         void* fn = reinterpret_cast<char*>(game) + 0x5eeb0;  // cObjNPC::OnHurt
         uint8_t got[5] = {};
@@ -867,7 +858,6 @@ public:
     void OnFrame(float dt) override {
         if (!commands_ && console_cmds::Ready()) {
             commands_ = console_cmds::AddCommand0("coop_lives", &CmdLivesThunk);
-            console_cmds::AddCommand0("coop_tasks", &CmdTasksThunk);
         }
         const auto& local = LocalPlayer();
         if (!local.valid) return;
@@ -2016,28 +2006,13 @@ void __fastcall hk_AnimalOnHit(void* self, void*, void* bullet, void* pos, void*
     WriteAt<uint32_t>(self, kEntHitBits, bits_before | bits);
     WriteAt<int>(self, kEntTranq, tranq_before);
     if (!is_bullet) return;
+    // Darts are beasts.cpp's: its hook sends kTranqHit and the host runs the tranq branch. Reporting one here too would
+    // run it twice on the host (a second dart into a protected animal is an overdose: mission failed).
+    if (tranq) return;
     if (kind != 2 && bone < 0) return;  // no bone hit: OnHit did nothing
     const bool npc_shot = (bits & 8u) != 0;
-    const float hit = tranq ? kHitTranq : (kind == 2 ? kHitMelee : kHitBullet);
+    const float hit = kind == 2 ? kHitMelee : kHitBullet;
     g_self->NoteClientHit(self, hit, npc_shot);
-}
-
-// Client: a cobra copy's OnHit only sets Death and its 50 timer (no health change), so a player's shot never showed
-// as damage and never reached the host (MAP7 "kill 1 cobra"). Report it as a bullet hit; the host starts its own timer.
-void __fastcall hk_CobraOnHit(void* self, void*, void* bullet, void* pos, void* dir) {
-    const float timer_before = ReadAt<float>(self, kCobraDeathTimerOff, 0.f);
-    g_cobra_onhit_hook->unsafe_thiscall<void>(self, bullet, pos, dir);
-    if (!g_self || !g_self->IsClientMirror()) return;
-    const float timer = ReadAt<float>(self, kCobraDeathTimerOff, 0.f);
-    if (!(timer == kCobraDeathTimer && timer_before != kCobraDeathTimer)) return;
-    const int id = IdOf(self);
-    if (id < 0) return;
-    net::AnimalHit hit;
-    hit.animalId = static_cast<uint16_t>(id);
-    hit.damage = 1.f;
-    hit.hitPos[0] = kHitBullet;
-    const bool sent = ReportAnimalHit(hit);
-    spdlog::info("animals: local cobra hit id={} sent={}", id, sent);
 }
 
 void OnReviveCommitThunk(const net::GameEvent& ev) {
@@ -2046,28 +2021,6 @@ void OnReviveCommitThunk(const net::GameEvent& ev) {
 
 void __cdecl CmdLivesThunk() {
     if (g_self) g_self->DumpLives();
-}
-
-// coop_tasks: this process's mission tasks (list at cMission +0x1f8: count +4 + 1, array +0x10; task id +0x64, state
-// +0x68; a shoot task's species +0xf0, kills left +0xf4, targets left +0x58). Compare host and client after a kill.
-void __cdecl CmdTasksThunk() {
-    void* m = MissionPtr();
-    if (!m) {
-        spdlog::info("animals: coop_tasks: no mission");
-        return;
-    }
-    char* list = static_cast<char*>(m) + 0x1f8;
-    const int count = ReadAt<int>(list, 4, -2) + 1;
-    void** arr = ReadAt<void**>(list, 0x10, nullptr);
-    spdlog::info("animals: coop_tasks status={} pending action={} tasks={}", ReadAt<int>(m, kMissionStatus, -1),
-                 ReadAt<int>(m, kMissionReportAction, -1), count);
-    for (int i = 0; arr && i < count && i < 64; ++i) {
-        void* task = ReadAt<void*>(arr, static_cast<uintptr_t>(i) * 4, nullptr);
-        if (!task) continue;
-        spdlog::info("animals:   task id={} state={} species={} left={} targets={}", ReadAt<int>(task, 0x64, -1),
-                     ReadAt<int>(task, 0x68, -1), ReadAt<int>(task, 0xf0, -1), ReadAt<int>(task, 0xf4, -1),
-                     ReadAt<int>(task, 0x58, -1));
-    }
 }
 
 DH2_MODULE(AnimalsModule)

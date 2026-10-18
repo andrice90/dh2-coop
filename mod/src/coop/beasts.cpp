@@ -131,10 +131,16 @@ std::string ini_path() { return (core::self_dir() / "dh2coop.ini").string(); }
 
 void* Rva(uintptr_t rva) { return g_game ? reinterpret_cast<char*>(g_game) + rva : nullptr; }
 
-void* CheckedRva(uintptr_t rva, const char* label) {
+// `chain`: another module of this mod may have hooked the function already (animals.cpp hooks cScrAnimal::OnHit, 0x1a680,
+// first: its prologue is a jmp rel32 by now). safetyhook relocates that jmp into the new trampoline, so the hooks chain.
+void* CheckedRva(uintptr_t rva, const char* label, bool chain = false) {
     static const uint8_t kPrologue[5] = {0x55, 0x8b, 0xec, 0x6a, 0xff};
     void* p = Rva(rva);
     uint8_t got[5] = {};
+    if (chain && p && core::safe_copy(p, got, sizeof got) && got[0] == 0xE9) {
+        spdlog::info("beasts: {} at GameDll7+{:#x} is already hooked by another module; chaining", label, rva);
+        return p;
+    }
     if (!p || !core::safe_copy(p, got, sizeof got) || std::memcmp(got, kPrologue, sizeof got) != 0) {
         spdlog::error("beasts: {} at GameDll7+{:#x} has unexpected bytes; not used", label, rva);
         return nullptr;
@@ -661,7 +667,7 @@ public:
     void OnGameDllLoaded(HMODULE game) override {
         g_game = game;
         g_mission_fail = reinterpret_cast<MissionFailFn>(CheckedRva(kRvaMissionFail, "mission fail"));
-        g_onhit_hook = core::install_hook("cScrAnimal::OnHit (0x1a680, darts)", CheckedRva(kRvaAnimalOnHit, "animal OnHit"),
+        g_onhit_hook = core::install_hook("cScrAnimal::OnHit (0x1a680, darts)", CheckedRva(kRvaAnimalOnHit, "animal OnHit", true),
                                           reinterpret_cast<void*>(&hk_AnimalOnHit));
         g_cobra_hook = core::install_hook("cObjCobra::OnHit (0x80440)", CheckedRva(kRvaCobraOnHit, "cobra OnHit"),
                                           reinterpret_cast<void*>(&hk_CobraOnHit));
