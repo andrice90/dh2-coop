@@ -546,6 +546,13 @@ void* EntityById(int id) {
     if (!mgr || !core::safe_read(reinterpret_cast<char*>(mgr) + kMgrCount, count) ||
         !core::safe_read(reinterpret_cast<char*>(mgr) + kMgrArray, arr) || !arr || count <= 0 || count > kMgrMaxEntities)
         return nullptr;
+    // cObjManager::AddEntity writes the array index into +0x04, so id == index (review M3); the scan is the fallback.
+    if (id >= 0 && id < count) {
+        void* ent = nullptr;
+        int16_t eid = -1;
+        if (core::safe_read(arr + id, ent) && ent && core::safe_read(static_cast<char*>(ent) + 0x04, eid) && eid == id)
+            return ent;
+    }
     for (int i = 0; i < count; ++i) {
         void* ent = nullptr;
         int16_t eid = -1;
