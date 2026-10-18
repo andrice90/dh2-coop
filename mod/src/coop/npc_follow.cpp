@@ -54,8 +54,19 @@ std::unordered_map<void*, void*> g_last_pick;  // NPC -> the puppet it was last 
 bool g_clear_ok = false;                       // ClearAllInfoTask prologue checked
 int g_bad_brain_logs = 0;
 uint32_t g_switch_logs = 0;
+struct Picked {
+    uint8_t who = 0xFF;  // player the NPC was last logged following (0 = the host), 0xFF = not yet
+    uint32_t ms = 0;
+};
+std::unordered_map<void*, Picked> g_picked;  // NPC -> last logged pick
 
 using ClearFn = void(__fastcall*)(void* brain);
+
+std::string NameOf(void* ent) {
+    char* n = nullptr;
+    if (!ent || !core::safe_read(static_cast<char*>(ent) + 0x198, n) || !n) return {};
+    return core::safe_cstr(n, 32);
+}
 
 bool guarded_clear(void* brain) {
     __try {
@@ -85,16 +96,24 @@ void on_player_lookup(safetyhook::Context& ctx) {
     float best = 0.f;
     void* pick = hunter_nearest::NearestLivingPlayer(np, &best);
     if (!pick) pick = hunter;
-    const bool is_puppet = puppets::PlayerOf(pick) != net::kInvalidPlayerId;
+    const uint8_t who = puppets::PlayerOf(pick);
+    const bool is_puppet = who != net::kInvalidPlayerId;
     if (pick != hunter) {
         ctx.eax = reinterpret_cast<uintptr_t>(pick);
         if (is_puppet) NoteTarget(npc, pick);
-        if ((g_switch_logs++ % 600) == 0) {
-            int16_t id = -1;
-            core::safe_read(npc + 0x04, id);
-            spdlog::info("npc_follow: NPC id {} follows player {} ({:.1f} m)", id, puppets::PlayerOf(pick),
-                         std::sqrt(best));
-        }
+    }
+    // One line whenever an NPC's player changes (the host is player 0 here), at most one per NPC per 2 s.
+    const uint8_t shown = is_puppet ? who : 0;
+    const uint32_t now = GetTickCount();
+    Picked& last = g_picked[npc];
+    if (last.who != shown && now - last.ms >= 2000 && g_switch_logs < 400) {
+        ++g_switch_logs;
+        int16_t id = -1;
+        core::safe_read(npc + 0x04, id);
+        spdlog::info("npc_follow: NPC id {} '{}' now follows player {} ({:.1f} m{})", id, NameOf(npc), shown,
+                     std::sqrt(best), last.who == 0xFF ? "" : fmt::format(", was player {}", last.who));
+        last.who = shown;
+        last.ms = now;
     }
     // Companion far target: only touch it while it holds a player (the host hunter, or what we wrote last time).
     uint32_t flags = 0;
@@ -160,6 +179,44 @@ void __cdecl cmd_npcinfo(const char* arg) {
                  mask, state, count, items);
 }
 
+// Test: coop_npcs lists the world NPCs with a cAIBrain_NPC: id, name, position, AI flags, queue length, the
+// distance to the host's hunter and the nearest living player.
+void __cdecl cmd_npcs() {
+    void* hunter = LocalPlayer().entity;
+    float hp[3] = {};
+    const bool have_host = hunter && core::safe_copy(static_cast<char*>(hunter) + kEntPos, hp, sizeof hp);
+    int n = 0;
+    for (void* e : Npcs()) {
+        if (puppets::Owns(e)) continue;
+        char* npc = static_cast<char*>(e);
+        char* brain = nullptr;
+        uintptr_t vt = 0;
+        const bool has_brain = core::safe_read(npc + kNpcBrain, brain) && brain && core::safe_read(brain, vt) &&
+                               vt == g_base + kRvaBrainVt;
+        float p[3] = {};
+        core::safe_copy(npc + kEntPos, p, sizeof p);
+        uint32_t flags = 0;
+        core::safe_read(npc + kNpcAiFlags, flags);
+        char* queue = nullptr;
+        int count = -1;
+        if (has_brain && core::safe_read(brain + 0xc8, queue) && queue) core::safe_read(queue + 8, count);
+        float d2 = 0.f;
+        void* pick = hunter_nearest::NearestLivingPlayer(p, &d2);
+        const uint8_t who = puppets::PlayerOf(pick);
+        const float dh = have_host ? std::sqrt((p[0] - hp[0]) * (p[0] - hp[0]) + (p[1] - hp[1]) * (p[1] - hp[1]) +
+                                               (p[2] - hp[2]) * (p[2] - hp[2]))
+                                   : -1.f;
+        int16_t id = -1;
+        core::safe_read(npc + 0x04, id);
+        spdlog::info("coop_npcs: id {} '{}' at ({:.1f},{:.1f},{:.1f}) brain={} flags={:#x} queue={} host {:.1f} m, "
+                     "nearest player {} {:.1f} m",
+                     id, NameOf(npc), p[0], p[1], p[2], has_brain, flags, count, dh,
+                     who == net::kInvalidPlayerId ? 0 : who, pick ? std::sqrt(d2) : -1.f);
+        ++n;
+    }
+    spdlog::info("coop_npcs: {} NPC(s), host at ({:.1f},{:.1f},{:.1f})", n, hp[0], hp[1], hp[2]);
+}
+
 // Test: coop_npcclear <entity id> drops that NPC's queued commands (the script StopAllTask), so the next brain tick
 // picks a player again.
 void __cdecl cmd_npcclear(const char* arg) {
@@ -213,12 +270,14 @@ public:
     void OnMapUnloading() override {
         g_written.clear();
         g_last_pick.clear();
+        g_picked.clear();
     }
 
     void OnFrame(float) override {
         if (!cmd_registered_ && console_cmds::Ready()) {
             cmd_registered_ = console_cmds::AddCommandStr("coop_npcinfo", &cmd_npcinfo);
             console_cmds::AddCommandStr("coop_npcclear", &cmd_npcclear);
+            console_cmds::AddCommand0("coop_npcs", &cmd_npcs);
         }
     }
 

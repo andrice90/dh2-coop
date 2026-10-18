@@ -29,6 +29,10 @@
 #include "engine/entity_api.h"
 #include "net/interp.h"
 
+namespace dh2::coop::combat {
+bool PlayersAttackable();  // combat.cpp: the host hunter's SetCanBeAttacked flag (true off the host)
+}
+
 namespace dh2::coop::puppets {
 namespace {
 
@@ -811,7 +815,8 @@ public:
             // A rider is not prey either: a lion's sync attack on a puppet we keep moving back into the truck bed
             // left the lion waiting on its partner and threw the puppet off the truck (MAP4A host, 2026-10-18).
             // Lions on a ride go for the host's own hunter; riders still shoot.
-            if (p.dead || riding) unregister_target(p);
+            // The script's player.SetCanBeAttacked(0) takes the host's hunter off the attack list; puppets follow it.
+            if (p.dead || riding || !combat::PlayersAttackable()) unregister_target(p);
             else register_target(p);
             set_collision(p, !riding);
             entity::Vec3 spot{s.pos[0], s.pos[1] + g_y_offset, s.pos[2]};

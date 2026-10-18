@@ -7,6 +7,7 @@
 // The puppet itself takes nothing: it is a picture of the other player, who takes the hit on their own machine.
 #include <windows.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -30,6 +31,9 @@
 #include "engine/entity_api.h"
 
 namespace dh2::coop::combat {
+
+bool PlayersAttackable();
+
 namespace {
 
 constexpr uintptr_t kBrainTargetId = 0x254;  // cAIHuntBrain_Animal::SetTarget stores the target entity id here
@@ -126,18 +130,68 @@ void __fastcall hk_PlaySA(void* self, void*, char* clip, float* basis) {
     g_playsa_hook->unsafe_thiscall<void>(self, clip, basis);
 }
 
+void* LocalHunter();
+
+// After a sync attack the hunter cannot be pounced again for its deny time (cObjHunter::OnEndSA 0x53cd0 copies
+// +0x67c to the countdown +0x680; the hunter's CanPlaySA, vt +0x218 = GameDll 0x485e0, says no while it runs). The
+// script's player.SetDenySATime (GameDll 0x4bf60) writes +0x67c (spawn value 15 s; MAP2A 25, MAP8 15 then 0.1) on the
+// host's hunter only. A puppet is a cObjCharacterEx whose CanPlaySA (CommonDll 0x14a60) always says yes, so the host
+// gives each puppet the same cooldown, with the host hunter's deny time ([Combat] PuppetDenySA).
+bool g_puppet_deny = true;
+uint32_t g_deny_until[net::kMaxPlayers] = {};
+uint32_t g_deny_logs = 0;
+safetyhook::InlineHook* g_canplay_hook = nullptr;
+
+float HostDenySeconds() {
+    float s = 15.f;
+    if (void* h = LocalHunter()) core::safe_read(static_cast<char*>(h) + 0x67c, s);
+    return std::isfinite(s) && s > 0.f ? std::min(s, 600.f) : 0.f;
+}
+
 void __fastcall hk_OnEndSA(void* self, void*) {
     if (!g_in_apply && NetIsHost()) {
         const uint8_t who = puppets::PlayerOf(self);
         if (who != net::kInvalidPlayerId) {
             const int zero = 0;
             std::memcpy(static_cast<char*>(self) + kInSA, &zero, sizeof zero);
-            spdlog::info("combat: sync attack on player {} ended", who);
+            const float deny = g_puppet_deny ? HostDenySeconds() : 0.f;
+            if (who < net::kMaxPlayers) g_deny_until[who] = GetTickCount() + static_cast<uint32_t>(deny * 1000.f);
+            spdlog::info("combat: sync attack on player {} ended (no new one for {:.1f} s)", who, deny);
             events::Send(events::kPlayerKnockEnd, who, 0, 0.f, "", 0);
             return;
         }
     }
     g_endsa_hook->unsafe_thiscall<void>(self);
+}
+
+int __fastcall hk_CanPlaySA(void* self, void*) {
+    if (g_puppet_deny && NetIsHost()) {
+        const uint8_t who = puppets::PlayerOf(self);
+        if (who < net::kMaxPlayers && g_deny_until[who] &&
+            static_cast<int32_t>(g_deny_until[who] - GetTickCount()) > 0) {
+            if (g_deny_logs++ < 10)
+                spdlog::info("combat: player {} is not pounced again yet ({} ms of the deny time left)", who,
+                             static_cast<int32_t>(g_deny_until[who] - GetTickCount()));
+            return 0;
+        }
+    }
+    return g_canplay_hook->unsafe_thiscall<int>(self);
+}
+
+// Once per map: does a puppet's vt +0x218 reach the hooked base CanPlaySA (else the cooldown cannot work)?
+void* g_canplay_fn = nullptr;
+bool g_canplay_checked = false;
+
+void CheckPuppetCanPlay() {
+    if (g_canplay_checked || !g_canplay_fn || !NetIsHost()) return;
+    puppets::SenseInfo list[4];
+    if (puppets::List(list, 4) == 0) return;
+    void** vt = nullptr;
+    void* slot = nullptr;
+    if (!core::safe_read(list[0].entity, vt) || !vt || !core::safe_read(vt + 0x218 / 4, slot)) return;
+    g_canplay_checked = true;
+    spdlog::info("combat: puppet CanPlaySA (vt +0x218) is {} {}", core::describe_address(slot),
+                 slot == g_canplay_fn ? "(the hooked base: deny time works)" : "(not the base: no deny time)");
 }
 
 // ---- client side: the hit lands on our own hunter ----
@@ -536,6 +590,44 @@ void RetargetToNearestPlayer() {
     }
 }
 
+std::string TargetLabel(void* ent) {
+    if (!ent) return "none";
+    if (ent == LocalPlayer().entity) return "host";
+    const uint8_t who = puppets::PlayerOf(ent);
+    if (who != net::kInvalidPlayerId) return fmt::format("player {}", who);
+    char* n = nullptr;
+    core::safe_read(static_cast<char*>(ent) + 0x198, n);
+    return fmt::format("id {} '{}'", IdOf(ent), n ? core::safe_cstr(n, 32) : std::string());
+}
+
+// Test: coop_targets logs every animal's current attack target (host only: client brains are frozen), and how
+// many animals are on each player.
+void __cdecl cmd_targets() {
+    if (!BindBrain()) return;
+    std::map<std::string, int> per;
+    int n = 0;
+    for (void* animal : Animals()) {
+        void* brain = nullptr;
+        if (!core::safe_read(static_cast<char*>(animal) + kEntBrain, brain) || !brain) continue;
+        void* cur = guarded_get(g_get_target, brain);
+        if (!cur) continue;
+        float pa[3] = {};
+        core::safe_copy(static_cast<char*>(animal) + kEntPos, pa, sizeof pa);
+        if (pa[1] < -5000.f) continue;  // parked
+        const std::string label = TargetLabel(cur);
+        ++per[label];
+        ++n;
+        char* nm = nullptr;
+        core::safe_read(static_cast<char*>(animal) + 0x198, nm);
+        spdlog::info("coop_targets: animal id {} '{}' -> {} ({:.1f} m)", IdOf(animal), nm ? core::safe_cstr(nm, 32) : "",
+                     label, std::sqrt(DistSq(animal, cur)));
+    }
+    std::string sum;
+    for (const auto& [k, v] : per) sum += fmt::format(" [{}: {}]", k, v);
+    spdlog::info("coop_targets: {} animal(s) with a target, attack list {}, host attackable={}{}", n,
+                 entity::AttackTargetCount(), PlayersAttackable(), sum);
+}
+
 // ---- host: an attacking animal treats a living puppet as a player ----
 // re/notes/animal-park.md (Cursor worker, 2026-10-17). The attack code asks its target "are you the player" (entity
 // vt +0xFC: 1 on cScr_ModHunter, 0 on a puppet). For a puppet, cAIHuntBrain_Animal::ProcessAttackState fell through
@@ -607,6 +699,20 @@ void OnClientHitAnimal(void* animal, uint8_t shooter) {
     spdlog::info("combat: animal id {} hurt by player {}: brain told ok={}", IdOf(animal), shooter, ok);
 }
 
+// Host: may animals attack the players? The script's player.SetCanBeAttacked(n) (GameDll 0x49ec0: hunter +0x644 = n,
+// then Add/RemoveAttackTarget for that hunter only) speaks for the host's hunter; puppets.cpp keeps every puppet in
+// or out of the attack list the same way, players who join later included (MAP2B wolf siege, MAP3C Abby defense).
+// A helicopter pilot (MAP11A/11C, its own vtable) is not read: true there. [Combat] FollowHostAttackable.
+bool g_follow_host_flag = true;
+
+bool PlayersAttackable() {
+    if (!g_follow_host_flag || !NetIsHost()) return true;
+    void* h = LocalHunter();
+    int v = 1;
+    if (!h || !core::safe_read(static_cast<char*>(h) + 0x644, v)) return true;
+    return v != 0;
+}
+
 namespace {
 
 class CombatModule : public dh2::Module {
@@ -623,7 +729,10 @@ public:
         g_knock_on_shot = GetPrivateProfileIntA("Combat", "KnockOnShot", 1, ini.c_str()) != 0;
         g_knock_on_melee = GetPrivateProfileIntA("Combat", "KnockOnMelee", 1, ini.c_str()) != 0;
         g_pvp_knock_ms = static_cast<uint32_t>(GetPrivateProfileIntA("Combat", "KnockMs", 2600, ini.c_str()));
-        spdlog::info("combat: knock on shot={} melee={} ms={}", g_knock_on_shot, g_knock_on_melee, g_pvp_knock_ms);
+        g_follow_host_flag = GetPrivateProfileIntA("Combat", "FollowHostAttackable", 1, ini.c_str()) != 0;
+        g_puppet_deny = GetPrivateProfileIntA("Combat", "PuppetDenySA", 1, ini.c_str()) != 0;
+        spdlog::info("combat: knock on shot={} melee={} ms={} followHostAttackable={} puppetDenySA={}", g_knock_on_shot,
+                     g_knock_on_melee, g_pvp_knock_ms, g_follow_host_flag, g_puppet_deny);
     }
 
     void OnEngineReady(HMODULE) override {
@@ -643,20 +752,39 @@ public:
         g_stuck_hook = core::install_hook("cAIHuntBrain_Animal::ProcessAttackStuck (combat)",
                                           core::find_export(common, "?ProcessAttackStuck@cAIHuntBrain_Animal@@MAEXXZ"),
                                           reinterpret_cast<void*>(&hk_ProcessAttackStuck));
+        if (g_puppet_deny) {
+            g_canplay_fn = core::find_export(common, "?CanPlaySA@cObjCharacterEx@@UAEHXZ");
+            g_canplay_hook = core::install_hook("cObjCharacterEx::CanPlaySA (combat)", g_canplay_fn,
+                                                reinterpret_cast<void*>(&hk_CanPlaySA));
+        }
     }
 
     void OnGameDllLoaded(HMODULE game) override { g_game_base = reinterpret_cast<uintptr_t>(game); }
 
     void OnMapUnloading() override {
         g_knocked = false;
+        attackable_ = -1;
+        for (uint32_t& t : g_deny_until) t = 0;
+        g_canplay_checked = false;
     }
 
     void OnFrame(float) override {
-        if (!cmd_registered_ && console_cmds::Ready()) cmd_registered_ = console_cmds::AddCommandStr("coop_knock", &cmd_knock);
+        if (!cmd_registered_ && console_cmds::Ready()) {
+            cmd_registered_ = console_cmds::AddCommandStr("coop_knock", &cmd_knock);
+            console_cmds::AddCommand0("coop_targets", &cmd_targets);
+        }
         const uint32_t now = GetTickCount();
         if (now - retarget_ms_ >= 500) {
             retarget_ms_ = now;
             RetargetToNearestPlayer();
+            const int can = PlayersAttackable() ? 1 : 0;
+            if (NetIsHost() && LocalHunter() && can != attackable_) {
+                if (attackable_ >= 0)
+                    spdlog::info("combat: the host's hunter can{} be attacked now (script SetCanBeAttacked): puppets {} "
+                                 "the attack list", can ? "" : "not", can ? "join" : "leave");
+                attackable_ = can;
+            }
+            CheckPuppetCanPlay();
         }
         if (g_knocked && g_knock_end_ms && static_cast<int32_t>(now - g_knock_end_ms) >= 0) EndKnock("player knock done");
         if (g_knocked && now - g_knock_ms > kKnockTimeoutMs) EndKnock("timeout");
@@ -676,6 +804,7 @@ public:
 
 private:
     uint32_t retarget_ms_ = 0;
+    int attackable_ = -1;
     bool cmd_registered_ = false;
     bool have_counts_ = false;
     uint8_t shots_ = 0;
