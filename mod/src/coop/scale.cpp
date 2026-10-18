@@ -18,7 +18,7 @@
 //    parks its reserves too.
 //  - Present-death (0x1e8b0) reports the species to the mission through 0x91e80. animals.cpp owns both hooks and keeps a
 //    reserve's death out of the mission (IsReserve below). A dead reserve that is released again is a new life there
-//    (kAnimalRevive), so clients see it come back; ReuseKilled can be turned on once that is verified.
+//    (kAnimalRevive), so clients see it come back (ReuseKilled=1, verified on the MAP2B siege).
 #include "coop/scale.h"
 
 #include <windows.h>
@@ -136,8 +136,8 @@ struct Settings {
     int reserves = kMaxReserves;  // [Scale] Reserves (per species; every player must use the same value)
     bool log = true;      // [Scale] Log
     bool client_respawn = true;  // [Scale] ClientRespawn: a client gives a released reserve the MoveToPos body state
-    bool reuse_killed = false;   // [Scale] ReuseKilled: release a reserve again after it died (a new life, kAnimalRevive;
-                                 // turn on once the revive path is verified in game, re/notes/life.md)
+    bool reuse_killed = true;    // [Scale] ReuseKilled: release a reserve again after it died (a new life, kAnimalRevive;
+                                 // verified on the MAP2B siege, re/notes/life.md)
 };
 Settings g_cfg;
 
@@ -927,7 +927,7 @@ public:
                                     0, kMaxReserves);
         g_cfg.log = GetPrivateProfileIntA("Scale", "Log", 1, ini.c_str()) != 0;
         g_cfg.client_respawn = GetPrivateProfileIntA("Scale", "ClientRespawn", 1, ini.c_str()) != 0;
-        g_cfg.reuse_killed = GetPrivateProfileIntA("Scale", "ReuseKilled", 0, ini.c_str()) != 0;
+        g_cfg.reuse_killed = GetPrivateProfileIntA("Scale", "ReuseKilled", 1, ini.c_str()) != 0;
         events::SetHandler(events::kScaleMax, nullptr, &OnScaleMaxCommit);
         events::SetHandler(events::kScaleConfig, nullptr, &OnScaleConfigCommit);
         spdlog::info("scale: health={} bodies={} reserves={} clientRespawn={} reuseKilled={} log={}", g_cfg.health,
