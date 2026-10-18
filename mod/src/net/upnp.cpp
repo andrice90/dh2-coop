@@ -873,6 +873,7 @@ std::unique_ptr<Igd> OpenRouter(RouterInfo& info, std::string& why) {
             info.name = doc.name;
             info.serviceType = s.type;
             info.gatewayHost = docUrl.host;
+            info.controlUrl = s.controlUrl;
             return igd;
         }
     }
@@ -1031,13 +1032,29 @@ private:
         return G().cfg.renewMsForTest;
     }
 
-    static std::unique_ptr<Igd> Open(RouterInfo& info, std::string& why) {
+    // The router found last time answers again in a few milliseconds; the search (SSDP through Windows) takes ~9 s.
+    std::unique_ptr<Igd> Open(RouterInfo& info, std::string& why) {
         Opener opener;
         {
             std::lock_guard lk(G().mu);
             opener = G().opener;
         }
-        return opener ? opener(info, why) : OpenRouter(info, why);
+        if (opener) return opener(info, why);
+        Url control;
+        if (!cachedInfo_.controlUrl.empty() && ParseUrl(cachedInfo_.controlUrl, control)) {
+            auto igd = MakeSoapIgd(control, cachedInfo_.serviceType, 2000);
+            std::string ip;
+            if (igd->ExternalIp(ip) == 0 && !ip.empty()) {
+                info = cachedInfo_;
+                spdlog::info("upnp: router '{}' again, no new search", info.name);
+                return MakeSoapIgd(control, cachedInfo_.serviceType);
+            }
+            spdlog::info("upnp: the router found last time does not answer; searching again");
+            cachedInfo_ = RouterInfo{};
+        }
+        auto igd = OpenRouter(info, why);
+        if (igd) cachedInfo_ = info;
+        return igd;
     }
 
     bool StillWanted(uint16_t port) const {
@@ -1273,6 +1290,7 @@ private:
     }
 
     bool comOk_;
+    RouterInfo cachedInfo_;
     std::unique_ptr<Live> live_;
     uint16_t applied_ = 0;
     Clock::time_point wake_ = Clock::time_point::max();

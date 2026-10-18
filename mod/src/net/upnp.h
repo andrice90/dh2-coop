@@ -233,6 +233,7 @@ struct RouterInfo {
     std::string name;
     std::string serviceType;
     std::string gatewayHost;  // the router's LAN address (the host of its device description URL)
+    std::string controlUrl;   // where its WAN connection service takes SOAP (lets a later search be skipped)
     int devicesFound = 0;
 };
 std::unique_ptr<Igd> OpenRouter(RouterInfo& info, std::string& why);
