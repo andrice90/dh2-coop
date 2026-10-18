@@ -13,7 +13,10 @@
 
 namespace dh2::coop::events {
 
-constexpr uint16_t kAnimalDied = 1;   // commit. subject = entity id. Client plays death once.
+constexpr uint16_t kAnimalDied = 1;   // commit. subject = entity id, key = "life <n>" (one per life), f0 = species.
+                                      // i0 = life | report << 16 | fled << 24; report = 1 + the MISSION_ACTION_* this end
+                                      // gave the host's mission (0 = none), fled = reached a flee point (parked, no
+                                      // corpse). The client presents the death once and gives its mission the same report.
 constexpr uint16_t kMissionEnd = 2;   // commit. i0 = message code (5 success, 6 failed), key = text.
 constexpr uint16_t kTrophyClaim = 3;  // request (client pressed the claim key) and commit. subject = entity id.
 constexpr uint16_t kMapStart = 4;     // commit. key = map name (e.g. HUNTMAP4, MENUMAP), subject = host map serial.
@@ -47,6 +50,11 @@ constexpr uint16_t kTranqHit = 22;       // request (beasts.cpp). subject = anim
                                          // hit the hit-bone list of its mirror. The host runs cScrAnimal::OnHit's tranq
                                          // branch (sleep timer, kill credit, overdose fail); the sleep is the usual
                                          // kAnimalDied. Darts do no health damage, so AnimalHit never carried them.
+constexpr uint16_t kAnimalRevive = 20;   // commit (animals.cpp). subject = animal id, i0 = its new life (2, 3, ...),
+                                         // key = "life <n>". Script MoveToPos (GameDll 0x14610) brought back an animal
+                                         // that had died or fled; the client resets that mirror and re-freezes it.
+constexpr uint16_t kScaleConfig = 21;    // commit, not journaled (scale.cpp), sent to each client once per connection.
+                                         // i0 = Bodies | Reserves << 8: the host's [Scale] values decide entity ids.
 constexpr uint16_t kScaleMax = 40;       // commit (scale.cpp). subject = animal id, f0 = its new max health (+0x4C0),
                                          // key = "<factor> #<serial>". Player-count scaling of a boss / lone large animal.
 

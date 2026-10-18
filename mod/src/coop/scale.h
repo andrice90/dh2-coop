@@ -28,5 +28,7 @@ void AfterMakeBoss(void* scr, int on);
 void AfterSetHealth(void* scr);
 // A reserve animal of this map (both peers).
 bool IsReserve(void* ent);
+// GameDll 0x14610 (script MoveToPos reset, animals.cpp hook) ran on this animal: its health is the max again.
+void AfterRespawn(void* ent);
 
 }  // namespace dh2::coop::scale

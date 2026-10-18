@@ -29,11 +29,13 @@
 #include "coop/coop.h"
 #include "coop/player_tracker.h"
 #include "coop/puppets.h"
+#include "coop/scale.h"
 #include "core/exports.h"
 #include "core/hook.h"
 #include "core/log.h"
 #include "core/module.h"
 #include "core/safe_mem.h"
+#include "engine/console_cmds.h"
 #include "engine/entity_api.h"
 
 namespace dh2::coop::combat {
@@ -113,7 +115,34 @@ void __fastcall hk_OnHurt(void* self, void*, void* attacker, float dmg, int type
 // Story NPC health (re/notes/npc-health.md): cObjNPC / cObjGuide keep a cProfile at +0x1F8; current health is the
 // float at profile +0x54. cObjNPC::Update (GameDll 0x630a0, DecideCurentCondition 0x62ac0) copies it onto +0x19C
 // every frame; the protect-objective bar (cHUDNpcStatus) and the death check read the profile value.
+// Only cObjNPC and its subclasses keep that profile (review L1: any other /npc/ model uses +0x19C). They are the
+// classes whose vt +0x154 is cObjNPC::OnDie (GameDll 0x5fde0): cObjNPC 0x108270, cObjGuide 0x108a50, cObjGirl
+// 0x108d38 and two more (0x109018, 0x109308; audit-maps-c "Other facts").
+constexpr uintptr_t kRvaNpcOnDie = 0x5fde0;
+
+bool HasNpcProfile(void* npc) {
+    HMODULE game = GetModuleHandleA("GameDll7.dll");
+    char* vt = nullptr;
+    void* on_die = nullptr;
+    if (!npc || !game || !core::safe_read(npc, vt) || !vt || !core::safe_read(vt + 0x154, on_die)) return false;
+    if (on_die == reinterpret_cast<char*>(game) + kRvaNpcOnDie) return true;
+    static std::set<uintptr_t> logged;
+    if (logged.insert(reinterpret_cast<uintptr_t>(vt)).second)
+        spdlog::info("animals: npc vt {} is not a cObjNPC; its health stays on +0x19C", core::describe_address(vt));
+    return false;
+}
+
+bool guarded_store_float(float* dst, float v) {
+    __try {
+        *dst = v;
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
 bool NpcProfileHealth(void* npc, float& hp) {
+    if (!HasNpcProfile(npc)) return core::safe_read(static_cast<char*>(npc) + 0x19C, hp);
     char* profile = nullptr;
     return core::safe_read(static_cast<char*>(npc) + 0x1F8, profile) && profile &&
            core::safe_read(profile + 0x54, hp);
@@ -121,8 +150,10 @@ bool NpcProfileHealth(void* npc, float& hp) {
 
 void SetNpcProfileHealth(void* npc, float hp) {
     char* profile = nullptr;
-    if (core::safe_read(static_cast<char*>(npc) + 0x1F8, profile) && profile)
-        std::memcpy(profile + 0x54, &hp, sizeof hp);
+    if (HasNpcProfile(npc) && core::safe_read(static_cast<char*>(npc) + 0x1F8, profile) && profile)
+        guarded_store_float(reinterpret_cast<float*>(profile + 0x54), hp);
+    else
+        guarded_store_float(reinterpret_cast<float*>(static_cast<char*>(npc) + 0x19C), hp);
 }
 
 // Client: a mirrored NPC takes no local damage (cObjNPC::OnHurt GameDll 0x5eeb0, vt +0x14C): the host's health
@@ -131,6 +162,202 @@ safetyhook::InlineHook* g_npc_hurt_hook = nullptr;
 safetyhook::InlineHook* g_movetopos_hook = nullptr;
 int __fastcall hk_MoveToPos(void* self, void*, int mode, int arg);  // below (needs the module's mirror table)
 bool IsMirroredNpc(void* ent);  // below (needs the module's mirror table)
+
+// ---- kill credit, lives and mission reports (re/notes/life.md) ----
+// GameDll7 v1.0 RVAs; every body starts 55 8b ec 6a ff (checked before hooking).
+constexpr uintptr_t kRvaAnimalOnHit = 0x1a680;    // cScrAnimal::OnHit (vt +0x8c), thiscall(animal, bullet, pos*, dir*)
+constexpr uintptr_t kRvaCobraOnHit = 0x80440;     // cObjCobra::OnHit, same signature: Death + timer, no health change
+constexpr uintptr_t kRvaPresentDeath = 0x1e8b0;   // cScrAnimal vt +0x154, fastcall(animal)
+constexpr uintptr_t kRvaMissionReport = 0x91e80;  // thiscall(cMission*, int action, int species): records one report
+constexpr uintptr_t kRvaMissionUpdate = 0x94ba0;  // cMission vt +0x44 Update(float dt): hands the report to the tasks
+constexpr uintptr_t kRvaMissionFail = 0x965e0;    // thiscall(cMission*, const char*): status 3, then 0x91c20(6, text)
+constexpr uintptr_t kRvaMission = 0x1869e8;       // cMission* (null outside a mission)
+// cScrAnimal fields (decompiles of 0x1a680, 0x1e8b0, 0x14610, 0x1f3c0).
+constexpr uintptr_t kEntKillAction = 0x420;   // MISSION_ACTION_* the death reports; the bullet OnHit writes 1, death clears
+constexpr uintptr_t kEntSpecies = 0x434;
+constexpr uintptr_t kEntHitBone = 0x3d8;      // hit bone of the bullet being handled (-1: no bone, OnHit does nothing)
+constexpr uintptr_t kEntHitBits = 0x4d8;      // OnHit ORs 8 for a shot by a non-player, else 1/2/4 by bullet kind
+constexpr uintptr_t kEntTranq = 0x4f0;        // 2 = tranquilized (Update counts +0x4f4 down, then present-death)
+constexpr uintptr_t kEntTranqHurt = 0x4f8;    // damage of one dart
+constexpr uintptr_t kEntEventMode = 0x500;    // 2 = event animal (MoveToPos mode 2): its death is not reported
+constexpr uintptr_t kEntDeadGuard = 0x600;    // 1 after present-death or a flee; MoveToPos clears it
+constexpr uintptr_t kEntProtected = 0x604;    // IsProtected(): a bullet fails the mission, a second dart overdoses
+constexpr uintptr_t kBulletKind = 0x1b4;      // mod_obj_bullet: 2 = melee (knife), no protected-animal check
+constexpr uintptr_t kCobraDeathTimerOff = 0x738;
+constexpr uintptr_t kMissionReportAction = 0x1dc;  // the report waiting for the next Update (0 = none)
+constexpr uintptr_t kMissionFleeAction = 0x1ec;    // SetMissionOnFleePointReachedAction
+constexpr uintptr_t kMissionStatus = 0x254;
+constexpr int kActionKill = 1;               // MISSION_ACTION_KILL
+
+safetyhook::InlineHook* g_onhit_hook = nullptr;
+safetyhook::InlineHook* g_cobra_onhit_hook = nullptr;
+safetyhook::InlineHook* g_death_hook = nullptr;
+safetyhook::InlineHook* g_report_hook = nullptr;
+safetyhook::InlineHook* g_mission_update_hook = nullptr;
+void* g_fn_mission_fail = nullptr;
+int g_suppress_report = 0;         // > 0: present-death runs without its mission report (reserve, or a client copy)
+const char* g_suppress_why = "";
+int g_mission_update_depth = 0;    // > 0: inside cMission Update (a report now would be wiped by its reset)
+bool g_presenting = false;         // client: PresentDeathOnce is presenting the host's death
+std::deque<std::pair<int, int>> g_report_queue;  // reports that arrived while one was still waiting
+
+void* MissionPtr() {
+    static char* game = nullptr;
+    if (!game) game = reinterpret_cast<char*>(GetModuleHandleA("GameDll7.dll"));
+    void* m = nullptr;
+    if (game) core::safe_read(game + kRvaMission, m);
+    return m;
+}
+
+bool IsKindOf(void* ent, const char* kind) {
+    using Fn = int(__thiscall*)(void*, const char*);
+    static Fn fn = nullptr;
+    if (!fn) {
+        if (HMODULE engine = GetModuleHandleA("EngineDll7.dll"))
+            fn = core::find_export_as<Fn>(engine, "?IsEntityKindOf@cObjEntity@@QBEHPBD@Z");
+    }
+    if (!fn || !ent) return false;
+    __try {
+        return fn(ent, kind) != 0;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+template <class T>
+T ReadAt(void* base, uintptr_t off, T fallback = T{}) {
+    T v = fallback;
+    if (!base || !core::safe_read(static_cast<char*>(base) + off, v)) return fallback;
+    return v;
+}
+
+template <class T>
+void WriteAt(void* base, uintptr_t off, T v) {
+    if (base) std::memcpy(static_cast<char*>(base) + off, &v, sizeof v);
+}
+
+bool CallVt(void* ent, uintptr_t slot) {
+    void** vt = ReadAt<void**>(ent, 0, nullptr);
+    void* fn = vt ? ReadAt<void*>(vt, slot, nullptr) : nullptr;
+    if (!fn) return false;
+    __try {
+        reinterpret_cast<void(__thiscall*)(void*)>(fn)(ent);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+// Entity vt +0x158(3, 0): what script MoveToPos calls on an animal (0x14610: health = max, dead bits and +0x600 cleared,
+// IdleAttack, collision words back, brain thawed). Goes through hk_MoveToPos.
+bool CallRespawn(void* ent) {
+    void** vt = ReadAt<void**>(ent, 0, nullptr);
+    void* fn = vt ? ReadAt<void*>(vt, 0x158, nullptr) : nullptr;
+    if (!fn) return false;
+    __try {
+        reinterpret_cast<void(__thiscall*)(void*, int, int)>(fn)(ent, 3, 0);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+// Entity vt +0x234: script Kill(), the park at -10000 that also follows a corpse's fade (0x1be20).
+bool CallPark(void* ent) { return CallVt(ent, 0x234); }
+
+bool CallMissionFail(const char* text) {
+    void* m = MissionPtr();
+    if (!m || !g_fn_mission_fail) return false;
+    __try {
+        reinterpret_cast<void(__thiscall*)(void*, const char*)>(g_fn_mission_fail)(m, text);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+bool CallMissionReportRaw(void* m, int action, int species) {
+    if (!g_report_hook || !m) return false;
+    __try {
+        g_report_hook->unsafe_thiscall<void>(m, action, species);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+bool CallMissionUpdate0(void* m) {
+    if (!g_mission_update_hook || !m) return false;
+    ++g_mission_update_depth;
+    bool ok = true;
+    __try {
+        g_mission_update_hook->unsafe_thiscall<void>(m, 0.f);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        ok = false;
+    }
+    --g_mission_update_depth;
+    return ok;
+}
+
+bool MissionSlotBusy(void* m) { return ReadAt<int>(m, kMissionReportAction, 0) != 0; }
+
+// cMission keeps one report (+0x1dc/+0x1e0) until its next Update hands it to the tasks; a second report in between
+// overwrites the first, so one kill is lost. Two kills in a frame are rare alone, but co-op adds them: a client's kill
+// arrives with the network, more players shoot. The engine's own flee path reports and then calls Update(0) at once;
+// this does the same, so each report reaches the tasks: hand the waiting one over first, then record this one.
+void ReportNow(void* m, int action, int species, const char* why) {
+    if (MissionSlotBusy(m)) CallMissionUpdate0(m);
+    const bool ok = CallMissionReportRaw(m, action, species);
+    CallMissionUpdate0(m);
+    spdlog::info("animals: mission report action={} species={} ({}) ok={}", action, species, why, ok);
+}
+
+void DrainReports(void* m) {
+    while (!g_report_queue.empty() && g_mission_update_depth == 0) {
+        const auto [action, species] = g_report_queue.front();
+        g_report_queue.pop_front();
+        ReportNow(m, action, species, "queued");
+    }
+}
+
+// Engine reports (present-death, flee, script UpdateMissionStatus, cobra). One waiting already, or inside the mission's
+// Update: queue it, and hand it over right after the next Update (hk_MissionUpdate). Never inside a present-death, so
+// a task that completes cannot run its end trigger halfway through the animal's death.
+void __fastcall hk_MissionReport(void* m, void*, int action, int species) {
+    if (g_suppress_report > 0) {
+        spdlog::info("animals: {} death kept out of the mission (action {}, species {})", g_suppress_why, action, species);
+        return;
+    }
+    if (g_mission_update_depth > 0 || MissionSlotBusy(m) || !g_report_queue.empty()) {
+        if (g_report_queue.size() < 64) g_report_queue.emplace_back(action, species);
+        spdlog::info("animals: mission report action={} species={} queued (one is waiting; {} queued)", action, species,
+                     g_report_queue.size());
+        return;
+    }
+    spdlog::info("animals: mission report action={} species={}", action, species);
+    g_report_hook->unsafe_thiscall<void>(m, action, species);
+}
+
+void __fastcall hk_MissionUpdate(void* m, void*, float dt) {
+    ++g_mission_update_depth;
+    g_mission_update_hook->unsafe_thiscall<void>(m, dt);
+    --g_mission_update_depth;
+    if (!g_report_queue.empty() && g_mission_update_depth == 0) DrainReports(m);
+}
+
+const char* HitKindName(float kind) {
+    if (kind == kHitBullet) return "bullet";
+    if (kind == kHitTranq) return "dart";
+    if (kind == kHitMelee) return "melee";
+    return "damage";
+}
+
+void OnReviveCommitThunk(const net::GameEvent& ev);  // below (module)
+void __cdecl CmdLivesThunk();
+void __cdecl CmdTasksThunk();
+void __fastcall hk_PresentDeath(void* ent);                                         // below (mirror table)
+void __fastcall hk_AnimalOnHit(void* self, void*, void* bullet, void* pos, void* dir);  // below
+void __fastcall hk_CobraOnHit(void* self, void*, void* bullet, void* pos, void* dir);   // below
 
 void __fastcall hk_NpcHurt(void* self, void*, void* attacker, float dmg, int type, const void* pos, const void* dir) {
     if (NetIsOnline() && !NetIsHost() && IsMirroredNpc(self)) return;
@@ -286,9 +513,21 @@ struct Mirror {
     bool have_target = false;
     bool death_presented = false;
     bool cobra_cleared = false;
+    void* cobra_bite_saved = nullptr;  // the cobra's own +0x728 before the mirror cleared it (Reset gives it back)
     bool is_npc = false;
     bool hold_pose = false;
     std::string pose_at_play;
+    // Lives (client): the host's life number of this animal. A death or revive commit of another life is not this one's.
+    uint16_t life = 1;
+    uint32_t revive_ms = 0;     // when the last revive was applied: older snapshots may still say dead
+    bool corpse_parked_logged = false;
+    int relive_undone = 0;      // local script MoveToPos revivals of a corpse the host had not revived (logged 3x)
+    // Hits (client): what the animal's own OnHit saw since the last AnimalHit.
+    float hit_kind = kHitUnknown;
+    int tranq_pending = 0;      // darts not reported yet (a dart does no damage, so no health drop shows it)
+    bool npc_hit = false;       // the damage came from an NPC's bullet (a replayed cutscene), not a player's
+    float unsent_dmg = 0.f;     // damage seen while the 150 ms report limit held it back
+    bool local_death_logged = false;
 };
 
 // Guide legs (GUIDELEGS.SCR Begin) and the NPC weapon script (RIFLENPC/HGUNNPC) are separate
@@ -528,6 +767,7 @@ public:
         spdlog::info("animals: logStates={} syncLog={} spike={}", g_log_states, g_sync_log, g_spike);
         g_self = this;
         SetPreRenderCallback(&prerender);
+        events::SetHandler(events::kAnimalRevive, nullptr, &OnReviveCommitThunk);
     }
 
     void OnGameDllLoaded(HMODULE game) override {
@@ -539,6 +779,29 @@ public:
                                                   reinterpret_cast<void*>(&hk_MoveToPos));
         else
             spdlog::error("animals: MoveToPos reset at GameDll7+0x14610 has unexpected bytes; not hooked");
+        auto checked = [&](uintptr_t rva, const char* label) -> void* {
+            void* p = reinterpret_cast<char*>(game) + rva;
+            uint8_t b[5] = {};
+            if (core::safe_copy(p, b, sizeof b) && std::memcmp(b, kPrologue, sizeof b) == 0) return p;
+            spdlog::error("animals: {} at GameDll7+{:#x} has unexpected bytes; not hooked", label, rva);
+            return nullptr;
+        };
+        if (void* p = checked(kRvaMissionReport, "cMission report"))
+            g_report_hook = core::install_hook("cMission species report (animals, 0x91e80)", p,
+                                               reinterpret_cast<void*>(&hk_MissionReport));
+        if (void* p = checked(kRvaMissionUpdate, "cMission Update"))
+            g_mission_update_hook = core::install_hook("cMission Update (animals, 0x94ba0)", p,
+                                                       reinterpret_cast<void*>(&hk_MissionUpdate));
+        if (void* p = checked(kRvaPresentDeath, "animal present-death"))
+            g_death_hook = core::install_hook("animal present-death (animals, 0x1e8b0)", p,
+                                              reinterpret_cast<void*>(&hk_PresentDeath));
+        if (void* p = checked(kRvaAnimalOnHit, "cScrAnimal::OnHit"))
+            g_onhit_hook = core::install_hook("cScrAnimal::OnHit (client hit kinds, 0x1a680)", p,
+                                              reinterpret_cast<void*>(&hk_AnimalOnHit));
+        if (void* p = checked(kRvaCobraOnHit, "cObjCobra::OnHit"))
+            g_cobra_onhit_hook = core::install_hook("cObjCobra::OnHit (client cobra hits, 0x80440)", p,
+                                                    reinterpret_cast<void*>(&hk_CobraOnHit));
+        g_fn_mission_fail = checked(kRvaMissionFail, "cMission fail");
         void* fn = reinterpret_cast<char*>(game) + 0x5eeb0;  // cObjNPC::OnHurt
         uint8_t got[5] = {};
         if (!core::safe_copy(fn, got, sizeof got) || std::memcmp(got, kPrologue, sizeof got) != 0) {
@@ -576,6 +839,9 @@ public:
         g_watch.store(nullptr);
         mirrors_.clear();
         dead_.clear();
+        lives_.clear();
+        reported_.clear();
+        g_report_queue.clear();
     }
 
     void OnMapLoaded(const char*) override {
@@ -588,7 +854,9 @@ public:
         mirrors_.clear();
         yaws_.clear();
         dead_.clear();
-        announced_.clear();
+        lives_.clear();
+        reported_.clear();
+        g_report_queue.clear();
         send_started_ = false;
         logged_tx_ = false;
         logged_rx_ = false;
@@ -597,10 +865,15 @@ public:
     }
 
     void OnFrame(float dt) override {
+        if (!commands_ && console_cmds::Ready()) {
+            commands_ = console_cmds::AddCommand0("coop_lives", &CmdLivesThunk);
+            console_cmds::AddCommand0("coop_tasks", &CmdTasksThunk);
+        }
         const auto& local = LocalPlayer();
         if (!local.valid) return;
         const auto& animals = Animals();
         if (g_log_states) LogStates(animals);
+        if (!NetIsOnline() || NetIsHost()) ScanLives(animals);
         if (session_active_) {
             if (g_sync_log) {
                 log_sync_ += dt;
@@ -670,11 +943,7 @@ public:
             st.state = entity::BodyStateName(a);
             if (hp <= 0.f) st.flags |= net::animal_flag::kDead;
             if (p.y < -1000.f) st.flags |= net::animal_flag::kParked;
-            if ((st.flags & net::animal_flag::kDead) != 0 && (st.flags & net::animal_flag::kParked) == 0 &&
-                (st.flags & net::animal_flag::kNpc) == 0 && announced_.insert(uid).second) {
-                spdlog::info("animals: death commit id={} hp={:.1f} state='{}'", uid, hp, st.state);
-                events::Commit(events::kAnimalDied, uid, 0, hp, "", 0);
-            }
+            // Deaths, flees and revives are committed by ScanLives (every animal, not only the first kMaxAnimals).
             msg.animals.push_back(std::move(st));
         }
         int npc_count = 0;
@@ -772,7 +1041,9 @@ public:
             spdlog::warn("animals: AnimalHit ignored (not host) id={} dmg={:.2f}", hit.animalId, hit.damage);
             return;
         }
-        if (!(hit.damage > 0.f)) return;
+        const float kind = hit.hitPos[0];
+        const bool tranq = kind == kHitTranq;
+        if (!(hit.damage > 0.f) && !tranq) return;
         void* ent = FindAnimal(hit.animalId);
         if (!ent) {
             spdlog::warn("animals: AnimalHit id={} shooter={} dmg={:.2f} no entity", hit.animalId, hit.shooterId,
@@ -801,7 +1072,32 @@ public:
                          hit.shooterId, hit.damage);
             return;
         }
-        const bool ok = entity::InflictDamage(ent, hit.damage);
+        // What the animal's own bullet OnHit (GameDll 0x1a680) does before the damage. Without it a client's kill reached
+        // the host mission as MISSION_ACTION_NONE (+0x420 = 0): kill tasks never counted it, and a client making the
+        // last kill of a task left the story stuck (re/notes/life.md).
+        WriteAt<int>(ent, kEntKillAction, kActionKill);
+        const int protected_animal = ReadAt<int>(ent, kEntProtected, 0);
+        float dmg = hit.damage;
+        const char* fail = nullptr;
+        if (tranq) {
+            // The dart: the host runs the tranq timer (Update presents the death when +0x4f4 runs out, and that death
+            // reports +0x420 = KILL: MAP6/MAP7 tranq tasks). A second dart into a tranquilized protected animal fails.
+            if (ReadAt<int>(ent, kEntTranq, 0) == 2 && protected_animal == 1) {
+                WriteAt<int>(ent, kEntTranq, 3);
+                fail = "MISSION FAILED\nYou've injected an overdose \nand the animal died!";
+            } else {
+                WriteAt<int>(ent, kEntTranq, 2);
+            }
+            dmg = ReadAt<float>(ent, kEntTranqHurt, 0.f);
+        } else if (kind == kHitBullet && protected_animal != 0) {
+            fail = "MISSION FAILED\nYou've killed a protected animal!";
+        }
+        if (fail) {
+            const bool failed = CallMissionFail(fail);
+            spdlog::info("animals: AnimalHit id={} from player {} on a protected animal ({}) -> mission fail ok={}",
+                         hit.animalId, hit.shooterId, tranq ? "second dart" : "bullet", failed);
+        }
+        const bool ok = dmg > 0.f ? entity::InflictDamage(ent, dmg) : true;
         float after = before;
         core::safe_read(static_cast<char*>(ent) + kEntHealth, after);
         if (after < 0.f) {
@@ -818,19 +1114,32 @@ public:
         } else {
             combat::OnClientHitAnimal(ent, hit.shooterId);  // the animal turns on the shooter (with -Combat)
         }
-        spdlog::info("animals: AnimalHit id={} shooter={} dmg={:.2f} hp {:.1f}->{:.1f} ok={}", hit.animalId,
-                     hit.shooterId, hit.damage, before, after, ok);
+        spdlog::info("animals: AnimalHit id={} shooter={} kind={} dmg={:.2f} hp {:.1f}->{:.1f} tranq={} ok={}",
+                     hit.animalId, hit.shooterId, HitKindName(kind), dmg, before, after, ReadAt<int>(ent, kEntTranq, 0), ok);
     }
 
     void Reset() {
+        // Review M2: thaw each mirror with the call that froze it. NPCs: CharacterBrainFreeze (their +0x200 is a
+        // cAIBrain_NPC, not the animal brain). Cobras were never brain-frozen; they get their bite target back.
         for (auto& [id, m] : mirrors_) {
+            void* ent = FindAnimal(id);
+            if (!ent) continue;
+            if (IsCobra(ent)) {
+                if (m.cobra_cleared) {
+                    const LocalPlayerSample& hunter = LocalPlayer();
+                    void* bite = hunter.valid && hunter.entity ? hunter.entity : m.cobra_bite_saved;
+                    std::memcpy(static_cast<char*>(ent) + kCobraBite, &bite, sizeof bite);
+                    spdlog::info("animals: reset cobra id={} bite target -> {:#x}", id, reinterpret_cast<uintptr_t>(bite));
+                }
+                continue;
+            }
             if (!m.frozen) continue;
-            if (void* ent = FindAnimal(id)) entity::FreezeBrain(ent, false);
+            const bool ok = m.is_npc ? entity::CharacterBrainFreeze(ent, false) : entity::FreezeBrain(ent, false);
+            spdlog::info("animals: reset thaw id={} npc={} ok={}", id, m.is_npc, ok);
         }
         mirrors_.clear();
         yaws_.clear();
-        dead_.clear();
-        announced_.clear();
+        dead_.clear();  // lives_ (host) and reported_ (client) stay: a rejoin on this map replays the journal
         send_started_ = false;
         logged_tx_ = false;
         logged_rx_ = false;
@@ -838,9 +1147,234 @@ public:
 
     bool IsClientMirror() const { return session_active_ && !hosting_; }
 
-    void NoteDeath(uint16_t id) {
+    // ---- lives ----
+    // Story scripts recycle animals: script MoveToPos (0x14610) brings a dead or fled animal back (MAP2B's siege makes
+    // 10 kills from 3 wolves, MAP3A 9 from 4 hyenas, MAP9 11 from 3 dingoes). Each life ends once (death or flee) and
+    // is committed once: kAnimalDied with key "life <n>", kAnimalRevive when the next life starts.
+
+    // Client: a death commit of the host's animal.
+    void NoteDeath(const net::GameEvent& ev) {
         if (hosting_ || !session_active_) return;
-        if (dead_.insert(id).second) spdlog::info("animals: death event id={}", id);
+        const uint16_t id = ev.subjectId;
+        const uint16_t life = static_cast<uint16_t>(ev.i0 & 0xffffu);
+        const int report = static_cast<int>((ev.i0 >> 16) & 0xffu);
+        const bool fled = ((ev.i0 >> 24) & 1u) != 0;
+        Mirror& m = mirrors_[id];
+        if (life != 0 && life < m.life) {
+            spdlog::info("animals: death commit id={} life={} ignored (this mirror is on life {})", id, life, m.life);
+            return;
+        }
+        if (life > m.life) NewLife(id, m, life, "a later life's death");  // its revive commit was not seen here
+        // The host's mission got this report from this end of life; this process's mission gets the same one, once.
+        // Local deaths and flees of a client copy never report (hk_PresentDeath), so both missions count alike.
+        if (report > 0 && reported_.insert((static_cast<uint32_t>(id) << 16) | life).second) {
+            void* ent = FindAnimal(id);
+            const int species = ent ? ReadAt<int>(ent, kEntSpecies, static_cast<int>(ev.f0)) : static_cast<int>(ev.f0);
+            if (void* mission = MissionPtr()) ReportNow(mission, report - 1, species, "host death commit");
+        }
+        if (fled) {
+            spdlog::info("animals: flee commit id={} life={} report={} (the snapshot parks it)", id, life, report);
+            return;
+        }
+        if (dead_.insert(id).second) spdlog::info("animals: death event id={} life={} report={}", id, life, report);
+    }
+
+    // Client: the host's animal started a new life.
+    void OnReviveCommit(const net::GameEvent& ev) {
+        if (hosting_ || !session_active_) return;
+        const uint16_t id = ev.subjectId;
+        const uint16_t life = static_cast<uint16_t>(ev.i0 & 0xffffu);
+        Mirror& m = mirrors_[id];
+        if (life <= m.life) return;  // already on it (a replayed commit)
+        NewLife(id, m, life, "host revive");
+    }
+
+    // Client: forget the old life's state, and bring the local copy back the way the host's came back (the copy may be a
+    // corpse, or parked after its fade): the same respawn, then the brain frozen again before it can tick.
+    void NewLife(uint16_t id, Mirror& m, uint16_t life, const char* why) {
+        const uint16_t old = m.life;
+        const bool was_dead = m.death_presented || dead_.count(id) != 0;
+        m.life = life;
+        dead_.erase(id);
+        m.death_presented = false;
+        m.have_first = false;
+        m.have_hp = false;
+        m.last_host_hp = 0.f;
+        m.applied_state.clear();
+        m.warned_state.clear();
+        m.hold_pose = false;
+        m.pose_at_play.clear();
+        m.buffer.Clear();
+        m.hit_kind = kHitUnknown;
+        m.tranq_pending = 0;
+        m.npc_hit = false;
+        m.unsent_dmg = 0.f;
+        m.refreeze_logged = 0;
+        m.corpse_parked_logged = false;
+        m.local_death_logged = false;
+        m.revive_ms = now_ms();
+        void* ent = FindAnimal(id);
+        bool respawned = false, frozen = false;
+        if (ent && !m.is_npc && !IsCobra(ent)) {
+            const bool local_dead = ReadAt<int>(ent, kEntDeadGuard, 0) != 0 || ReadAt<float>(ent, kEntHealth, 0.f) <= 0.f ||
+                                    entity::BodyStateName(ent) == "Dead";
+            if (local_dead) respawned = CallRespawn(ent);
+            frozen = entity::FreezeBrain(ent, true);
+            m.frozen = frozen;
+            if (frozen && !m.have_rel) m.have_rel = CaptureRel(ent, m.rel);
+        }
+        spdlog::info("animals: revive id={} life {} -> {} ({}) was_dead={} respawn={} frozen={} state='{}'", id, old,
+                     life, why, was_dead, respawned, frozen, ent ? entity::BodyStateName(ent) : std::string("?"));
+    }
+
+    // Host (and solo): one life per animal; every end is committed once, every new life too.
+    struct Life {
+        uint16_t life = 1;
+        bool ended = false;
+        int report = 0;           // 1 + the action the last present-death gave the mission (0: none)
+        bool report_seen = false;
+    };
+
+    int FleeReportCode() const {
+        void* m = MissionPtr();
+        return m ? 1 + ReadAt<int>(m, kMissionFleeAction, 0) : 0;
+    }
+
+    void EndLife(void* ent, uint16_t id, Life& L, bool fled, const char* why) {
+        const int report = fled ? FleeReportCode() : (L.report_seen ? L.report : 0);
+        L.ended = true;
+        const int species = ReadAt<int>(ent, kEntSpecies, -1);
+        const uint32_t i0 = L.life | (static_cast<uint32_t>(report & 0xff) << 16) | (fled ? 1u << 24 : 0u);
+        spdlog::info("animals: {} commit id={} life={} report={} ({}) hp={:.1f} state='{}'", fled ? "flee" : "death", id,
+                     L.life, report, why, ReadAt<float>(ent, kEntHealth, 0.f), entity::BodyStateName(ent));
+        events::Commit(events::kAnimalDied, id, i0, static_cast<float>(species), fmt::format("life {}", L.life), 0);
+        L.report = 0;
+        L.report_seen = false;
+    }
+
+    void NextLife(void* ent, uint16_t id, Life& L, const char* why) {
+        ++L.life;
+        L.ended = false;
+        L.report = 0;
+        L.report_seen = false;
+        const float hp = ReadAt<float>(ent, kEntHealth, 0.f);
+        spdlog::info("animals: revive commit id={} life={} ({}) hp={:.1f}", id, L.life, why, hp);
+        events::Commit(events::kAnimalRevive, id, L.life, hp, fmt::format("life {}", L.life), 0);
+    }
+
+    static bool IsParkedPos(void* ent) { return ReadAt<Vec3>(ent, kEntPos, Vec3{0.f, -10000.f, 0.f}).y < -1000.f; }
+
+    // Every frame on the host: an animal at 0 health that is not parked died; one that is parked with the death guard
+    // set but health left reached a flee point (cScrAnimal::Update parks it and reports the map's flee action).
+    void ScanLives(const std::vector<void*>& animals) {
+        for (void* a : animals) {
+            const int16_t sid = ReadAt<int16_t>(a, kEntId, -1);
+            if (sid < 0) continue;
+            const auto id = static_cast<uint16_t>(sid);
+            Life& L = lives_[id];
+            const float hp = ReadAt<float>(a, kEntHealth, 0.f);
+            const bool parked = IsParkedPos(a);
+            const bool guard = ReadAt<int>(a, kEntDeadGuard, 0) != 0;
+            if (!L.ended) {
+                if (hp <= 0.f && !parked) EndLife(a, id, L, false, "health 0");
+                else if (parked && guard && hp > 0.f && !IsCobra(a)) EndLife(a, id, L, true, "reached a flee point");
+            } else if (hp > 0.f && !guard && !parked) {
+                NextLife(a, id, L, "alive again");  // a respawn that did not go through MoveToPos
+            }
+        }
+    }
+
+    // Host: script MoveToPos is about to reset this animal. A life that ended this frame is committed first.
+    void HostBeforeRespawn(void* ent) {
+        const int16_t sid = ReadAt<int16_t>(ent, kEntId, -1);
+        if (sid < 0) return;
+        Life& L = lives_[static_cast<uint16_t>(sid)];
+        if (L.ended) return;
+        if (ReadAt<float>(ent, kEntHealth, 0.f) <= 0.f) EndLife(ent, static_cast<uint16_t>(sid), L, false, "before a respawn");
+        else if (ReadAt<int>(ent, kEntDeadGuard, 0) != 0) EndLife(ent, static_cast<uint16_t>(sid), L, true, "before a respawn");
+    }
+
+    void HostAfterRespawn(void* ent) {
+        const int16_t sid = ReadAt<int16_t>(ent, kEntId, -1);
+        if (sid < 0) return;
+        Life& L = lives_[static_cast<uint16_t>(sid)];
+        if (L.ended && ReadAt<int>(ent, kEntDeadGuard, 0) == 0) NextLife(ent, static_cast<uint16_t>(sid), L, "MoveToPos");
+    }
+
+    // Host: what present-death just told the mission (hk_PresentDeath), for the death commit.
+    void NoteHostDeathReport(void* ent, int report) {
+        const int16_t sid = ReadAt<int16_t>(ent, kEntId, -1);
+        if (sid < 0) return;
+        Life& L = lives_[static_cast<uint16_t>(sid)];
+        if (L.ended) return;
+        if (!L.report_seen || report > 0) {
+            L.report = report;
+            L.report_seen = true;
+        }
+    }
+
+    // Client: a mirrored animal (frozen, or dead the host's way), never an NPC.
+    Mirror* MirrorOfAnimal(void* ent) {
+        if (hosting_ || !session_active_ || !ent) return nullptr;
+        const int16_t sid = ReadAt<int16_t>(ent, kEntId, -1);
+        if (sid < 0) return nullptr;
+        const auto it = mirrors_.find(static_cast<uint16_t>(sid));
+        // Any animal the host sends is the host's, frozen or thawed for a cutscene (ApplyMirror).
+        if (it == mirrors_.end() || it->second.is_npc) return nullptr;
+        return &it->second;
+    }
+
+    // Client: this copy's death is the host's to decide. A lethal local shot, the tranq timer or a replayed script must
+    // not present it here (it would also report to this mission); PresentDeathOnce presents the host's death.
+    bool SwallowClientDeath(void* ent) {
+        if (g_presenting) return false;
+        Mirror* m = MirrorOfAnimal(ent);
+        if (!m) return false;
+        if (!m->local_death_logged) {
+            m->local_death_logged = true;
+            spdlog::info("animals: local death of mirror id={} not presented (hp {:.1f}); the host decides",
+                         ReadAt<int16_t>(ent, kEntId, -1), ReadAt<float>(ent, kEntHealth, 0.f));
+        }
+        return true;
+    }
+
+    // Client: the copy's OnHit saw a player's hit of this kind.
+    void NoteClientHit(void* ent, float kind, bool npc_shot) {
+        Mirror* m = MirrorOfAnimal(ent);
+        if (!m) return;
+        if (npc_shot) {
+            m->npc_hit = true;
+            return;
+        }
+        if (kind == kHitTranq) {
+            ++m->tranq_pending;
+        } else if (kind == kHitBullet || m->hit_kind == kHitUnknown) {
+            m->hit_kind = kind;  // a bullet outranks a melee hit (only a bullet fails a protected animal)
+        }
+    }
+
+    void DumpLives() {
+        if (hosting_ || !session_active_) {
+            for (const auto& [id, L] : lives_) {
+                void* a = FindAnimal(id);
+                spdlog::info("animals: life id={} '{}' life={} ended={} report={} hp={:.1f} guard={} state='{}'", id,
+                             a ? core::safe_cstr(ReadAt<char*>(a, 0x198, nullptr), 32) : std::string("?"), L.life, L.ended,
+                             L.report, a ? ReadAt<float>(a, kEntHealth, 0.f) : -1.f, a ? ReadAt<int>(a, kEntDeadGuard, 0) : -1,
+                             a ? entity::BodyStateName(a) : std::string("?"));
+            }
+        }
+        if (!hosting_ && session_active_) {
+            for (const auto& [id, m] : mirrors_) {
+                if (m.is_npc) continue;
+                void* a = FindAnimal(id);
+                spdlog::info("animals: mirror id={} life={} dead={} presented={} frozen={} hp={:.1f} guard={} state='{}' "
+                             "brain79={}",
+                             id, m.life, dead_.count(id) != 0, m.death_presented, m.frozen,
+                             a ? ReadAt<float>(a, kEntHealth, 0.f) : -1.f, a ? ReadAt<int>(a, kEntDeadGuard, 0) : -1,
+                             a ? entity::BodyStateName(a) : std::string("?"),
+                             a ? ReadAt<uint8_t>(ReadAt<char*>(a, 0x200, nullptr), 0x79, 0xFF) : 0xFF);
+            }
+        }
     }
 
     // Client: an animal this module holds frozen (brain off, the host's pose applied every frame).
@@ -959,6 +1493,7 @@ private:
             if (m.death_presented) {
                 // The released brain plays the death; only the health is pinned (claim needs exactly 0).
                 *reinterpret_cast<float*>(static_cast<char*>(ent) + kEntHealth) = 0.f;
+                KeepCorpse(id, m, ent, t);
                 continue;
             }
             // MAP12C's opening cutscene WaitForTask's the yeti. Freezing that brain, or pinning
@@ -969,8 +1504,11 @@ private:
             AnimalSample early;
             const bool have_early = m.buffer.Sample(t, early);
             const bool host_cutscene = !have_early || early.state == "CutScene";
+            // Right after a revive, a snapshot sent before it can still arrive and say dead: only commits count then.
+            const bool fresh_life = m.revive_ms != 0 && t - m.revive_ms < 500;
             const bool host_dead = dead_.count(id) != 0 ||
-                                   (have_early && ((early.flags & net::animal_flag::kDead) != 0 || early.health <= 0.f));
+                                   (!fresh_life && have_early &&
+                                    ((early.flags & net::animal_flag::kDead) != 0 || early.health <= 0.f));
             if (!m.is_npc && !host_dead && host_cutscene && entity::BodyStateName(ent) == "CutScene") {
                 if (m.frozen) {
                     entity::FreezeBrain(ent, false);
@@ -1035,6 +1573,7 @@ private:
                 }
                 if (!m.cobra_cleared) {
                     m.cobra_cleared = true;
+                    m.cobra_bite_saved = bite;
                     spdlog::info("animals: cobra id={} bite target cleared (was {:#x})", id,
                                  reinterpret_cast<uintptr_t>(bite));
                 }
@@ -1042,7 +1581,10 @@ private:
             AnimalSample sample;
             if (!m.buffer.Sample(t, sample)) continue;
 
-            if (dead_.count(id) != 0) {
+            // Review M1: a dead NPC is not presented the animal way (vt +0x154 is cObjNPC::OnDie, and the NPC's own update
+            // already runs it once its profile health is 0). It stays placed and posed: the host's fall/liedead clips.
+            const bool npc_dead = m.is_npc && dead_.count(id) != 0;
+            if (dead_.count(id) != 0 && !m.is_npc) {
                 // Dead (the reliable commit arrives before the delayed snapshot says so). Health stays 0: a stale
                 // sample (hp 45, 100 ms old) revived the client deer, and PresentDeath's own 0 then looked like a
                 // client hit (2026-10-16 20:32 user test). The claim prompt needs an animal at exactly 0.
@@ -1055,32 +1597,24 @@ private:
 
             // NPCs are not targets: the client's Uncle Hugh read lower than the host's every frame and ~100 "hits" a
             // second reached the host's Hugh (two-PC test, MAP2B 12:06). One report per animal per 150 ms at most.
-            float localHp = 0.f;
-            if (!m.is_npc && t - m.last_hit_ms >= 150 && core::safe_read(static_cast<char*>(ent) + kEntHealth, localHp) &&
-                m.have_hp && m.last_host_hp > 0.f && localHp < m.last_host_hp - 0.01f) {
-                m.last_hit_ms = t;
-                net::AnimalHit hit;
-                hit.animalId = id;
-                hit.damage = m.last_host_hp - localHp;
-                const bool sent = ReportAnimalHit(hit);
-                spdlog::info("animals: local hit id={} dmg={:.2f} localHp={:.2f} hostHp={:.2f} sent={}", id, hit.damage,
-                             localHp, m.last_host_hp, sent);
-            }
-            *reinterpret_cast<float*>(static_cast<char*>(ent) + kEntHealth) = sample.health;
+            if (!m.is_npc) ReportLocalHits(id, m, ent, t);
+            // A dead NPC stays at 0: a stale sample (100 ms old) must not revive it.
+            const float hp_now = npc_dead ? 0.f : sample.health;
+            *reinterpret_cast<float*>(static_cast<char*>(ent) + kEntHealth) = hp_now;
             // NPCs: the host's profile health into ours (runs after the client's own Update, so it wins until the
             // next frame). The bar and the NPC's death check read it; at 0 the NPC's own update runs its OnDie.
-            if (m.is_npc) SetNpcProfileHealth(ent, sample.health > 0.f ? sample.health : 0.f);
-            m.last_host_hp = sample.health;
+            if (m.is_npc) SetNpcProfileHealth(ent, hp_now > 0.f ? hp_now : 0.f);
+            m.last_host_hp = hp_now;
             m.have_hp = true;
 
             const bool parked = (sample.flags & net::animal_flag::kParked) != 0 || sample.pos[1] < -1000.f;
-            const bool dead = !parked && ((sample.flags & net::animal_flag::kDead) != 0 || sample.health <= 0.f);
+            const bool dead = !parked && !fresh_life &&
+                              ((sample.flags & net::animal_flag::kDead) != 0 || sample.health <= 0.f);
             if (dead && m.is_npc) {
-                // Not the animal death presentation: the profile at 0 lets the NPC's own update die the NPC way.
-                dead_.insert(id);
-                continue;
-            }
-            if (dead) {
+                // Not the animal death presentation: the profile at 0 lets the NPC's own update die the NPC way. The NPC
+                // stays placed below, so the host's fall and liedead clips play on it.
+                if (dead_.insert(id).second) spdlog::info("animals: npc id={} died on the host (profile 0 here)", id);
+            } else if (dead) {
                 dead_.insert(id);
                 *reinterpret_cast<float*>(static_cast<char*>(ent) + kEntHealth) = 0.f;
                 PresentDeathOnce(id, m, ent, sample);
@@ -1174,11 +1708,95 @@ private:
         }
     }
 
+    // Client, every frame for a mirror whose death was presented. The corpse follows the host's: when the host parks its
+    // corpse (fade) this one is parked too. And a replayed script MoveToPos the host has not made (each process runs a
+    // siege's spawn timer and CanBeRespawned on its own copies: MAP2B SpawnWolves) brings the local copy back with
+    // health and AI while the host's animal is still dead: it is put back (parked, or dead again at the host's corpse)
+    // until the host's revive commit arrives.
+    void KeepCorpse(uint16_t id, Mirror& m, void* ent, uint32_t t) {
+        if (IsCobra(ent)) return;
+        AnimalSample s;
+        if (!m.buffer.Sample(t, s)) return;
+        const bool host_parked = (s.flags & net::animal_flag::kParked) != 0 || s.pos[1] < -1000.f;
+        const bool here_parked = IsParkedPos(ent);
+        const bool relived = ReadAt<int>(ent, kEntDeadGuard, 1) == 0;  // MoveToPos cleared the death guard
+        if (relived) {
+            bool ok = false;
+            if (host_parked) {
+                ok = CallPark(ent);
+            } else {
+                entity::Vec3 pos{s.pos[0], s.pos[1], s.pos[2]};
+                if (m.have_rel) PlaceEntity(ent, pos, s.yaw, m.rel);
+                g_presenting = true;
+                ok = entity::PresentDeath(ent);
+                g_presenting = false;
+                if (g_unfreeze_dead) entity::FreezeBrain(ent, false);
+            }
+            if (m.relive_undone++ < 3)
+                spdlog::info("animals: mirror id={} came back here but not on the host (life {}): {} ok={}", id, m.life,
+                             host_parked ? "parked again" : "dead again at the host's corpse", ok);
+            return;
+        }
+        if (host_parked && !here_parked) {
+            const bool ok = CallPark(ent);
+            if (!m.corpse_parked_logged) {
+                m.corpse_parked_logged = true;
+                spdlog::info("animals: mirror id={} corpse parked like the host's ok={}", id, ok);
+            }
+        }
+    }
+
+    // Client: turn what this copy took locally into AnimalHit. The copy's health is the host's again every frame, so a
+    // drop below it is damage from this frame. Its OnHit (hk_AnimalOnHit) says whether a player's bullet, dart or knife did
+    // it; damage nobody's shot explains (a replayed cutscene's script, an NPC's bullet) is not the host's business
+    // (review M8), except coop_kill's.
+    void ReportLocalHits(uint16_t id, Mirror& m, void* ent, uint32_t t) {
+        float localHp = 0.f;
+        if (!core::safe_read(static_cast<char*>(ent) + kEntHealth, localHp) || !m.have_hp || !(m.last_host_hp > 0.f)) {
+            m.tranq_pending = 0;
+            m.hit_kind = kHitUnknown;
+            m.npc_hit = false;
+            m.unsent_dmg = 0.f;
+            return;
+        }
+        if (localHp < m.last_host_hp - 0.01f) m.unsent_dmg += m.last_host_hp - localHp;
+        const bool tranq = m.tranq_pending > 0;
+        if (!tranq && !(m.unsent_dmg > 0.f)) return;
+        if (!tranq && m.hit_kind == kHitUnknown && (m.npc_hit || CameraOnRail())) {
+            spdlog::info("animals: local damage id={} {:.2f} not reported ({})", id, m.unsent_dmg,
+                         m.npc_hit ? "an NPC's bullet" : "cutscene camera");
+            m.unsent_dmg = 0.f;
+            m.npc_hit = false;
+            return;
+        }
+        if (!tranq && t - m.last_hit_ms < 150) return;  // held back: the next report carries it
+        m.last_hit_ms = t;
+        net::AnimalHit hit;
+        hit.animalId = id;
+        hit.damage = m.unsent_dmg;
+        hit.hitPos[0] = tranq ? kHitTranq : m.hit_kind;
+        const bool sent = ReportAnimalHit(hit);
+        spdlog::info("animals: local hit id={} kind={} dmg={:.2f} localHp={:.2f} hostHp={:.2f} sent={}", id,
+                     HitKindName(hit.hitPos[0]), hit.damage, localHp, m.last_host_hp, sent);
+        if (tranq) --m.tranq_pending;
+        m.unsent_dmg = 0.f;
+        m.hit_kind = kHitUnknown;
+        m.npc_hit = false;
+    }
+
+    // story.cpp's test: a cutscene puts the render camera on a rail, metres from the hunter.
+    static bool CameraOnRail() {
+        const LocalPlayerSample& p = LocalPlayer();
+        if (!p.valid || !p.viewValid) return false;
+        const float dx = p.viewPos.x - p.pos.x, dy = p.viewPos.y - p.pos.y, dz = p.viewPos.z - p.pos.z;
+        return dx * dx + dy * dy + dz * dz > 16.f;
+    }
+
     // One place at the corpse, then the death vfunc. Later frames must not HandleKey or SetBodyState: that pins
     // the standing pose. A frozen brain never runs the death itself (user 20:32: PresentDeath ok, deer stayed
     // standing, state went IdleAttack), so the brain is released afterwards to play the fall like the host's.
     void PresentDeathOnce(uint16_t id, Mirror& m, void* ent, const AnimalSample& sample) {
-        if (m.death_presented) return;
+        if (m.death_presented || m.is_npc) return;  // NPCs die through their own OnDie (review M1)
         entity::Vec3 pos{sample.pos[0], sample.pos[1], sample.pos[2]};
         if (m.have_rel) PlaceEntity(ent, pos, sample.yaw, m.rel);
         m.last_target = pos;
@@ -1190,7 +1808,10 @@ private:
         const bool cobra = IsCobra(ent);
         if (cobra && entity::BodyStateName(ent) != "Death" && !CobraBodyHelper(ent, "Death"))
             entity::SetBodyState(ent, "Death", true);
+        // hk_PresentDeath lets this one through (and keeps it out of this mission: the death commit reports instead).
+        g_presenting = true;
         m.death_presented = entity::PresentDeath(ent);
+        g_presenting = false;
         bool unfrozen = false;
         if (g_unfreeze_dead && m.frozen && !cobra) {
             unfrozen = entity::FreezeBrain(ent, false);
@@ -1313,7 +1934,9 @@ private:
     std::map<uint16_t, YawTrack> yaws_;
     std::map<uint16_t, Mirror> mirrors_;
     std::set<uint16_t> dead_;
-    std::set<uint16_t> announced_;
+    std::map<uint16_t, Life> lives_;  // host / solo
+    std::set<uint32_t> reported_;     // client: (id << 16 | life) whose host report this mission already got
+    bool commands_ = false;
 };
 
 AnimalsModule* g_self = nullptr;
@@ -1326,9 +1949,18 @@ bool IsMirroredNpc(void* ent) { return g_self && g_self->IsMirroredNpcEntity(ent
 // Client: a replayed script MoveToPos resets the animal (health, dead bits, IdleAttack) and clears brain +0x79. The
 // per-frame re-freeze in ApplyMirror came one AI tick too late on MAP4A: that tick started a lion's attack chain
 // on the local hunter, and the sync attack later faulted (EngineDll7+0x28b337). Freeze before the AI ever runs.
+// Host / solo: the same call starts a new life when the animal had died or fled (kAnimalRevive).
 int __fastcall hk_MoveToPos(void* self, void*, int mode, int arg) {
+    if (!NetIsOnline() || NetIsHost()) {
+        if (g_self) g_self->HostBeforeRespawn(self);
+        const int r = g_movetopos_hook->unsafe_thiscall<int>(self, mode, arg);
+        if (g_self) g_self->HostAfterRespawn(self);
+        scale::AfterRespawn(self);
+        return r;
+    }
     const int r = g_movetopos_hook->unsafe_thiscall<int>(self, mode, arg);
-    if (g_self && g_self->IsFrozenMirrorAnimal(self)) {
+    scale::AfterRespawn(self);
+    if (g_self && (g_self->IsFrozenMirrorAnimal(self) || g_self->MirrorOfAnimal(self))) {
         const bool ok = entity::FreezeBrain(self, true);
         static int logged = 0;
         if (logged < 8) {
@@ -1339,6 +1971,103 @@ int __fastcall hk_MoveToPos(void* self, void*, int mode, int arg) {
         }
     }
     return r;
+}
+
+// Present-death (0x1e8b0). Host: note what it reports for the death commit; a reserve's death stays out of the mission.
+// Client: a mirror only dies when the host's commit says so, and never reports to this mission here.
+void __fastcall hk_PresentDeath(void* ent) {
+    if (g_self && g_self->SwallowClientDeath(ent)) return;
+    const bool client = NetIsOnline() && !NetIsHost();
+    const bool reserve = scale::IsReserve(ent);
+    int report = 0;
+    if (!client && !reserve && ReadAt<int>(ent, kEntDeadGuard, 1) == 0 && (ReadAt<uint8_t>(ent, 0xC1, 0) & 4) == 0 &&
+        MissionPtr() && ReadAt<int>(ent, kEntEventMode, 0) != 2)
+        report = 1 + std::clamp(ReadAt<int>(ent, kEntKillAction, 0), 0, 250);
+    if (client || reserve) {
+        ++g_suppress_report;
+        g_suppress_why = reserve ? "reserve" : "client copy's";
+        __try {
+            g_death_hook->unsafe_fastcall<void>(ent);
+        } __finally {
+            --g_suppress_report;
+        }
+    } else {
+        g_death_hook->unsafe_fastcall<void>(ent);
+    }
+    if (!client && g_self) g_self->NoteHostDeathReport(ent, report);
+}
+
+// Client: what kind of hit the copy took (a dart does no damage; a protected animal fails only for a bullet). The local
+// tranq state is put back: the host runs the tranq timer and decides the death.
+void __fastcall hk_AnimalOnHit(void* self, void*, void* bullet, void* pos, void* dir) {
+    if (!g_self || !g_self->MirrorOfAnimal(self) || !bullet) {
+        g_onhit_hook->unsafe_thiscall<void>(self, bullet, pos, dir);
+        return;
+    }
+    const bool is_bullet = IsKindOf(bullet, "mod_obj_bullet");
+    const bool tranq = is_bullet && IsKindOf(bullet, "mod_obj_tranq_bullet");
+    const int kind = ReadAt<int>(bullet, kBulletKind, 0);
+    const int bone = ReadAt<int>(self, kEntHitBone, -1);
+    const uint32_t bits_before = ReadAt<uint32_t>(self, kEntHitBits, 0);
+    const int tranq_before = ReadAt<int>(self, kEntTranq, 0);
+    WriteAt<uint32_t>(self, kEntHitBits, 0);
+    g_onhit_hook->unsafe_thiscall<void>(self, bullet, pos, dir);
+    const uint32_t bits = ReadAt<uint32_t>(self, kEntHitBits, 0);
+    WriteAt<uint32_t>(self, kEntHitBits, bits_before | bits);
+    WriteAt<int>(self, kEntTranq, tranq_before);
+    if (!is_bullet) return;
+    if (kind != 2 && bone < 0) return;  // no bone hit: OnHit did nothing
+    const bool npc_shot = (bits & 8u) != 0;
+    const float hit = tranq ? kHitTranq : (kind == 2 ? kHitMelee : kHitBullet);
+    g_self->NoteClientHit(self, hit, npc_shot);
+}
+
+// Client: a cobra copy's OnHit only sets Death and its 50 timer (no health change), so a player's shot never showed
+// as damage and never reached the host (MAP7 "kill 1 cobra"). Report it as a bullet hit; the host starts its own timer.
+void __fastcall hk_CobraOnHit(void* self, void*, void* bullet, void* pos, void* dir) {
+    const float timer_before = ReadAt<float>(self, kCobraDeathTimerOff, 0.f);
+    g_cobra_onhit_hook->unsafe_thiscall<void>(self, bullet, pos, dir);
+    if (!g_self || !g_self->IsClientMirror()) return;
+    const float timer = ReadAt<float>(self, kCobraDeathTimerOff, 0.f);
+    if (!(timer == kCobraDeathTimer && timer_before != kCobraDeathTimer)) return;
+    const int id = IdOf(self);
+    if (id < 0) return;
+    net::AnimalHit hit;
+    hit.animalId = static_cast<uint16_t>(id);
+    hit.damage = 1.f;
+    hit.hitPos[0] = kHitBullet;
+    const bool sent = ReportAnimalHit(hit);
+    spdlog::info("animals: local cobra hit id={} sent={}", id, sent);
+}
+
+void OnReviveCommitThunk(const net::GameEvent& ev) {
+    if (g_self) g_self->OnReviveCommit(ev);
+}
+
+void __cdecl CmdLivesThunk() {
+    if (g_self) g_self->DumpLives();
+}
+
+// coop_tasks: this process's mission tasks (list at cMission +0x1f8: count +4 + 1, array +0x10; task id +0x64, state
+// +0x68; a shoot task's species +0xf0, kills left +0xf4, targets left +0x58). Compare host and client after a kill.
+void __cdecl CmdTasksThunk() {
+    void* m = MissionPtr();
+    if (!m) {
+        spdlog::info("animals: coop_tasks: no mission");
+        return;
+    }
+    char* list = static_cast<char*>(m) + 0x1f8;
+    const int count = ReadAt<int>(list, 4, -2) + 1;
+    void** arr = ReadAt<void**>(list, 0x10, nullptr);
+    spdlog::info("animals: coop_tasks status={} pending action={} tasks={}", ReadAt<int>(m, kMissionStatus, -1),
+                 ReadAt<int>(m, kMissionReportAction, -1), count);
+    for (int i = 0; arr && i < count && i < 64; ++i) {
+        void* task = ReadAt<void*>(arr, static_cast<uintptr_t>(i) * 4, nullptr);
+        if (!task) continue;
+        spdlog::info("animals:   task id={} state={} species={} left={} targets={}", ReadAt<int>(task, 0x64, -1),
+                     ReadAt<int>(task, 0x68, -1), ReadAt<int>(task, 0xf0, -1), ReadAt<int>(task, 0xf4, -1),
+                     ReadAt<int>(task, 0x58, -1));
+    }
 }
 
 DH2_MODULE(AnimalsModule)
@@ -1354,8 +2083,8 @@ void OnAnimalStates(const net::AnimalStates& states, uint32_t localMs) {
 void OnAnimalHit(const net::AnimalHit& hit) {
     if (g_self) g_self->OnAnimalHit(hit);
 }
-void OnAnimalDied(uint16_t id) {
-    if (g_self) g_self->NoteDeath(id);
+void OnAnimalDied(const net::GameEvent& ev) {
+    if (g_self) g_self->NoteDeath(ev);
 }
 
 void HoldCutscene(uint16_t id) {

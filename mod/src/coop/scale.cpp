@@ -16,7 +16,9 @@
 //  - A reserve copies its template's CustomProps (0x16300; MakeChaser switches lions to the chaser brain, without it
 //    AttackChasers fails), StartTask and SetTaskParam calls. Script Kill() (0x16a40) on the last animal of a family
 //    parks its reserves too.
-//  - Present-death (0x1e8b0) reports the species to the mission through 0x91e80; skipped for reserves.
+//  - Present-death (0x1e8b0) reports the species to the mission through 0x91e80. animals.cpp owns both hooks and keeps a
+//    reserve's death out of the mission (IsReserve below). A dead reserve that is released again is a new life there
+//    (kAnimalRevive), so clients see it come back; ReuseKilled can be turned on once that is verified.
 #include "coop/scale.h"
 
 #include <windows.h>
@@ -54,8 +56,6 @@ constexpr uintptr_t kRvaAddAnimalOnMap = 0x8cab0;  // fastcall(animal manager): 
 constexpr uintptr_t kRvaAddAnimal = 0x8d970;       // cdecl(int species, int, const char* name) -> list index
 constexpr uintptr_t kRvaMakeBoss = 0x16d20;        // thiscall(script object, int on, const char* hud name)
 constexpr uintptr_t kRvaSetHealth = 0x15ff0;       // thiscall(script object, float)
-constexpr uintptr_t kRvaPresentDeath = 0x1e8b0;    // fastcall(animal), cScrAnimal vt +0x154
-constexpr uintptr_t kRvaMissionReport = 0x91e80;   // thiscall(cMission*, int action, int species)
 constexpr uintptr_t kRvaKill = 0x16a40;            // fastcall(script object): script Kill() = entity vt +0x234 (park)
 constexpr uintptr_t kRvaCustomProps = 0x16300;     // thiscall(script object, const char* method): runs that script method
 constexpr uintptr_t kRvaAnimalVt = 0xff470;        // cScrAnimal (obj_animal)
@@ -71,6 +71,7 @@ constexpr uintptr_t kEntSpecies = 0x434;
 constexpr uintptr_t kEntMaxHealth = 0x4C0;
 constexpr uintptr_t kEntKillAction = 0x420;  // MISSION_ACTION_* the death reports (bullet OnHit writes 1)
 constexpr uintptr_t kEntDead = 0x600;  // set by present-death, cleared by vt +0x158
+constexpr uintptr_t kEntFleeReached = 0x590;  // 1 = reached a flee point (GameDll 0x14940); Update parks and reports
 constexpr uintptr_t kVtRespawn = 0x158;  // thiscall(ent, 3, 0): what script MoveToPos calls
 constexpr uintptr_t kVtSetPos = 0xA4;    // thiscall(ent, const tVect3*): what script MoveToPos calls next
 constexpr uintptr_t kVtPark = 0x234;     // thiscall(ent): script Kill(), -10000 and brain frozen
@@ -135,9 +136,28 @@ struct Settings {
     int reserves = kMaxReserves;  // [Scale] Reserves (per species; every player must use the same value)
     bool log = true;      // [Scale] Log
     bool client_respawn = true;  // [Scale] ClientRespawn: a client gives a released reserve the MoveToPos body state
-    bool reuse_killed = false;   // [Scale] ReuseKilled: release a reserve again after it died (clients keep it dead: G4)
+    bool reuse_killed = false;   // [Scale] ReuseKilled: release a reserve again after it died (a new life, kAnimalRevive;
+                                 // turn on once the revive path is verified in game, re/notes/life.md)
 };
 Settings g_cfg;
+
+// Bodies and Reserves decide which entities exist (reserve ids, and every entity created after them). A client uses the
+// host's values (events::kScaleConfig, sent to each client when it joins) for every map it loads after that.
+struct HostConfig {
+    bool have = false;
+    bool bodies = true;
+    int reserves = kMaxReserves;
+};
+HostConfig g_host_cfg;
+std::vector<uint8_t> g_cfg_sent;  // host: clients that have our [Scale] Bodies/Reserves
+bool g_built = false;             // this map's reserve pool was built with g_built_bodies / g_built_reserves
+bool g_built_bodies = false;
+int g_built_reserves = 0;
+
+bool UseBodies() { return g_host_cfg.have && NetIsOnline() && !NetIsHost() ? g_host_cfg.bodies : g_cfg.bodies; }
+int UseReserves() {
+    return g_host_cfg.have && NetIsOnline() && !NetIsHost() ? g_host_cfg.reserves : g_cfg.reserves;
+}
 
 struct Template {
     std::string task;  // the last AIHuntTask_Attack* this animal was given
@@ -154,6 +174,7 @@ struct ScriptAnimal {
     bool attacking_prev = false;  // host: up and attacking at the previous evaluation
     bool fresh = false;       // host: started an attack this frame without already being in one (not a retarget)
     bool lone_large = false;  // on the health path: does not count toward its family's pack
+    float script_hp = -1.f;   // health the script set with SetHealth since its last MoveToPos (-1: none, species max)
     Template tmpl;
 };
 
@@ -186,8 +207,6 @@ safetyhook::InlineHook* g_onmap_hook = nullptr;
 safetyhook::InlineHook* g_add_hook = nullptr;
 safetyhook::InlineHook* g_boss_hook = nullptr;
 safetyhook::InlineHook* g_sethealth_hook = nullptr;
-safetyhook::InlineHook* g_death_hook = nullptr;
-safetyhook::InlineHook* g_report_hook = nullptr;
 safetyhook::InlineHook* g_start_hook = nullptr;
 safetyhook::InlineHook* g_param_hook = nullptr;
 safetyhook::InlineHook* g_props_hook = nullptr;
@@ -202,7 +221,6 @@ std::string g_map;
 bool g_map_ok = false;
 bool g_creating = false;
 bool g_replaying = false;
-int g_reserve_death = 0;
 uint32_t g_mark_serial = 0;
 bool g_vt_checked = false;
 std::vector<ScriptAnimal> g_script;
@@ -438,6 +456,7 @@ void ClearMap() {
     g_families.clear();
     g_script_kills.clear();
     g_arena.clear();
+    g_built = false;
 }
 
 // ---- health ----
@@ -562,7 +581,7 @@ Reserve* PickReserve(int family, int species) {
     for (Reserve& r : g_reserves) {
         if (FamilyOf(r.species) != family || !Parked(r.ent)) continue;
         if (r.killed && !g_cfg.reuse_killed) continue;
-        // Never-killed first: a client keeps a dead id dead (G4). Then the template's own species.
+        // Never-killed first (a fresh body needs no revive on the clients). Then the template's own species.
         const int rank = (r.killed ? 2 : 0) + (r.species == species ? 0 : 1);
         if (rank < best_rank) {
             best = &r;
@@ -578,6 +597,11 @@ bool Release(Reserve& r, const ScriptAnimal& t, int slot) {
     const Vec3 off = SlotOffset(slot);
     const float pos[3] = {at.x + off.x, at.y, at.z + off.z};
     const bool respawned = CallRespawn(r.ent);
+    // Reserve health (re/notes/life.md): the species max (what the respawn just wrote), or the template's scripted
+    // health when the script lowered it (MAP4A lions SetHealth(100) for the truck chase; species 170). A script that
+    // raises one animal singles it out (MAP2A wolf3 600, MAP3C lions 500/200); the extra bodies stay ordinary members.
+    const float species_max = Read<float>(r.ent, kEntMaxHealth, 0.f);
+    if (respawned && t.script_hp > 0.f && t.script_hp < species_max) Write<float>(r.ent, kEntHealth, t.script_hp);
     const bool placed = CallSetPos(r.ent, pos);
     const Vec3 ang = Read<Vec3>(t.ent, kEntAngle, Vec3{});
     Write<Vec3>(r.ent, kEntAngle, ang);
@@ -775,6 +799,77 @@ void __cdecl cmd_killshot(const char* arg) {
     animals::DebugDamage(static_cast<uint16_t>(id), 100000.f);
 }
 
+// ---- the host's [Scale] Bodies/Reserves (they decide entity ids, so the host's values win) ----
+
+uint32_t PackConfig(bool bodies, int reserves) {
+    return (bodies ? 1u : 0u) | (static_cast<uint32_t>(std::clamp(reserves, 0, kMaxReserves)) << 8);
+}
+
+// Not journaled: a client keeps the values for the whole session, and a client that is still at the main menu (not
+// synced, so Commit would skip it) must have them before it loads its first story map.
+void SendConfigTo(uint8_t peer) {
+    net::GameEvent ev;
+    ev.flags = net::game_event_flag::kCommit;
+    ev.actorId = 0;
+    ev.kind = events::kScaleConfig;
+    ev.i0 = PackConfig(g_cfg.bodies, g_cfg.reserves);
+    ev.key = fmt::format("bodies={} reserves={}", g_cfg.bodies ? 1 : 0, g_cfg.reserves);
+    const bool sent = SendGameEventTo(peer, ev);
+    spdlog::info("scale: sent [Scale] {} to player {} sent={}", ev.key, peer, sent);
+}
+
+// Every frame: the host sends its values to each client once per connection; a process that is offline forgets the
+// host's values (its own ini applies again).
+void PumpConfig() {
+    if (!NetIsOnline()) {
+        g_host_cfg.have = false;
+        g_cfg_sent.clear();
+        return;
+    }
+    if (!NetIsHost()) return;
+    const std::vector<uint8_t> peers = PeerIds();
+    g_cfg_sent.erase(std::remove_if(g_cfg_sent.begin(), g_cfg_sent.end(),
+                                    [&](uint8_t id) { return std::find(peers.begin(), peers.end(), id) == peers.end(); }),
+                     g_cfg_sent.end());
+    for (uint8_t id : peers) {
+        if (std::find(g_cfg_sent.begin(), g_cfg_sent.end(), id) != g_cfg_sent.end()) continue;
+        g_cfg_sent.push_back(id);
+        SendConfigTo(id);
+    }
+}
+
+void OnScaleConfigCommit(const net::GameEvent& ev) {
+    const bool bodies = (ev.i0 & 1u) != 0;
+    const int reserves = std::clamp(static_cast<int>((ev.i0 >> 8) & 0xffu), 0, kMaxReserves);
+    g_host_cfg.have = true;
+    g_host_cfg.bodies = bodies;
+    g_host_cfg.reserves = reserves;
+    const bool differs = bodies != g_cfg.bodies || reserves != g_cfg.reserves;
+    spdlog::info("scale: host [Scale] bodies={} reserves={} (this ini bodies={} reserves={}){}", bodies, reserves,
+                 g_cfg.bodies, g_cfg.reserves, differs ? ": the host's values apply to every map loaded from now on" : "");
+    if (!g_built) return;
+    const int built = g_built_bodies ? g_built_reserves : 0;
+    const int want = bodies ? reserves : 0;
+    if (built != want) {
+        spdlog::error("scale: map '{}' was loaded with {} reserve(s) per pool species, the host uses {}: entity ids after "
+                      "the reserve pool differ from the host's until the next map (host: F5 twice restarts the level)",
+                      g_map, built, want);
+    }
+}
+
+// A reserve that reached a flee point: the engine's next cScrAnimal::Update would park it and report the map's flee
+// action (MISSION_ACTION_KILL on MAP2A/2B/2C/4B/7/12A/12B) to the mission, so a fleeing extra body would count as a
+// kill. Park it here first, without the report. +0x590 is set by GameDll 0x14940 ("reached flee_point") during the
+// brain update and read at the start of the next Update; this runs in between.
+void ParkFleeingReserves() {
+    for (Reserve& r : g_reserves) {
+        if (Read<int>(r.ent, kEntFleeReached, 0) != 1) continue;
+        Write<int>(r.ent, kEntFleeReached, 0);
+        const bool ok = CallPark(r.ent);
+        spdlog::info("scale: {} id={} reached a flee point: parked without a mission report ok={}", r.name, r.id, ok);
+    }
+}
+
 // ---- hooks ----
 
 int __cdecl hk_AddAnimal(int species, int flag, const char* name) {
@@ -797,32 +892,6 @@ void __fastcall hk_MakeBoss(void* scr, void*, int on, const char* name) {
 void __fastcall hk_SetHealth(void* scr, void*, float hp) {
     g_sethealth_hook->unsafe_thiscall<void>(scr, hp);
     AfterSetHealth(scr);
-}
-
-void CallDeathAsReserve(void* ent) {
-    ++g_reserve_death;
-    __try {
-        g_death_hook->unsafe_fastcall<void>(ent);
-    } __finally {
-        --g_reserve_death;
-    }
-}
-
-void __fastcall hk_PresentDeath(void* ent) {
-    if (!IsReserve(ent)) {
-        g_death_hook->unsafe_fastcall<void>(ent);
-        return;
-    }
-    CallDeathAsReserve(ent);
-}
-
-void __fastcall hk_MissionReport(void* mission, void*, int action, int species) {
-    if (g_reserve_death > 0) {
-        spdlog::info("scale: reserve death kept out of the mission (action {}, species {})", action, SpeciesName(species));
-        return;
-    }
-    if (g_cfg.log && g_map_ok) spdlog::info("scale: mission report action {} value {}", action, species);
-    g_report_hook->unsafe_thiscall<void>(mission, action, species);
 }
 
 void __fastcall hk_StartTask(void* scr, void*, char* task) {
@@ -860,6 +929,7 @@ public:
         g_cfg.client_respawn = GetPrivateProfileIntA("Scale", "ClientRespawn", 1, ini.c_str()) != 0;
         g_cfg.reuse_killed = GetPrivateProfileIntA("Scale", "ReuseKilled", 0, ini.c_str()) != 0;
         events::SetHandler(events::kScaleMax, nullptr, &OnScaleMaxCommit);
+        events::SetHandler(events::kScaleConfig, nullptr, &OnScaleConfigCommit);
         spdlog::info("scale: health={} bodies={} reserves={} clientRespawn={} reuseKilled={} log={}", g_cfg.health,
                      g_cfg.bodies, g_cfg.reserves, g_cfg.client_respawn, g_cfg.reuse_killed, g_cfg.log);
     }
@@ -876,12 +946,6 @@ public:
                                          reinterpret_cast<void*>(&hk_MakeBoss));
         g_sethealth_hook = core::install_hook("SetHealth (scale, 0x15ff0)", CheckedRva(kRvaSetHealth, "SetHealth"),
                                               reinterpret_cast<void*>(&hk_SetHealth));
-        g_death_hook = core::install_hook("animal present-death (scale, 0x1e8b0)",
-                                          CheckedRva(kRvaPresentDeath, "present death"),
-                                          reinterpret_cast<void*>(&hk_PresentDeath));
-        g_report_hook = core::install_hook("cMission species report (scale, 0x91e80)",
-                                           CheckedRva(kRvaMissionReport, "mission report"),
-                                           reinterpret_cast<void*>(&hk_MissionReport));
         g_fn_props = CheckedRva(kRvaCustomProps, "CustomProps");
         g_props_hook = core::install_hook("CustomProps (scale, 0x16300)", g_fn_props, reinterpret_cast<void*>(&hk_CustomProps));
         g_kill_hook = core::install_hook("script Kill (scale, 0x16a40)", CheckedRva(kRvaKill, "Kill"),
@@ -907,6 +971,8 @@ public:
             commands_ = console_cmds::AddCommand0("coop_scale", &cmd_scale);
             console_cmds::AddCommandStr("coop_killshot", &cmd_killshot);
         }
+        PumpConfig();
+        if (g_map_ok) ParkFleeingReserves();
         if (!g_map_ok) {
             g_batch.clear();
             g_script_kills.clear();
@@ -967,9 +1033,19 @@ void AfterAddAnimalOnMap() {
     for (const ScriptAnimal& s : g_script) list += fmt::format(" {}={}({})", s.name, s.id, SpeciesName(s.species));
     spdlog::info("scale: map '{}' story animals{} (scaling {})", g_map, list, g_map_ok ? "on" : "off on this map");
     if (!g_script.empty()) CheckScriptSlots(g_script.front().ent);
-    if (!g_map_ok || !g_cfg.bodies || g_cfg.reserves <= 0) return;
+    const bool bodies = UseBodies();
+    const int reserves = std::clamp(UseReserves(), 0, kMaxReserves);
+    g_built = false;
+    if (!g_map_ok) return;
     const MapPool* pool = PoolFor(g_map);
     if (!pool) return;
+    // From here the entity list depends on Bodies/Reserves: remember what this map was built with.
+    g_built = true;
+    g_built_bodies = bodies;
+    g_built_reserves = reserves;
+    spdlog::info("scale: pool on '{}' built with bodies={} reserves={} ({})", g_map, bodies, reserves,
+                 g_host_cfg.have && NetIsOnline() && !NetIsHost() ? "the host's values" : "this ini");
+    if (!bodies || reserves <= 0) return;
     std::string made;
     for (int species : pool->species) {
         if (species < 0 || species >= kSpeciesCount) break;
@@ -978,7 +1054,7 @@ void AfterAddAnimalOnMap() {
             spdlog::warn("scale: pool species {} is not in this map's AddAnimal list; skipped", SpeciesName(species));
             continue;
         }
-        for (int n = 0; n < g_cfg.reserves; ++n) {
+        for (int n = 0; n < reserves; ++n) {
             char* name = g_names[species][n];
             std::snprintf(name, sizeof g_names[species][n], "coop_%s_%d", SpeciesName(species), n);
             g_creating = true;
@@ -1049,6 +1125,7 @@ void AfterMakeBoss(void* scr, int on) {
 // peer (a lower local value on a client would read as a hit and be sent to the host).
 void AfterSetHealth(void* scr) {
     void* ent = EntityOfScr(scr);
+    if (ScriptAnimal* s = FindScript(ent)) s->script_hp = Health(ent);  // before any factor: what reserves may copy
     const auto it = g_marks.find(ent);
     if (it == g_marks.end() || std::fabs(it->second.factor - 1.f) < 1e-4f) return;
     const float hp = Health(ent);
@@ -1059,5 +1136,10 @@ void AfterSetHealth(void* scr) {
 }
 
 bool IsReserve(void* ent) { return ent && FindReserve(ent) != nullptr; }
+
+void AfterRespawn(void* ent) {
+    // Script MoveToPos put the health back to +0x4C0: a SetHealth from an earlier life no longer applies.
+    if (ScriptAnimal* s = FindScript(ent)) s->script_hp = -1.f;
+}
 
 }  // namespace dh2::coop::scale

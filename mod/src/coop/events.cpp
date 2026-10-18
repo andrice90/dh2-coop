@@ -392,7 +392,7 @@ void PumpClientSync() {
 
 // ---- kAnimalDied ----
 
-void OnAnimalDiedCommit(const net::GameEvent& ev) { animals::OnAnimalDied(ev.subjectId); }
+void OnAnimalDiedCommit(const net::GameEvent& ev) { animals::OnAnimalDied(ev); }
 
 void OnAnimalDiedRequest(const net::GameEvent& ev) {
     static bool logged = false;

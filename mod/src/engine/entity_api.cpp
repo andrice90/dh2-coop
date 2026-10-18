@@ -536,8 +536,29 @@ bool FreezeBrain(void* ent, bool freeze) {
             g_freeze_brain = core::find_export_as<FreezeFn>(common, "?FreezeBrain@cAIHuntBrain_Animal@@QAEXH@Z");
         if (!g_freeze_brain) return false;
     }
-    void* brain = *reinterpret_cast<void**>(static_cast<char*>(ent) + 0x200);  // cObjCharacterEx brain
-    return brain && guarded_freeze(brain, freeze ? 1 : 0);
+    void* brain = nullptr;  // cObjCharacterEx brain
+    if (!core::safe_read(static_cast<char*>(ent) + 0x200, brain) || !brain) return false;
+    // Only a cAIHuntBrain_Animal: FreezeBrain writes its byte +0x79, and an NPC's +0x200 is a cAIBrain_NPC (review
+    // M1/M2: the NPC death and reset paths called this on Hugh). The animal brains are CommonDll7 classes derived from
+    // it (wolf/lion/... vtables +0x131118, +0x1311f0, +0x1312c8 on MAP2A); cAIBrain_NPC is GameDll7's (vtable
+    // +0x112d30). Refuse any vtable outside CommonDll7.
+    void* vt = nullptr;
+    HMODULE common = GetModuleHandleA("CommonDll7.dll");
+    HMODULE vt_mod = nullptr;
+    const bool read = core::safe_read(brain, vt) && vt;
+    if (read)
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           static_cast<LPCSTR>(vt), &vt_mod);
+    if (!read || !common || vt_mod != common) {
+        static void* last_refused = nullptr;
+        if (vt != last_refused) {
+            last_refused = vt;
+            spdlog::warn("entity_api: FreezeBrain refused: brain vt {} is not a CommonDll7 animal brain",
+                         core::describe_address(vt));
+        }
+        return false;
+    }
+    return guarded_freeze(brain, freeze ? 1 : 0);
 }
 
 using CharFreezeFn = void(__fastcall*)(void* self, int freeze);
