@@ -5,7 +5,7 @@
 // WaveRelease (0x3882a0) drops one reference and frees the wave at 0. A release on an empty slot is the crash.
 // [Sound] Trace=1 logs every wave free and new load plus anomalies; Trace=2 also logs each reference change.
 // The replay crash was such a wave: freed by EndPrecache while the respawned hunter used it. The fix is in
-// core/lifecycle.cpp ([Coop] FullReloadOnReplay); this file only reports.
+// core/lifecycle.cpp ([Coop] FullReloadOnReplay); this file reports, and skips a release on an empty slot.
 #include <windows.h>
 
 #include <cstdint>
@@ -115,8 +115,10 @@ std::string backtrace(int skip) {
 void __fastcall hk_wave_release(void* drv, void*, int idx) {
     void* w = wave_at(drv, idx);
     if (!w) {
-        spdlog::error("snd: WaveRelease({}) on an empty slot ({}) caller={} stack: {}", idx,
+        // The engine would write through the empty slot and fault (the replay crash). Nothing is left to release.
+        spdlog::error("snd: WaveRelease({}) on an empty slot ({}) skipped; caller={} stack: {}", idx,
                       g_in_bulk ? g_bulk_name : "direct", core::describe_address(_ReturnAddress()), backtrace(1));
+        return;
     } else if (g_trace) {
         const int ref = wave_ref(w);
         if (ref <= 1) {
