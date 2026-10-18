@@ -12,6 +12,8 @@ Done in main:
 - `8ea801f`: **co-op lobby** (F8; opens by itself at the main menu): name, puppet model, HOST, JOIN (IP + port), status line (no answer after 8 s, reject reasons), tailnet IP with Copy, player list with roles, models and ping. Protocol v3 carries the model. Ten puppet bodies verified on MAP3B. Knife / machete / branch now drawn on puppets (machete verified; held flat, no orientation offset). Kit: one **DH2 COOP** shortcut; `dist\dh2coop-kit.zip` built 23:1x.
 - Verified on two local windows (port 27425): lobby host/join, failed join message, model shown to the other player, host map start followed from the menu.
 
+- `d14e897`: **host level recovery**: F5 twice = restart the level (through the main menu), F6 twice = next story level; lobby buttons; clients follow and get an on-screen line (event kind 17). Verified MAP2B → MAP2C → restart on two windows. Kit zip refreshed.
+
 **For the user (real test):** run `install.bat` from `dist\dh2coop-kit.zip` on both PCs (Tailscale on both), DH2 COOP, HOST on one, JOIN with the host's tailnet IP on the other, host closes the lobby (F8) and starts New Game or Load. Still unverified: clicking the lobby with a real mouse (all automated runs used `coop_lobby`), New Game / Load through the real menu (automated runs used `mod_spmap`), a remote PC over Tailscale.
 
 In progress:

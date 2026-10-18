@@ -194,3 +194,6 @@ RVAs: EngineDll7 unless noted (CommonDll7 = "C", GameDll7 = "G").
 - Melee item skins: `objects/items/game/weapons/knife1st/knife.skin`, `macheta1st/macheta.skin` (the MAP3B player blade, folder name "macheta"), `mbranch/mbranch.skin` (third-person). Attached to `BipRHand` they show but lie flat to the side.
 - Tailscale adapter while logged out: Up, IPv4 169.254.x only. Logged in: 100.64/10 address on the adapter named "Tailscale".
 - `capture-window.ps1` copies the screen rectangle; another window on top ends up in the shot. `-PrintWindow` asks the window to draw itself.
+- No checkpoints inside a level: no level script saves; code 7 "Checkpoint reached" is the level exit. Story order (text table `INTERFACE/TEXT/TEXTTABLE.INC` chapters, BSP exits): MAP1, MAP2A-C, MAP3A-C, MAP4A-B, MAP5 ... MAP10, MAP11A-C, MAP12A-C.
+- Restarting the loaded level safely: `menumap menumap`, then `mod_spmap <map>` once the menu is up (verified MAP2C, clients follow both). `mod_spmap <next>` from inside a level also works (MAP2B → MAP2C).
+- NVIDIA `nvd3dum.dll+0x2757548` first-chance AVs at every map load are driver noise (both windows, no effect).
