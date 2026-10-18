@@ -78,8 +78,75 @@ Check 'host, stopped' (Run-Install ((Sim 'stopped') + @('-IAmHost'))) @('signed 
 
 # bad input and uninstall
 Check 'damaged join code' (Run-Install ((Sim 'running-ok') + @('-JoinCode', $codeBad))) @('ERROR: Join code: That join code is damaged') 1
-Check '-Uninstall' (Run-Install (@('-Uninstall'))) @("Remove-NetFirewallRule", 'Tailscale stays installed')
+Check '-Uninstall' (Run-Install (@('-Uninstall'))) @('== Windows Firewall', 'Tailscale stays installed')
 if ((Get-ChildItem $bin | ForEach-Object Name) -join ',' -eq 'Main7.exe') { Write-Host 'pass  -Uninstall removed the mod files and the lobby ini' } else { Write-Host "FAIL  files left: $((Get-ChildItem $bin | ForEach-Object Name) -join ',')"; $fail++ }
+
+# uninstall.ps1 on its own, run from the copy the installer leaves in Bin (an old install without the kit at hand)
+$data = Join-Path $work 'localappdata\dh2coop'
+$vstore = Join-Path $work 'virtualstore'
+$vsBin = Join-Path $vstore ($bin -replace '^[A-Za-z]:\\', '')
+$ual = Join-Path (Split-Path (Split-Path $here -Parent) -Parent) 'game\Bin\dinput8.dll'  # a real Ultimate ASI Loader
+function Run-Uninstall([string[]]$extra) {
+    $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $bin 'uninstall.ps1'), '-ShortcutDir', $desk,
+           '-DataDir', $data, '-VirtualStore', $vstore, '-Yes') + $extra
+    $out = & powershell @a 2>&1 | Out-String
+    return [pscustomobject]@{ Out = $out; Code = $LASTEXITCODE }
+}
+function Fresh-Install {
+    [void](Run-Install ((Sim 'running-ok') + @('-JoinCode', $codeIp)))
+    if (Test-Path $ual) { Copy-Item $ual (Join-Path $bin 'dinput8.dll') -Force }
+}
+function New-Lnk([string]$name, [string]$target) {
+    $s = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $desk "$name.lnk")); $s.TargetPath = $target; $s.Save()
+}
+function Names([string]$dir) { return ((Get-ChildItem $dir -ErrorAction SilentlyContinue | ForEach-Object Name | Sort-Object) -join ',') }
+
+Fresh-Install
+foreach ($f in 'dh2coop.1.log', 'dh2coop.2.log', 'dh2coop-crash.dmp', 'debug.1.log', 'dh2coop-lastmap.txt', 'dh2coop-joincode.txt') {
+    [IO.File]::WriteAllText((Join-Path $bin $f), 'x')
+}
+New-Item -ItemType Directory -Force $data, $vsBin | Out-Null
+[IO.File]::WriteAllText((Join-Path $data 'lasthost.txt'), '100.64.0.1')
+[IO.File]::WriteAllText((Join-Path $vsBin 'dh2coop.log'), 'x')
+New-Lnk 'DH2 HOST' (Join-Path $bin 'host.bat')
+New-Lnk 'DH2 JOIN' (Join-Path $env:WINDIR 'notepad.exe')  # same name, not ours: stays
+$before = Names $bin
+Check 'uninstall.ps1 -DryRun lists, changes nothing' (Run-Uninstall @('-DryRun')) @('would remove dh2coop\.asi', 'would remove dh2coop-crash\.dmp',
+    'would remove the folder', 'would remove DH2 COOP\.lnk', 'kept DH2 JOIN\.lnk', 'nothing is changed')
+if ((Names $bin) -eq $before -and (Test-Path $data)) { Write-Host 'pass  -DryRun left every file' } else { Write-Host 'FAIL  -DryRun removed something'; $fail++ }
+$r = Run-Uninstall @('-FilesOnly')
+Check 'uninstall.ps1 from Bin' $r @('removed dh2coop\.asi', 'removed uninstall\.ps1', 'removed debug\.1\.log', 'VirtualStore', 'The co-op mod is removed')
+$want = if (Test-Path $ual) { 'Main7.exe' } else { 'dinput8.dll,Main7.exe' }  # without a real loader the fake one is not recognised
+$deskLeft = Names $desk
+if ((Names $bin) -eq $want -and -not (Test-Path $data) -and -not (Test-Path (Join-Path $vsBin 'dh2coop.log')) -and $deskLeft -eq 'DH2 JOIN.lnk') {
+    Write-Host 'pass  uninstall.ps1 left only the game (data, VirtualStore, our shortcuts gone; the foreign one kept)'
+} else { Write-Host "FAIL  bin: $(Names $bin); desk: $deskLeft; data: $(Test-Path $data)"; $fail++ }
+Remove-Item (Join-Path $desk 'DH2 JOIN.lnk') -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $bin 'dinput8.dll') -Force -ErrorAction SilentlyContinue
+
+# another mod's loader kept aside by the installer comes back
+[IO.File]::WriteAllText((Join-Path $bin 'dinput8.dll'), 'other mod loader')
+Fresh-Install
+$r = Run-Uninstall @('-FilesOnly')
+$ok = (Test-Path (Join-Path $bin 'dinput8.dll')) -and ([IO.File]::ReadAllText((Join-Path $bin 'dinput8.dll')) -eq 'other mod loader') -and
+      -not (Test-Path (Join-Path $bin 'dinput8.dll.dh2coop-backup'))
+if ($ok -and $r.Out -match 'earlier loader') { Write-Host 'pass  uninstall put the earlier dinput8.dll back' } else { Write-Host "FAIL  backup restore: $(Names $bin)"; $fail++ }
+Remove-Item (Join-Path $bin 'dinput8.dll') -Force
+
+# the loader stays when another ASI mod needs it
+if (Test-Path $ual) {
+    Fresh-Install
+    [IO.File]::WriteAllText((Join-Path $bin 'other.asi'), 'x')
+    $r = Run-Uninstall @('-FilesOnly')
+    if ((Names $bin) -eq 'dinput8.dll,Main7.exe,other.asi' -and $r.Out -match 'other ASI mods use it') { Write-Host 'pass  loader kept for other.asi' } else { Write-Host "FAIL  other.asi: $(Names $bin)"; $fail++ }
+    Remove-Item (Join-Path $bin 'other.asi'), (Join-Path $bin 'dinput8.dll') -Force
+}
+
+# uninstall.bat from Bin deletes itself without cmd complaining about the missing batch file
+Fresh-Install
+$out = cmd /c "echo.| `"$(Join-Path $bin 'uninstall.bat')`" -Yes -FilesOnly -ShortcutDir `"$desk`" -DataDir `"$data`" -VirtualStore `"$vstore`"" 2>&1 | Out-String
+$want = if (Test-Path $ual) { 'Main7.exe' } else { 'dinput8.dll,Main7.exe' }
+if ((Names $bin) -eq $want -and $out -notmatch 'cannot be found') { Write-Host 'pass  uninstall.bat removed everything, itself included' } else { Write-Host "FAIL  uninstall.bat: $(Names $bin) $out"; $fail++ }
 
 Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 if ($fail -gt 0) { Write-Host "$fail failed"; exit 1 }

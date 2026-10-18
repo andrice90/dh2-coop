@@ -14,8 +14,11 @@ INSTALL (everyone)
    Game somewhere else?  powershell -ExecutionPolicy Bypass -File install.ps1 -GameDir "<your Bin folder>"
 3. Updating to a newer kit: run install.bat from the new kit (your player name is kept; the old
    DH2 HOST / DH2 JOIN shortcuts are removed).
-4. Uninstall: install.bat -Uninstall  (removes the mod files, the shortcut and the firewall rule;
-   a dinput8.dll from another mod is put back; Tailscale stays installed).
+4. Uninstall: double-click uninstall.bat (in this kit, or in the game's Bin folder, where the
+   installer leaves a copy). It removes every version of the mod completely: the mod files, its
+   logs and settings (also in %LOCALAPPDATA%\dh2coop), the shortcuts and the firewall rule. A
+   dinput8.dll from another mod is put back; Tailscale stays installed.
+   uninstall.bat -DryRun only lists what it would remove. install.bat -Uninstall does the same.
 
 NETWORK (Tailscale, free)
 Host, once:

@@ -6,7 +6,8 @@
 # Double-click install.bat. Or from PowerShell in this folder:
 #   powershell -ExecutionPolicy Bypass -File install.ps1 [-GameDir <...\DNGH2\Bin>] [-PlayerName <name>] [-JoinCode <code>]
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -IAmHost     (host: no join code question)
-#   powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall   (removes the files, the shortcuts, the firewall rule)
+#   powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall   (runs uninstall.ps1: every version's files, the
+#                                                                      shortcuts, the firewall rule)
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -FindOnly    (only lists the game folders it finds)
 #   -DryRun   prints every Tailscale, winget and firewall action instead of running it (the files are still copied;
 #             no administrator prompt). Reading Tailscale's status stays real. Use it to see what an install would do.
@@ -35,7 +36,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $kit = $PSScriptRoot
-$modFiles = @('dinput8.dll', 'dh2coop.asi', 'dh2coop.ini', 'host.bat', 'join.bat')
+$modFiles = @('dinput8.dll', 'dh2coop.asi', 'dh2coop.ini', 'host.bat', 'join.bat', 'uninstall.bat', 'uninstall.ps1')
 $tail = 'Activision Value\Magic Wand\DNGH2\Bin'
 $shortcuts = @('DH2 COOP')
 $oldShortcuts = @('DH2 HOST', 'DH2 JOIN', 'DH2 HOST DLSS')  # earlier kits; removed on install and uninstall
@@ -722,12 +723,6 @@ function Set-GameFirewall([string]$exe) {
     } catch { }
 }
 
-function Remove-GameFirewall {
-    if ($DryRun) { Write-Dry "Get-NetFirewallRule -DisplayName '$fwRuleName' -ErrorAction SilentlyContinue | Remove-NetFirewallRule"; return }
-    $rules = @(Get-NetFirewallRule -DisplayName $fwRuleName -ErrorAction SilentlyContinue)
-    if ($rules.Count -gt 0) { $rules | Remove-NetFirewallRule; Write-Ok "Removed the firewall rule '$fwRuleName'." }
-}
-
 function Test-IsAdmin {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     return ([Security.Principal.WindowsPrincipal]$id).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -740,6 +735,19 @@ if ($FindOnly) {
     $bins = @(Find-GameBins)
     if ($bins.Count -eq 0) { 'No game folder found.' } else { $bins }
     return
+}
+
+# -Uninstall is uninstall.ps1 (also copied into Bin): one place that knows every file any version left behind.
+# -DryRun keeps its installer meaning here: files go, the firewall step is only printed.
+if ($Uninstall) {
+    $u = @{ KitDir = $kit }
+    if ($GameDir) { $u.GameDir = $GameDir }
+    if ($ShortcutDir) { $u.ShortcutDir = $ShortcutDir }
+    if ($LobbyIni) { $u.DataDir = Split-Path -Parent $LobbyIni }
+    if ($DryRun) { $u.FilesOnly = $true }
+    if ($Yes) { $u.Yes = $true }
+    & (Join-Path $kit 'uninstall.ps1') @u
+    exit $LASTEXITCODE
 }
 
 $exitCode = 0
@@ -757,28 +765,26 @@ try {
     Write-Host "Game folder: $bin"
     if ($DryRun) { Write-Host '(dry run: Tailscale, winget and firewall steps are printed, not run)' -ForegroundColor DarkYellow }
 
-    if (-not $Uninstall) {
-        foreach ($f in $modFiles) {
-            if (-not (Test-Path -LiteralPath (Join-Path $kit $f))) { throw "The kit is missing $f (unzip the whole kit first)." }
-        }
-        # The questions come first, in the window the person is already looking at: player name, then the join code.
-        if (-not $PlayerName) { $PlayerName = Get-IniPlayerName $iniPath }
-        if (-not $PlayerName -or $PlayerName -eq 'Hunter') {
-            $typed = ''
-            if (-not $Yes) { $typed = Read-Host "Your player name (Enter = $env:USERNAME)" }
-            $PlayerName = if ($typed) { $typed } else { $env:USERNAME }
-        }
-        $PlayerName = ($PlayerName -replace '[^A-Za-z0-9 _\-]', '').Trim()
-        if (-not $PlayerName) { $PlayerName = 'Hunter' }
-        if ($PlayerName.Length -gt 31) { $PlayerName = $PlayerName.Substring(0, 31) }
+    foreach ($f in $modFiles) {
+        if (-not (Test-Path -LiteralPath (Join-Path $kit $f))) { throw "The kit is missing $f (unzip the whole kit first)." }
+    }
+    # The questions come first, in the window the person is already looking at: player name, then the join code.
+    if (-not $PlayerName) { $PlayerName = Get-IniPlayerName $iniPath }
+    if (-not $PlayerName -or $PlayerName -eq 'Hunter') {
+        $typed = ''
+        if (-not $Yes) { $typed = Read-Host "Your player name (Enter = $env:USERNAME)" }
+        $PlayerName = if ($typed) { $typed } else { $env:USERNAME }
+    }
+    $PlayerName = ($PlayerName -replace '[^A-Za-z0-9 _\-]', '').Trim()
+    if (-not $PlayerName) { $PlayerName = 'Hunter' }
+    if ($PlayerName.Length -gt 31) { $PlayerName = $PlayerName.Substring(0, 31) }
 
-        if (-not $JoinCode -and -not $IAmHost -and -not $Yes) {
-            for ($try = 0; $try -lt 3 -and -not $JoinCode; $try++) {
-                $typed = (Read-Host 'Paste the join code from your host (press Enter if you are the host)').Trim()
-                if (-not $typed) { break }
-                $script:JoinCodeError = ''
-                if (ConvertFrom-JoinCode $typed) { $JoinCode = $typed } else { Write-Problem $script:JoinCodeError }
-            }
+    if (-not $JoinCode -and -not $IAmHost -and -not $Yes) {
+        for ($try = 0; $try -lt 3 -and -not $JoinCode; $try++) {
+            $typed = (Read-Host 'Paste the join code from your host (press Enter if you are the host)').Trim()
+            if (-not $typed) { break }
+            $script:JoinCodeError = ''
+            if (ConvertFrom-JoinCode $typed) { $JoinCode = $typed } else { Write-Problem $script:JoinCodeError }
         }
     }
     $jc = $null
@@ -794,7 +800,6 @@ try {
         $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-GameDir', "`"$bin`"",
                      '-ShortcutDir', "`"$desk`"", '-LobbyIni', "`"$LobbyIni`"", '-Elevated')
         if ($PlayerName) { $argList += @('-PlayerName', "`"$PlayerName`"") }
-        if ($Uninstall) { $argList += '-Uninstall' }
         if ($Yes) { $argList += '-Yes' }
         if ($JoinCode) {
             $tmp = Join-Path $env:TEMP ('dh2coop-join-' + [guid]::NewGuid().ToString('N') + '.tmp')
@@ -815,86 +820,66 @@ try {
         exit $exitCode
     }
 
-    if ($Uninstall) {
-        foreach ($f in @('dh2coop.asi', 'dh2coop.ini', 'host.bat', 'join.bat', 'host_dlss5.bat', 'dh2coop.log', 'dh2coop.cmd',
-                         'dh2coop-lastmap.txt', 'dh2coop-lasthost.txt', 'dh2coop-classes.txt')) {
-            Remove-Item -LiteralPath (Join-Path $bin $f) -Force -ErrorAction SilentlyContinue
-        }
-        # Lobby settings (they hold the host's friend key as a Windows-protected blob) and the files tests write.
-        foreach ($f in @('dh2coop-lobby.ini', 'dh2coop-joincode.txt', 'dh2coop-acl.txt')) {
-            Remove-Item -LiteralPath (Join-Path (Split-Path -Parent $LobbyIni) $f) -Force -ErrorAction SilentlyContinue
-        }
-        # Only remove the loader if it is the one this kit installed; put a previous one back.
-        $loader = Join-Path $bin 'dinput8.dll'
-        if (Same-File $loader (Join-Path $kit 'dinput8.dll')) { Remove-Item -LiteralPath $loader -Force }
-        $bak = Join-Path $bin 'dinput8.dll.dh2coop-backup'
-        if (Test-Path -LiteralPath $bak) { Move-Item -LiteralPath $bak -Destination $loader -Force }
-        foreach ($name in ($shortcuts + $oldShortcuts)) { Remove-Item -LiteralPath (Join-Path $desk "$name.lnk") -Force -ErrorAction SilentlyContinue }
-        Remove-GameFirewall
-        Write-Host 'Removed the co-op mod, the desktop shortcuts and the firewall rule.'
-        Write-Host 'Tailscale stays installed (other programs may use it). Remove it in Windows Settings, Apps, if you want to.'
-    } else {
-        # ---- the mod files and the shortcut (as before) ----
-        Write-Step 'Mod files'
-        # A loader that is not ours (another mod's dinput8.dll) is kept aside once. An existing dh2coop.ini is ours:
-        # only its player name is carried over.
-        $loader = Join-Path $bin 'dinput8.dll'
-        $loaderBak = "$loader.dh2coop-backup"
-        if ((Test-Path -LiteralPath $loader) -and -not (Test-Path -LiteralPath $loaderBak) -and
-            -not (Same-File $loader (Join-Path $kit 'dinput8.dll'))) {
-            Copy-Item -LiteralPath $loader -Destination $loaderBak
-        }
-        foreach ($f in $modFiles) { Copy-Item -LiteralPath (Join-Path $kit $f) -Destination (Join-Path $bin $f) -Force }
-        Set-IniPlayerName $iniPath $PlayerName
-        $exe = Join-Path $bin 'Main7.exe'
-        New-Item -ItemType Directory -Force $desk | Out-Null
-        foreach ($name in $oldShortcuts) { Remove-Item -LiteralPath (Join-Path $desk "$name.lnk") -Force -ErrorAction SilentlyContinue }
-        New-Shortcut (Join-Path $desk 'DH2 COOP.lnk') $exe $bin $exe 'Dangerous Hunts 2 co-op: host or join from the lobby (F8) at the main menu' $launchArgs
-        Write-Ok "Installed for player '$PlayerName' in $bin"
-        Write-Ok "Desktop shortcut: DH2 COOP ($desk)"
-
-        # ---- Tailscale ----
-        Write-Step 'Tailscale'
-        $tsStatus = ''
-        if (Install-Tailscale) {
-            if ($jc) {
-                Write-Info "Join code: host '$($jc.Name)' at $($jc.Ip), port $($jc.Port), key $(Get-MaskedKey $jc.Key)"
-                $tsStatus = Join-HostTailnet $jc $PlayerName
-            } else {
-                $h = Set-UpHostTailscale
-                $tsStatus = $h.Status
-                Show-HostFriendSteps $h.Ip $gamePort
-            }
-        } else {
-            $tsStatus = 'NOT INSTALLED: install Tailscale from tailscale.com/download, then run install.bat again'
-            Write-Problem $tsStatus
-        }
-        if ($tsStatus -match '\A(FAILED|NOT )') { $exitCode = 2 }
-
-        # ---- Windows Firewall ----
-        Write-Step 'Windows Firewall'
-        try { Set-GameFirewall $exe } catch { Write-Problem "Could not set the firewall rule: $($_.Exception.Message)"; $fwFailed = $true }
-        if ($fwFailed) { $exitCode = 2 }
-
-        # ---- the lobby's JOIN fields ----
-        if ($jc) {
-            Write-Step 'Lobby'
-            Set-LobbyIniValue $LobbyIni 'JoinHost' $jc.Ip
-            Set-LobbyIniValue $LobbyIni 'JoinPort' ([string]$jc.Port)
-            Write-Ok "The lobby's JOIN is filled in: $($jc.Ip) port $($jc.Port) ($LobbyIni)"
-        }
-
-        Write-Step 'Done'
-        Write-Info "Tailscale: $tsStatus"
-        if ($fwFailed) { Write-Problem 'Firewall: the rule was NOT created. Run install.bat again.' }
-        else { Write-Info "Firewall: '$fwRuleName' (Main7.exe, UDP, Tailscale addresses only)" }
-        if ($jc) {
-            Write-Info 'Now: start DH2 COOP, the lobby opens, press JOIN (the host''s address is already there).'
-        } else {
-            Write-Info 'Now: start DH2 COOP, HOST, then "Copy join code" and send it to your friends.'
-        }
-        if ($DryRun) { Write-Host '(dry run: nothing was changed in Tailscale, winget or the firewall)' -ForegroundColor DarkYellow }
+    # ---- the mod files and the shortcut (as before) ----
+    Write-Step 'Mod files'
+    # A loader that is not ours (another mod's dinput8.dll) is kept aside once. An existing dh2coop.ini is ours:
+    # only its player name is carried over.
+    $loader = Join-Path $bin 'dinput8.dll'
+    $loaderBak = "$loader.dh2coop-backup"
+    if ((Test-Path -LiteralPath $loader) -and -not (Test-Path -LiteralPath $loaderBak) -and
+        -not (Same-File $loader (Join-Path $kit 'dinput8.dll'))) {
+        Copy-Item -LiteralPath $loader -Destination $loaderBak
     }
+    foreach ($f in $modFiles) { Copy-Item -LiteralPath (Join-Path $kit $f) -Destination (Join-Path $bin $f) -Force }
+    Set-IniPlayerName $iniPath $PlayerName
+    $exe = Join-Path $bin 'Main7.exe'
+    New-Item -ItemType Directory -Force $desk | Out-Null
+    foreach ($name in $oldShortcuts) { Remove-Item -LiteralPath (Join-Path $desk "$name.lnk") -Force -ErrorAction SilentlyContinue }
+    New-Shortcut (Join-Path $desk 'DH2 COOP.lnk') $exe $bin $exe 'Dangerous Hunts 2 co-op: host or join from the lobby (F8) at the main menu' $launchArgs
+    Write-Ok "Installed for player '$PlayerName' in $bin"
+    Write-Ok "Desktop shortcut: DH2 COOP ($desk)"
+
+    # ---- Tailscale ----
+    Write-Step 'Tailscale'
+    $tsStatus = ''
+    if (Install-Tailscale) {
+        if ($jc) {
+            Write-Info "Join code: host '$($jc.Name)' at $($jc.Ip), port $($jc.Port), key $(Get-MaskedKey $jc.Key)"
+            $tsStatus = Join-HostTailnet $jc $PlayerName
+        } else {
+            $h = Set-UpHostTailscale
+            $tsStatus = $h.Status
+            Show-HostFriendSteps $h.Ip $gamePort
+        }
+    } else {
+        $tsStatus = 'NOT INSTALLED: install Tailscale from tailscale.com/download, then run install.bat again'
+        Write-Problem $tsStatus
+    }
+    if ($tsStatus -match '\A(FAILED|NOT )') { $exitCode = 2 }
+
+    # ---- Windows Firewall ----
+    Write-Step 'Windows Firewall'
+    try { Set-GameFirewall $exe } catch { Write-Problem "Could not set the firewall rule: $($_.Exception.Message)"; $fwFailed = $true }
+    if ($fwFailed) { $exitCode = 2 }
+
+    # ---- the lobby's JOIN fields ----
+    if ($jc) {
+        Write-Step 'Lobby'
+        Set-LobbyIniValue $LobbyIni 'JoinHost' $jc.Ip
+        Set-LobbyIniValue $LobbyIni 'JoinPort' ([string]$jc.Port)
+        Write-Ok "The lobby's JOIN is filled in: $($jc.Ip) port $($jc.Port) ($LobbyIni)"
+    }
+
+    Write-Step 'Done'
+    Write-Info "Tailscale: $tsStatus"
+    if ($fwFailed) { Write-Problem 'Firewall: the rule was NOT created. Run install.bat again.' }
+    else { Write-Info "Firewall: '$fwRuleName' (Main7.exe, UDP, Tailscale addresses only)" }
+    if ($jc) {
+        Write-Info 'Now: start DH2 COOP, the lobby opens, press JOIN (the host''s address is already there).'
+    } else {
+        Write-Info 'Now: start DH2 COOP, HOST, then "Copy join code" and send it to your friends.'
+    }
+    if ($DryRun) { Write-Host '(dry run: nothing was changed in Tailscale, winget or the firewall)' -ForegroundColor DarkYellow }
 } catch {
     Write-Host ''
     Write-Host ('ERROR: ' + (Hide-Secrets $_.Exception.Message)) -ForegroundColor Red
