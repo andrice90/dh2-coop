@@ -41,7 +41,7 @@ The lead (main thread) owns `coop.cpp`, `protocol.*`, `session.*`, docs, merges,
 ## Numbers (pre-allocated so branches do not collide)
 - `events.h` kinds: triggers 18–19 (`kTriggerHit` = 18), life 20–21 (`kAnimalRevive` = 20), beasts 22–23, flow 24–27 (`kLevelExit` = 24), vehicles 28–29, pilot 30–31, hunter 32–33, bosses 34–37. `kScaleMax` stays 40.
 - Protocol message ids: pilot 12, vehicles 13, bosses 14, flow 15. Do not bump `kProtocolVersion` (the lead bumps it at merge; the build id check already refuses mixed builds).
-- `PlayerState` flags: `kFlagRiding` is `1<<3`; pilot `1<<4`, flow `1<<5`–`1<<6`, hunter `1<<7`. New `PlayerState` fields: only flow (ammo), appended at the end.
+- `PlayerState` flags in main: `1<<0` crouched, `1<<1` reloading, `1<<2` firing, `1<<3` riding, `1<<4` dead, `1<<5` knocked. Free bits start at `1<<6` (corrected 2026-10-18; pilot used none). New `PlayerState` fields: only flow (ammo), appended at the end.
 - Console test commands: prefix `coop_`; check `grep -rn AddCommand mod/src` for name clashes.
 
 ## Testing conventions

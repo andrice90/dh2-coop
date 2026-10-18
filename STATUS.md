@@ -28,6 +28,16 @@ Merged by the lead 09:4x:
 - Routed review M1/M2 (NPC mirror death / thaw with the animal FreezeBrain) to `life`.
 - `79d0545`: `EntityById` is a direct slot lookup (id == manager index), scan as fallback (review M3 lookup half; list pruning not done). MAP3B two-window smoke OK.
 
+### Resumed 14:1x (2026-10-18; user: prefer Sonnet/Haiku agents, Opus sparingly)
+Leftover WIP committed in each worktree at resume: life `4210c34`, bosses `88d35d1`, smoke `52637f5`, flow note `23179a7`, vehicles note `6303854`, research-C (partial but has ranked list + routing) `f83cfdb` in main.
+Merged into main (lead):
+- pilot `0e2c462`..`373ee88` + `f8652b8` (ini markers) + `44928c8` (security review: `HeliStates` floats finite/in range, names printable, ≤ 2·kMaxHelis tracks, no snap without a clip length, no forwarded animal damage on a pilot). Re-verified MAP11A two windows: heli drift ≤ 0.23 m, `cScrTask01`/`09` applied on the client. net-test 3568/0.
+- hunter `aa726ad`..`83ecc47` (clean): `[Combat] FollowHostAttackable=1`, `AttackerSpreadMetres=4`, `PuppetDenySA=1`; `[Story] HunterNearest` still 0.
+- beasts tranq `12f1682` (MAP6 verified; its cobra-hit hook `0x80440` is in the same commit and untested), `4afad1f` (dropped beasts' duplicate `coop_tasks`); triggers `coop_tasks` (story.cpp).
+Running (Sonnet): life-test (`dh2coop-life`, rebase + kill credit / lives tests), triggers-test (`dh2coop-trig`, rebase + MAP1/2A/4A regressions + MAP3A/7/8), flow-test (`dh2coop-flow`, rebase + guide death / retry / chapter change / MAP11A exit / MAP12C end / ammo), smoke (resumed, MAP6–MAP12C on current main).
+Next round (not started): vehicles WIP `3b4d04c` (MAP5 boarding, riders as targets), beasts WIP `f92caf9` (crocs, claim, clip checks), bosses WIP `88d35d1` (no note yet; `bosses.cpp` NPC PlayAnim beats, MAP12B falling trees, yeti throws).
+User decisions asked: tranq overdose rule (keep game rule `TranqOverdoseFromClients=1` or ignore the second player's dart); `HunterNearest` on or off.
+
 ### Resume the wave (session limit hit ~09:55, 2026-10-18)
 All 12 agents were told at ~09:55 to stop, commit (unverified code as `WIP:` commits), and write their notes. **Agents do not survive the session**: a new session starts fresh agents from these files. Per agent, check `git -C "D:\scary hunt\<worktree>" log --oneline main..HEAD`, `git -C ... status --short`, and its note:
 | Agent | Where to look |
