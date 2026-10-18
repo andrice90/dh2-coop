@@ -192,6 +192,7 @@ void TestCodec(Tally& t) {
     hello.gameBuild = 434;
     hello.modBuild = 0x12345678u;
     hello.passHash = 0x9ABCDEF0u;
+    hello.model = 7;
     SetName(hello.name, "Hunter-123456789012345678901234567890EXTRA");
     auto hb = Encode(hello);
     t.Check(hb.size() == kHelloBytes, "hello size");
@@ -200,7 +201,8 @@ void TestCodec(Tally& t) {
     if (hd && std::holds_alternative<Hello>(*hd)) {
         const auto& m = std::get<Hello>(*hd);
         const std::string name = NameOf(m.name);
-        t.Check(m.protoVersion == 1 && m.gameBuild == 434 && m.modBuild == 0x12345678u && m.passHash == 0x9ABCDEF0u,
+        t.Check(m.protoVersion == 1 && m.gameBuild == 434 && m.modBuild == 0x12345678u && m.passHash == 0x9ABCDEF0u &&
+                    m.model == 7,
                 "hello fields");
         t.Check(name.size() == 31 && m.name[31] == '\0', "name truncated to 31 and nul terminated");
         t.Check(name == "Hunter-123456789012345678901234", "name keeps the first 31 bytes");
@@ -242,6 +244,17 @@ void TestCodec(Tally& t) {
                 "v1 hello decodes");
         ob.push_back(0);
         t.Check(!Decode(ob.data(), ob.size()).has_value(), "37-byte hello rejected");
+        // v2 Hello (44 bytes, no model) decodes with model 0.
+        Hello v2;
+        v2.protoVersion = 2;
+        v2.modBuild = 0x01020304u;
+        v2.model = 9;
+        auto vb = Encode(v2);
+        vb.resize(kHelloV2Bytes);
+        auto vd = Decode(vb.data(), vb.size());
+        t.Check(vd && std::holds_alternative<Hello>(*vd) && std::get<Hello>(*vd).protoVersion == 2 &&
+                    std::get<Hello>(*vd).modBuild == 0x01020304u && std::get<Hello>(*vd).model == 0,
+                "v2 hello decodes");
     }
     {
         AnimalStates s;
@@ -255,10 +268,12 @@ void TestCodec(Tally& t) {
     PlayerJoined joined;
     joined.playerId = 3;
     SetName(joined.name, "P3");
+    joined.model = 4;
     auto jb = Encode(joined);
     auto jd = Decode(jb.data(), jb.size());
     t.Check(jb.size() == kPlayerJoinedBytes && jd && std::holds_alternative<PlayerJoined>(*jd) &&
-                std::get<PlayerJoined>(*jd).playerId == 3 && NameOf(std::get<PlayerJoined>(*jd).name) == "P3",
+                std::get<PlayerJoined>(*jd).playerId == 3 && NameOf(std::get<PlayerJoined>(*jd).name) == "P3" &&
+                std::get<PlayerJoined>(*jd).model == 4,
             "joined round trip");
 
     auto lb = Encode(PlayerLeft{2});
@@ -479,7 +494,7 @@ void TestTruncation(Tally& t) {
         t.Check(Decode(buf.data(), buf.size()).has_value(), "full buffer decodes");
         for (size_t n = 0; n < buf.size(); ++n) {
             // A v2 Hello / Reject cut to the v1 length is a valid v1 message.
-            if (buf[0] == static_cast<uint8_t>(MsgId::Hello) && n == kHelloV1Bytes) continue;
+            if (buf[0] == static_cast<uint8_t>(MsgId::Hello) && (n == kHelloV1Bytes || n == kHelloV2Bytes)) continue;
             if (buf[0] == static_cast<uint8_t>(MsgId::Reject) && n == kRejectV1Bytes) continue;
             t.Check(!Decode(buf.data(), n).has_value(), "truncated does not decode");
         }
@@ -509,7 +524,11 @@ void TestTruncation(Tally& t) {
         if (!d) continue;
         auto again = Encode(*d);
         auto back = Decode(again.data(), again.size());
-        t.Check(back.has_value() && SameBytes(again, buf), "random exact packet is canonical");
+        // Older Hello / Reject lengths decode on purpose (so the host can answer VersionMismatch) and re-encode at
+        // the current size.
+        const bool legacy = (buf[0] == static_cast<uint8_t>(MsgId::Hello) && (n == kHelloV1Bytes || n == kHelloV2Bytes)) ||
+                            (buf[0] == static_cast<uint8_t>(MsgId::Reject) && n == kRejectV1Bytes);
+        t.Check(back.has_value() && (legacy || SameBytes(again, buf)), "random exact packet is canonical");
     }
 
     const uint8_t reserved[] = {11, 15, 16, 32, 47, 49, 63, 64, 79, 80, 95, 96, 255};

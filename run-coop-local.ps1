@@ -12,6 +12,7 @@
 #   .\run-coop-local.ps1 -AddClient 3 -Map HUNTMAP4
 #   .\run-coop-local.ps1 -Map MAP3B -Combat
 #   .\run-coop-local.ps1 -Map MENU          (everyone at the main menu; the host's first map load is followed)
+#   .\run-coop-local.ps1 -Lobby             (main menu, no -coophost/-coopjoin: host and join from the lobby window)
 # -Port       UDP port written into every copied ini; clients join 127.0.0.1:<Port>. Default 27420. Give each
 #             worktree its own port when sessions from several checkouts run on this PC at the same time.
 # -Combat     Forces [Puppets] Physics=1 AttackTarget=1 in every copied ini (host animals attack the nearest
@@ -44,8 +45,10 @@ param(
     [int]$LateJoin = 0,
     [int]$AddClient = 0,
     [switch]$Combat,
-    [int]$Port = 27420
+    [int]$Port = 27420,
+    [switch]$Lobby
 )
+if ($Lobby) { $Map = 'MENU' }
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $game = Join-Path $root 'game'
@@ -676,10 +679,21 @@ if ($Capture -or -not $NoArrange) {
 $completed = $false
 try {
     # Instance 1 hosts. Each later instance joins 127.0.0.1 (dh2coop.asi applies these after the first map load).
+    # -Lobby: no role switches at all; every instance waits at the main menu with the lobby open (drive it with
+    # coop_lobby host / coop_lobby join 127.0.0.1:<Port> through Bin\dh2coop.cmd, or by hand).
     $hostTree = Get-SlotTree 1
-    $hostProc = Start-Instance $hostTree '-coophost'
+    $hostArgs = $(if ($Lobby) { '' } else { '-coophost' })
+    $hostProc = Start-Instance $hostTree $hostArgs
     Add-Launched 'game' $hostTree $hostProc
-    Write-Run "role=game pid=$($hostProc.Id) args=-coophost"
+    Write-Run "role=game pid=$($hostProc.Id) args=$hostArgs"
+    if ($Lobby) {
+        for ($slot = 2; $slot -le $Players; $slot++) {
+            $tree = Get-SlotTree $slot
+            $proc = Start-Instance $tree ''
+            Add-Launched (Get-SlotRole $slot) $tree $proc
+            Write-Run "role=$(Get-SlotRole $slot) pid=$($proc.Id) args=(lobby)"
+        }
+    } else {
     Wait-HostInMap $hostProc (Join-Path $hostTree 'Bin\debug.log')
 
     for ($slot = 2; $slot -le $Players; $slot++) {
@@ -694,6 +708,7 @@ try {
         Add-Launched $role $tree $proc
         Write-Run "role=$role pid=$($proc.Id) args=-coopjoin 127.0.0.1:$Port"
         [void](Wait-ClientWelcomed $proc (Join-Path $tree 'Bin\dh2coop.log') $role $startedAt)
+    }
     }
 
     if ($Seconds -gt 0) {

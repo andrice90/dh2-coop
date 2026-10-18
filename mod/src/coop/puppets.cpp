@@ -15,6 +15,7 @@
 
 #include "coop/coop.h"
 #include "coop/player_tracker.h"
+#include "coop/puppet_models.h"
 #include "core/hook.h"
 #include "core/lifecycle.h"
 #include "core/log.h"
@@ -64,6 +65,8 @@ struct Puppet {
     Vec3 placed;                 // Physics=1 diagnostics: where place() last put the entity
     bool have_placed = false;
     uint32_t drift_log_ms = 0;
+    int model = -1;              // puppet_models.h index the player picked (-1 = [Puppets] Model)
+    int spawned_model = -1;      // the index the current entity was made with
 };
 
 constexpr uintptr_t kEntWorldBox = 0xC4;  // float[6] min xyz, max xyz — used by cBspTree::UpdateEntity
@@ -174,9 +177,12 @@ uint32_t now_ms() {
 // cBodyShotgun1npc (missing on MAP12C and fatal). Those clips are applied on the torso part only.
 std::string g_model = "objects/npc/mountainguide/mountainguide.skin,game.ap,shotgun1.ap,handgun3.ap";
 
-void* spawn_human(const char* why) {
+// model_index: a puppet_models.h entry the player picked in the lobby, or -1 for [Puppets] Model.
+void* spawn_human(const char* why, int model_index = -1) {
     void* mgr = EntityManager();
-    const char* model = g_model == "hunter" ? HunterModelName() : g_model.c_str();
+    const char* model = model_index >= 0 && model_index < PuppetModelCount()
+                            ? PuppetModelAt(model_index).model
+                            : (g_model == "hunter" ? HunterModelName() : g_model.c_str());
     if (!mgr || !model || !*model) return nullptr;
     void* ent = entity::Create(g_class.c_str());
     if (!ent) return nullptr;
@@ -184,9 +190,11 @@ void* spawn_human(const char* why) {
     const int index = entity::AddEntity(mgr, ent);
     const bool pre = entity::Precache(ent);
     const bool sp = entity::Spawn(ent);
-    spdlog::info("puppets: spawned puppet ({}): entity {:#x} class '{}' model_key={} index={} precache={} spawn={}",
-                 why, reinterpret_cast<uintptr_t>(ent), g_class, keyed, index, pre, sp);
+    spdlog::info("puppets: spawned puppet ({}): entity {:#x} class '{}' model '{}' key={} index={} precache={} spawn={}",
+                 why, reinterpret_cast<uintptr_t>(ent), g_class, model, keyed, index, pre, sp);
     if (index < 0 || !sp) {
+        // A half-made entity left in the manager was picked up by the tracker as a world NPC (poacher skin, 22:58).
+        if (index >= 0) entity::RemoveEntity(mgr, ent);
         spdlog::warn("puppets: spawn incomplete; puppet disabled for this map");
         return nullptr;
     }
@@ -275,6 +283,14 @@ WeaponModel weapon_model(int kind) {
         case net::kWeaponHandgun5:
             return {"objects/items/game/weapons/handgun51st/handgun5.skin", "BipRHand", "handgun3/", false,
                     "idle", "idle", "idle", "idle", "idle"};
+        // Melee: no arm pack (the body keeps its unarmed clips) and no clip on the blade, which has no flame bone
+        // to hide. Knife and machete exist only as first-person meshes; the branch has a third-person one.
+        case net::kWeaponKnife:
+            return {"objects/items/game/weapons/knife1st/knife.skin", "BipRHand", nullptr, false};
+        case net::kWeaponMachete:
+            return {"objects/items/game/weapons/macheta1st/macheta.skin", "BipRHand", nullptr, false};
+        case net::kWeaponBranch:
+            return {"objects/items/game/weapons/mbranch/mbranch.skin", "BipRHand", nullptr, false};
         default: return {};
     }
 }
@@ -573,7 +589,8 @@ public:
             if (!p.entity && !p.spawn_failed) {
                 char why[32];
                 std::snprintf(why, sizeof why, "remote %u", static_cast<unsigned>(id));
-                p.entity = spawn_human(why);
+                p.entity = spawn_human(why, p.model);
+                p.spawned_model = p.model;
                 p.spawn_failed = p.entity == nullptr;
                 if (p.entity) capture_rel_box(p);
             }
@@ -714,6 +731,24 @@ DH2_MODULE(PuppetsModule)
 
 void OnRemoteState(uint8_t playerId, const net::PlayerState& state, uint32_t localTimeMs) {
     g_puppets[playerId].buffer.Push(localTimeMs, state);
+}
+
+void SetModel(uint8_t playerId, int model) {
+    Puppet& p = g_puppets[playerId];
+    p.model = model;
+    if (!p.entity || p.spawned_model == model) return;
+    // A different body than the one standing there (test command, or a late PlayerJoined): make it again.
+    unregister_target(p);
+    drop_weapon(p);
+    if (g_spawn_manager) entity::RemoveEntity(g_spawn_manager, p.entity);
+    p.entity = nullptr;
+    p.spawn_failed = false;
+    p.anim.clear();
+    p.weapon_kind = 0;
+    p.weapon_failed = false;
+    p.gun_shown.clear();
+    p.arms_shown.clear();
+    spdlog::info("puppets: player {} now drawn as '{}'", playerId, PuppetModelAt(model).label);
 }
 
 void OnRemoteLeft(uint8_t playerId) {

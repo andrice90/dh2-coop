@@ -1,6 +1,7 @@
 # DH2 co-op kit installer.
 # Finds the game's Bin folder (...\Activision Value\Magic Wand\DNGH2\Bin, the folder with Main7.exe) on the local
-# fixed drives, copies the mod files into it, and puts two shortcuts on the desktop: DH2 HOST and DH2 JOIN.
+# fixed drives, copies the mod files into it, and puts one shortcut on the desktop: DH2 COOP (the game at its main
+# menu; host or join from the co-op lobby window there). host.bat / join.bat stay in Bin for the old direct starts.
 # Double-click install.bat. Or from PowerShell in this folder:
 #   powershell -ExecutionPolicy Bypass -File install.ps1 [-GameDir <...\DNGH2\Bin>] [-PlayerName <name>]
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall      (removes the files and the shortcuts)
@@ -17,7 +18,9 @@ $ErrorActionPreference = 'Stop'
 $kit = $PSScriptRoot
 $modFiles = @('dinput8.dll', 'dh2coop.asi', 'dh2coop.ini', 'host.bat', 'join.bat')
 $tail = 'Activision Value\Magic Wand\DNGH2\Bin'
-$shortcuts = @('DH2 HOST', 'DH2 JOIN')
+$shortcuts = @('DH2 COOP')
+$oldShortcuts = @('DH2 HOST', 'DH2 JOIN', 'DH2 HOST DLSS')  # earlier kits; removed on install and uninstall
+$launchArgs = '+mod data -nointro -developper -cheats'
 
 function Find-GameBins {
     $found = New-Object System.Collections.Generic.List[string]
@@ -88,10 +91,12 @@ function Get-IniPlayerName([string]$path) {
     return ''
 }
 
-function New-Shortcut([string]$lnk, [string]$target, [string]$workDir, [string]$icon, [string]$description) {
+function New-Shortcut([string]$lnk, [string]$target, [string]$workDir, [string]$icon, [string]$description,
+                      [string]$arguments = '') {
     $shell = New-Object -ComObject WScript.Shell
     $s = $shell.CreateShortcut($lnk)
     $s.TargetPath = $target
+    $s.Arguments = $arguments
     $s.WorkingDirectory = $workDir
     $s.IconLocation = "$icon,0"
     $s.Description = $description
@@ -130,7 +135,7 @@ if ($Uninstall) {
     if (Same-File $loader (Join-Path $kit 'dinput8.dll')) { Remove-Item -LiteralPath $loader -Force }
     $bak = Join-Path $bin 'dinput8.dll.dh2coop-backup'
     if (Test-Path -LiteralPath $bak) { Move-Item -LiteralPath $bak -Destination $loader -Force }
-    foreach ($name in ($shortcuts + 'DH2 HOST DLSS')) { Remove-Item -LiteralPath (Join-Path $desk "$name.lnk") -Force -ErrorAction SilentlyContinue }
+    foreach ($name in ($shortcuts + $oldShortcuts)) { Remove-Item -LiteralPath (Join-Path $desk "$name.lnk") -Force -ErrorAction SilentlyContinue }
     Write-Host 'Removed the co-op mod and the desktop shortcuts.'
     return
 }
@@ -163,10 +168,10 @@ Set-IniPlayerName $iniPath $PlayerName
 
 $exe = Join-Path $bin 'Main7.exe'
 New-Item -ItemType Directory -Force $desk | Out-Null
-New-Shortcut (Join-Path $desk 'DH2 HOST.lnk') (Join-Path $bin 'host.bat') $bin $exe 'Host a Dangerous Hunts 2 co-op game'
-New-Shortcut (Join-Path $desk 'DH2 JOIN.lnk') (Join-Path $bin 'join.bat') $bin $exe 'Join a Dangerous Hunts 2 co-op game'
+foreach ($name in $oldShortcuts) { Remove-Item -LiteralPath (Join-Path $desk "$name.lnk") -Force -ErrorAction SilentlyContinue }
+New-Shortcut (Join-Path $desk 'DH2 COOP.lnk') $exe $bin $exe 'Dangerous Hunts 2 co-op: host or join from the lobby (F8) at the main menu' $launchArgs
 
 Write-Host ''
 Write-Host "Installed for player '$PlayerName' in $bin"
-Write-Host "Desktop shortcuts: DH2 HOST, DH2 JOIN ($desk)"
+Write-Host "Desktop shortcut: DH2 COOP ($desk)"
 Write-Host 'The host needs to allow Main7.exe through Windows Firewall the first time (UDP 27420).'

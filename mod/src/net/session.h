@@ -41,6 +41,7 @@ struct Event {
     uint32_t hostTick = 0;
     uint32_t token = 0;
     std::string name;
+    uint8_t model = 0;  // PlayerJoined: that player's puppet model index
     PlayerState state{};
     AnimalStates animalStates{};
     AnimalHit animalHit{};
@@ -64,6 +65,7 @@ public:
         uint16_t gameBuild = kGameBuild;
         uint32_t modBuild = 0;  // hash of dh2coop.asi; host and client must match
         uint32_t passHash = 0;  // 0 = no password
+        uint8_t model = 0;      // puppet model index others draw this player with
     };
 
     using Handler = std::function<void(const Event&)>;

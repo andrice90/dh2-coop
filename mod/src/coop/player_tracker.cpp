@@ -148,6 +148,9 @@ uint8_t weapon_kind(const char* model) {
     std::string m = model;
     for (auto& ch : m) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     // More specific folders first: "handgun51st" contains "handgun", "rifle21st" contains "rifle".
+    if (m.find("knife") != std::string::npos) return net::kWeaponKnife;
+    if (m.find("macheta") != std::string::npos) return net::kWeaponMachete;
+    if (m.find("mbranch") != std::string::npos) return net::kWeaponBranch;
     if (m.find("handgun5") != std::string::npos) return net::kWeaponHandgun5;
     if (m.find("handgun") != std::string::npos || m.find("pistol") != std::string::npos) return net::kWeaponHandgun;
     if (m.find("shotgun") != std::string::npos || m.find("12ga") != std::string::npos) return net::kWeaponShotgun;

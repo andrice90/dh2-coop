@@ -17,7 +17,8 @@ namespace net {
 
 // v2 (2026-10-17): Hello + modBuild/passHash, Reject + hostBuild, AnimalStates + mapSerial. v1 had grown event
 // kinds 7-16 and the NPC arms string without a bump.
-constexpr uint8_t kProtocolVersion = 2;
+// v3 (2026-10-17 lobby): Hello + model, PlayerJoined + model (the puppet body each player picked).
+constexpr uint8_t kProtocolVersion = 3;
 constexpr uint16_t kGameBuild = 434;
 constexpr uint16_t kDefaultPort = 27420;
 constexpr int kMaxPlayers = 4;
@@ -72,12 +73,13 @@ constexpr size_t kAnimalHitBytes = 20;
 constexpr size_t kGameEventHeaderBytes = 18;  // id through key length, empty key
 constexpr uint8_t kMaxGameEventKeyChars = 31;
 
-constexpr size_t kHelloBytes = 44;
-constexpr size_t kHelloV1Bytes = 36;  // still decoded, so an old kit gets a VersionMismatch instead of BadHello
+constexpr size_t kHelloBytes = 45;
+constexpr size_t kHelloV2Bytes = 44;  // older Hellos still decode, so an old kit gets a VersionMismatch
+constexpr size_t kHelloV1Bytes = 36;  //   instead of BadHello
 constexpr size_t kWelcomeBytes = 7;
 constexpr size_t kRejectBytes = 6;
 constexpr size_t kRejectV1Bytes = 2;
-constexpr size_t kPlayerJoinedBytes = 34;
+constexpr size_t kPlayerJoinedBytes = 35;
 constexpr size_t kPlayerLeftBytes = 2;
 constexpr size_t kPlayerStateBytes = 44;
 constexpr size_t kPingBytes = 5;
@@ -106,6 +108,7 @@ struct Hello {
     char name[kNameBytes] = {};
     uint32_t modBuild = 0;  // v2. 0 from a v1 Hello
     uint32_t passHash = 0;  // v2. 0 = no password
+    uint8_t model = 0;      // v3. index into coop/puppet_models.h
 };
 
 struct Welcome {
@@ -122,6 +125,7 @@ struct Reject {
 struct PlayerJoined {
     uint8_t playerId = kInvalidPlayerId;
     char name[kNameBytes] = {};
+    uint8_t model = 0;  // v3
 };
 
 struct PlayerLeft {
@@ -159,7 +163,10 @@ enum WeaponKind : uint8_t {
     kWeaponRifle = 3,
     kWeaponOther = 4,
     kWeaponRifle2 = 5,
-    kWeaponHandgun5 = 6
+    kWeaponHandgun5 = 6,
+    kWeaponKnife = 7,    // melee: first-person meshes in the right hand, no arm clips
+    kWeaponMachete = 8,
+    kWeaponBranch = 9,
 };
 
 struct Ping {

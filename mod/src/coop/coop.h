@@ -23,6 +23,7 @@ struct CoopSettings {
     std::string auto_join_addr;
     float join_retry_s = 5.f;       // [Coop] JoinRetrySeconds (0 = no retry)
     std::string password;           // [Coop] Password: host and clients must match ("" = none)
+    int model = 0;                  // puppet body others see (lobby; [Coop] PuppetModel)
 };
 
 const CoopSettings& Settings();
@@ -47,10 +48,48 @@ struct SessionView {
     RemoteView remotes[4];
     int remoteCount = 0;
     std::string notice;  // shown on screen even with the overlay hidden (e.g. why the host refused this game)
+    bool noticeIsBanner = false;  // the main-menu hint, not a timed message (the open lobby hides it)
     std::string tailnetIp;  // this PC's Tailscale IPv4 ("" = Tailscale not up)
     std::string otherIps;   // up to two other IPv4s of this PC
 };
 SessionView Snapshot();
+
+// ---- Lobby (overlay window at the main menu, F8) ----
+// What the lobby fields hold. Kept in dh2coop-lobby.ini beside the logs (game Bin, or %LOCALAPPDATA%\dh2coop for a
+// game under Program Files); the first defaults come from dh2coop.ini.
+struct LobbyPrefs {
+    std::string name;
+    int model = 0;  // coop/puppet_models.h index
+    std::string join_host;
+    uint16_t join_port = 27420;
+    uint16_t host_port = 27420;
+};
+LobbyPrefs LoadLobbyPrefs();
+void SaveLobbyPrefs(const LobbyPrefs& prefs);
+
+enum class LobbyState { Offline, Hosting, Connecting, Connected, Failed };
+struct LobbyPlayer {
+    uint8_t id = 0xFF;
+    std::string name;
+    int model = 0;
+    bool you = false;
+    uint32_t rttMs = 0;  // 0 for yourself
+};
+struct LobbyView {
+    LobbyState state = LobbyState::Offline;
+    std::string message;  // status line: what is happening or what went wrong
+    std::vector<LobbyPlayer> players;  // host (id 0) first
+    std::string tailnetIp;
+    std::string otherIps;
+    uint16_t port = 0;  // hosting / joined port
+    bool atMenu = false;  // this process is on the main menu map
+    std::string map;      // current map name (upper case)
+};
+LobbyView Lobby();
+// Name and model are applied before the session starts (they travel in Hello).
+void LobbyHost(const std::string& name, int model, uint16_t port);
+void LobbyJoin(const std::string& name, int model, const std::string& host, uint16_t port);
+void LobbyLeave();
 
 // Deferred: applied on the next frame (game thread).
 void RequestHost(uint16_t port);

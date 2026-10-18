@@ -7,29 +7,35 @@ Both players need the same game version and the same kit.
 INSTALL (everyone)
 1. Unzip the whole kit anywhere (for example your Downloads folder).
 2. Double-click install.bat. It finds the game (...\Activision Value\Magic Wand\DNGH2\Bin, on any
-   local drive), asks for your player name once, copies the mod in, and puts two shortcuts on your
-   desktop: DH2 HOST and DH2 JOIN. If the game is under Program Files, Windows asks for permission.
+   local drive), asks for your player name once, copies the mod in, and puts one shortcut on your
+   desktop: DH2 COOP. If the game is under Program Files, Windows asks for permission.
    Game somewhere else?  powershell -ExecutionPolicy Bypass -File install.ps1 -GameDir "<your Bin folder>"
-3. Updating to a newer kit: run install.bat from the new kit (your player name is kept).
-4. Uninstall: install.bat -Uninstall  (removes the mod files and the shortcuts; a dinput8.dll from
+3. Updating to a newer kit: run install.bat from the new kit (your player name is kept; the old
+   DH2 HOST / DH2 JOIN shortcuts are removed).
+4. Uninstall: install.bat -Uninstall  (removes the mod files and the shortcut; a dinput8.dll from
    another mod is put back).
 
-NETWORK (VPN: Tailscale, ZeroTier, Hamachi, ...)
-- Both join the same VPN. The host looks up its own VPN IP (for example 100.x.y.z in Tailscale).
+NETWORK (Tailscale)
+- Everyone installs Tailscale and joins the same tailnet (the host can share their machine with friends).
+- The host's tailnet IP (100.x.y.z) is shown in the lobby window, with a Copy button.
 - The host must let Main7.exe receive UDP port 27420. Windows Firewall asks the first time you
-  host: tick "Private" (and "Public" if your VPN adapter is marked public) and press Allow.
+  host: tick "Private" (and "Public" if your Tailscale adapter is marked public) and press Allow.
 
 PLAY
-1. Host: DH2 HOST on the desktop. Type the map (MAP1 is the start of the story; HUNTMAP4 a hunting map)
-   or press Enter for the last one.
-2. Friends: DH2 JOIN on the desktop. Type the host's VPN IP once; next time Enter reuses it.
-   Friends follow whatever map the host is on, and can join at any time.
-3. Hunting map: close the CHOOSE ITEM menu with Enter, Left, Enter.
-4. F8 toggles a small status overlay: role, the other player, ping (rtt).
-   "role client" plus a row for the host means you are connected.
+1. Everyone: DH2 COOP on the desktop. The game opens at its main menu with the co-op lobby window.
+   Type your name and pick the character the others will see you as.
+2. Host: press HOST. The lobby shows "Lobby open" and the address friends use.
+3. Friends: type the host's tailnet IP (and port, normally 27420) and press JOIN. The status line
+   says "Connected", or what went wrong. Everyone in the lobby sees the player list.
+4. Host: press F8 to close the lobby, then start a New Game or Load a save from the game's menu.
+   Friends stay in their main menu: they follow the host into the game automatically.
+5. F8 opens and closes the lobby window at any time (it shows the players and their ping).
+   While it is open the game ignores your keys and mouse.
+6. Hunting map: close the CHOOSE ITEM menu with Enter, Left, Enter.
+Friends can also join later, while the host is already playing: they catch up and appear next to the host.
 
 WHAT WORKS TODAY
-- Up to 4 players. You see each other (stand-in character with your weapon), moving, aiming, firing.
+- Up to 4 players. You see each other (the character you picked, with your weapon), moving, aiming, firing.
 - F7 toggles markers over the other players (name and distance, or an arrow at the screen edge).
 - Hunting map: the same deer for everyone. Anyone can shoot, kill and claim (F); the mission ends
   with MISSION SUCCESSFUL for all.

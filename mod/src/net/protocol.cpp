@@ -196,6 +196,7 @@ std::vector<uint8_t> Encode(const Hello& msg) {
     w.Name(msg.name);
     w.U32(msg.modBuild);
     w.U32(msg.passHash);
+    w.U8(msg.model);
     return w.Take();
 }
 
@@ -221,6 +222,7 @@ std::vector<uint8_t> Encode(const PlayerJoined& msg) {
     w.U8(static_cast<uint8_t>(MsgId::PlayerJoined));
     w.U8(msg.playerId);
     w.Name(msg.name);
+    w.U8(msg.model);
     return w.Take();
 }
 
@@ -329,14 +331,17 @@ std::optional<Message> Decode(const uint8_t* data, size_t len) {
     switch (static_cast<MsgId>(data[0])) {
     case MsgId::Hello: {
         const bool v1 = len == kHelloV1Bytes;
-        auto m = ParseExact<Hello>(data, len, v1 ? kHelloV1Bytes : kHelloBytes, MsgId::Hello,
-                                   [v1](ByteReader& r, Hello& o) {
+        const bool v2 = len == kHelloV2Bytes;
+        auto m = ParseExact<Hello>(data, len, v1 ? kHelloV1Bytes : (v2 ? kHelloV2Bytes : kHelloBytes), MsgId::Hello,
+                                   [v1, v2](ByteReader& r, Hello& o) {
                                        o.protoVersion = r.U8();
                                        o.gameBuild = r.U16();
                                        r.Name(o.name);
                                        if (v1) return;
                                        o.modBuild = r.U32();
                                        o.passHash = r.U32();
+                                       if (v2) return;
+                                       o.model = r.U8();
                                    });
         if (!m) return std::nullopt;
         return Message{std::move(*m)};
@@ -365,6 +370,7 @@ std::optional<Message> Decode(const uint8_t* data, size_t len) {
                                            [](ByteReader& r, PlayerJoined& o) {
                                                o.playerId = r.U8();
                                                r.Name(o.name);
+                                               o.model = r.U8();
                                            });
         if (!m) return std::nullopt;
         return Message{std::move(*m)};

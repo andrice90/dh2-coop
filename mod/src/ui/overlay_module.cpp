@@ -1,28 +1,54 @@
-// Read-only co-op status overlay. Drawn from the D3D8 Present callback on the game thread.
+// Co-op overlay: the lobby window (F8, opens by itself at the main menu), player markers (F7) and on-screen notices.
+// Drawn from the D3D8 Present callback on the game thread. While the lobby is open it takes the mouse and keyboard
+// (Win32 messages through ImGui's Win32 backend) and the game's DirectInput reads see nothing pressed.
 #include "core/module.h"
 #include "core/log.h"
 #include "core/safe_mem.h"
 #include "display/display.h"
 #include "coop/coop.h"
 #include "coop/player_tracker.h"
+#include "coop/puppet_models.h"
 #include "engine/d3d8_hooks.h"
+#include "engine/dinput_hooks.h"
 #include "ui/imgui_impl_dx8.h"
 
 #include <imgui.h>
+#include <imgui_impl_win32.h>
 #include <d3d8.h>
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <cmath>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <string>
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 
 namespace {
 
+struct LobbyFields {
+    bool loaded = false;
+    char name[32] = {};
+    int model = 0;
+    char join_host[64] = {};
+    int join_port = 27420;
+    int host_port = 27420;
+    std::string error;  // input check before HOST / JOIN
+};
+
 struct OverlayState {
     bool inited = false;
-    bool visible = true;
+    bool visible = true;  // the lobby window
+    bool auto_open = true;  // [Overlay] Enabled: open the lobby by itself at the main menu
+    bool at_menu = false;
+    bool win32 = false;
+    HWND hwnd = nullptr;
+    WNDPROC old_proc = nullptr;
+    LobbyFields lobby;
     bool markers = true;
     bool marker_test = false;
     bool keys_ready = false;
@@ -83,18 +109,8 @@ ImVec2 display_size(IDirect3DDevice8* dev, HWND window) {
     return ImVec2(640.0f, 480.0f);
 }
 
-void draw_overlay(const dh2::coop::SessionView& view) {
-    ImGui::SetNextWindowPos(ImVec2(8.0f, 8.0f), ImGuiCond_Always);
-    ImGui::SetNextWindowBgAlpha(0.62f);
-    ImGui::SetNextWindowSizeConstraints(ImVec2(300.0f, 0.0f), ImVec2(340.0f, 460.0f));
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.06f, 0.07f, 0.09f, 0.62f));
-    ImGui::PushStyleColor(ImGuiCol_TitleBg, ImVec4(0.10f, 0.12f, 0.16f, 0.75f));
-    ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(0.12f, 0.16f, 0.22f, 0.80f));
-    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
-                                   ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
-                                   ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs;
-    ImGui::Begin("co-op    F8 hide", nullptr, flags);
-
+// The old F8 status panel, now a "Details" section at the bottom of the lobby window.
+void draw_details(const dh2::coop::SessionView& view) {
     ImGui::Text("role %s", view.role.empty() ? "offline" : view.role.c_str());
     if (view.role == "client") ImGui::TextUnformatted("F9 stand up at the host");
     if (view.localId == 0xFF)
@@ -149,8 +165,243 @@ void draw_overlay(const dh2::coop::SessionView& view) {
     ImGui::Separator();
     ImGui::Text("animals %d", view.animals);
     ImGui::Text("fps %.0f", static_cast<double>(ImGui::GetIO().Framerate));
+}
+
+// ---- lobby window ----
+
+void load_lobby_fields() {
+    LobbyFields& f = g_ov.lobby;
+    if (f.loaded) return;
+    const dh2::coop::LobbyPrefs p = dh2::coop::LoadLobbyPrefs();
+    std::snprintf(f.name, sizeof f.name, "%s", p.name.c_str());
+    f.model = p.model;
+    std::snprintf(f.join_host, sizeof f.join_host, "%s", p.join_host.c_str());
+    f.join_port = p.join_port;
+    f.host_port = p.host_port;
+    f.loaded = true;
+}
+
+void save_lobby_fields() {
+    const LobbyFields& f = g_ov.lobby;
+    dh2::coop::LobbyPrefs p;
+    p.name = f.name;
+    p.model = f.model;
+    p.join_host = f.join_host;
+    p.join_port = static_cast<uint16_t>(f.join_port);
+    p.host_port = static_cast<uint16_t>(f.host_port);
+    dh2::coop::SaveLobbyPrefs(p);
+}
+
+std::string trimmed(const char* s) {
+    std::string t = s ? s : "";
+    while (!t.empty() && std::isspace(static_cast<unsigned char>(t.back()))) t.pop_back();
+    while (!t.empty() && std::isspace(static_cast<unsigned char>(t.front()))) t.erase(t.begin());
+    return t;
+}
+
+const char* role_name(uint8_t id) { return id == 0 ? "host" : "player"; }
+
+ImVec4 state_color(dh2::coop::LobbyState s) {
+    using dh2::coop::LobbyState;
+    switch (s) {
+        case LobbyState::Hosting:
+        case LobbyState::Connected: return ImVec4(0.45f, 0.90f, 0.45f, 1.f);
+        case LobbyState::Connecting: return ImVec4(0.95f, 0.85f, 0.35f, 1.f);
+        case LobbyState::Failed: return ImVec4(1.f, 0.45f, 0.40f, 1.f);
+        default: return ImVec4(0.80f, 0.80f, 0.80f, 1.f);
+    }
+}
+
+bool model_combo(const char* label, int* model) {
+    const int n = dh2::coop::PuppetModelCount();
+    if (*model < 0 || *model >= n) *model = 0;
+    bool changed = false;
+    if (ImGui::BeginCombo(label, dh2::coop::PuppetModelAt(*model).label)) {
+        for (int i = 0; i < n; ++i) {
+            const bool selected = i == *model;
+            if (ImGui::Selectable(dh2::coop::PuppetModelAt(i).label, selected)) {
+                *model = i;
+                changed = true;
+            }
+            if (selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    return changed;
+}
+
+void draw_lobby(const dh2::coop::SessionView& view, ImVec2 disp) {
+    using dh2::coop::LobbyState;
+    load_lobby_fields();
+    LobbyFields& f = g_ov.lobby;
+    const dh2::coop::LobbyView lobby = dh2::coop::Lobby();
+    const bool busy = lobby.state == LobbyState::Hosting || lobby.state == LobbyState::Connected ||
+                      lobby.state == LobbyState::Connecting;
+
+    const float scale = std::clamp(disp.y / 900.f, 1.f, 2.f);
+    ImGui::SetNextWindowPos(ImVec2(disp.x * 0.5f, disp.y * 0.18f), ImGuiCond_Always, ImVec2(0.5f, 0.f));
+    ImGui::SetNextWindowBgAlpha(0.90f);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(480.f * scale, 0.f), ImVec2(640.f * scale, disp.y * 0.8f));
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove |
+                                   ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize;
+    ImGui::Begin("Co-op lobby  (F8 shows / hides)", nullptr, flags);
+    ImGui::SetWindowFontScale(scale);
+
+    ImGui::PushStyleColor(ImGuiCol_Text, state_color(lobby.state));
+    ImGui::TextWrapped("%s", lobby.message.c_str());
+    ImGui::PopStyleColor();
+    if (!f.error.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, state_color(LobbyState::Failed));
+        ImGui::TextWrapped("%s", f.error.c_str());
+        ImGui::PopStyleColor();
+    }
+    ImGui::Separator();
+
+    // Your player: name and body are sent when the session starts, so they are fixed while in one.
+    if (!busy) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Your name");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(190.f * scale);
+        ImGui::InputText("##name", f.name, sizeof f.name);
+        ImGui::SameLine();
+        ImGui::TextUnformatted("Model");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(150.f * scale);
+        model_combo("##model", &f.model);
+    } else {
+        for (const auto& p : lobby.players) {
+            if (p.you) ImGui::Text("You are %s, seen as %s.", p.name.c_str(), dh2::coop::PuppetModelAt(p.model).label);
+        }
+    }
+    ImGui::Separator();
+
+    if (!busy) {
+        ImGui::TextUnformatted("Host a game");
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Port");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.f * scale);
+        ImGui::InputInt("##hostport", &f.host_port, 0, 0);
+        ImGui::SameLine();
+        if (ImGui::Button("HOST", ImVec2(110.f * scale, 0.f))) {
+            f.error.clear();
+            if (trimmed(f.name).empty()) {
+                f.error = "Type a player name first.";
+            } else if (f.host_port < 1 || f.host_port > 65535) {
+                f.error = "The port must be 1 to 65535 (default 27420).";
+            } else {
+                save_lobby_fields();
+                dh2::coop::LobbyHost(trimmed(f.name), f.model, static_cast<uint16_t>(f.host_port));
+            }
+        }
+        ImGui::Spacing();
+        ImGui::TextUnformatted("Join a friend");
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Host IP");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(190.f * scale);
+        ImGui::InputTextWithHint("##joinhost", "100.x.y.z", f.join_host, sizeof f.join_host);
+        ImGui::SameLine();
+        ImGui::TextUnformatted("Port");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.f * scale);
+        ImGui::InputInt("##joinport", &f.join_port, 0, 0);
+        if (ImGui::Button("JOIN", ImVec2(110.f * scale, 0.f))) {
+            f.error.clear();
+            const std::string host = trimmed(f.join_host);
+            if (trimmed(f.name).empty()) {
+                f.error = "Type a player name first.";
+            } else if (host.empty()) {
+                f.error = "Type the host's IP address (their tailnet IP, 100.x.y.z).";
+            } else if (f.join_port < 1 || f.join_port > 65535) {
+                f.error = "The port must be 1 to 65535 (default 27420).";
+            } else {
+                save_lobby_fields();
+                dh2::coop::LobbyJoin(trimmed(f.name), f.model, host, static_cast<uint16_t>(f.join_port));
+            }
+        }
+    } else {
+        if (lobby.state == LobbyState::Hosting) {
+            if (!lobby.tailnetIp.empty()) {
+                ImGui::Text("Friends join with  %s  port %u", lobby.tailnetIp.c_str(), lobby.port);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Copy")) ImGui::SetClipboardText(lobby.tailnetIp.c_str());
+            } else {
+                ImGui::TextWrapped("Tailscale is not connected on this PC. Friends on your LAN can use %s, port %u.",
+                                   lobby.otherIps.empty() ? "-" : lobby.otherIps.c_str(), lobby.port);
+            }
+        }
+        ImGui::Text("Players (%d of 4)", static_cast<int>(lobby.players.size()));
+        if (ImGui::BeginTable("players", 4, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |
+                                                ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Name");
+            ImGui::TableSetupColumn("Role");
+            ImGui::TableSetupColumn("Model");
+            ImGui::TableSetupColumn("Ping");
+            ImGui::TableHeadersRow();
+            for (const auto& p : lobby.players) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::Text("%s%s", p.name.c_str(), p.you ? "  (you)" : "");
+                ImGui::TableSetColumnIndex(1);
+                ImGui::TextUnformatted(role_name(p.id));
+                ImGui::TableSetColumnIndex(2);
+                ImGui::TextUnformatted(dh2::coop::PuppetModelAt(p.model).label);
+                ImGui::TableSetColumnIndex(3);
+                if (p.you)
+                    ImGui::TextUnformatted("-");
+                else
+                    ImGui::Text("%u ms", p.rttMs);
+            }
+            ImGui::EndTable();
+        }
+        ImGui::Spacing();
+        const char* hint = nullptr;
+        if (lobby.state == LobbyState::Hosting && lobby.atMenu)
+            hint = "Close this window (F8), then start a New Game or Load a save. Everyone follows you.";
+        else if (lobby.state == LobbyState::Connected && lobby.atMenu)
+            hint = "Stay in the main menu. When the host starts a game you follow automatically.";
+        else if (lobby.state == LobbyState::Connecting)
+            hint = "Waiting for the host to answer (a few seconds).";
+        if (hint) ImGui::TextWrapped("%s", hint);
+        const char* leave = lobby.state == LobbyState::Hosting   ? "Stop hosting"
+                            : lobby.state == LobbyState::Connecting ? "Cancel"
+                                                                    : "Leave";
+        if (ImGui::Button(leave, ImVec2(140.f * scale, 0.f))) {
+            f.error.clear();
+            dh2::coop::LobbyLeave();
+        }
+    }
+
+    ImGui::Spacing();
+    if (ImGui::CollapsingHeader("Details")) draw_details(view);
     ImGui::End();
-    ImGui::PopStyleColor(3);
+}
+
+// Game window messages while the lobby is open go to ImGui. Keys and characters stop there (the game reads keys
+// through DirectInput, which SetUiCapture blanks); everything else, Alt+F4 included, still reaches the game.
+LRESULT CALLBACK lobby_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+    if (g_ov.visible && g_ov.hwnd && ImGui::GetCurrentContext()) {
+        ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam);
+        if (msg == WM_CHAR || msg == WM_KEYDOWN || msg == WM_KEYUP) return 0;
+    }
+    return CallWindowProcA(g_ov.old_proc, hwnd, msg, wparam, lparam);
+}
+
+void ensure_win32(HWND hwnd) {
+    if (g_ov.win32 || !hwnd) return;
+    if (!ImGui_ImplWin32_Init(hwnd)) {
+        spdlog::error("overlay: ImGui_ImplWin32_Init failed");
+        g_ov.win32 = true;  // do not retry every frame; the lobby stays mouse-less
+        return;
+    }
+    g_ov.hwnd = hwnd;
+    g_ov.old_proc = reinterpret_cast<WNDPROC>(
+        SetWindowLongPtrA(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&lobby_wndproc)));
+    g_ov.win32 = true;
+    spdlog::info("overlay: lobby input on window {:#x} (previous proc {:#x})", reinterpret_cast<uintptr_t>(hwnd),
+                 reinterpret_cast<uintptr_t>(g_ov.old_proc));
 }
 
 // fov at +0xD0 is degrees and horizontal: EngineDll7 UpdatePerspectiveProjectionFrustum
@@ -357,7 +608,7 @@ void on_present(void* device, const RECT* src, const RECT* dst, HWND window, con
     } else if (is_foreground(hwnd)) {
         if (f8 && !g_ov.f8_down) {
             g_ov.visible = !g_ov.visible;
-            spdlog::info("overlay: visible={}", g_ov.visible ? 1 : 0);
+            spdlog::info("overlay: lobby {}", g_ov.visible ? "opened (F8)" : "closed (F8)");
         }
         if (f7 && !g_ov.f7_down) {
             g_ov.markers = !g_ov.markers;
@@ -368,14 +619,36 @@ void on_present(void* device, const RECT* src, const RECT* dst, HWND window, con
         g_ov.f8_down = f8;
         g_ov.f7_down = f7;
     }
-    // F8 hides the status panel only. Skip the whole ImGui frame when that panel and the markers are both off.
-    if (!g_ov.visible && !g_ov.markers) return;
+    // The lobby opens by itself when the main menu loads and closes when a map loads.
+    const bool at_menu = dh2::coop::Lobby().atMenu;
+    if (at_menu != g_ov.at_menu) {
+        g_ov.at_menu = at_menu;
+        const bool want = at_menu && g_ov.auto_open;
+        if (want != g_ov.visible) {
+            g_ov.visible = want;
+            spdlog::info("overlay: lobby {} ({})", want ? "opened" : "closed", at_menu ? "main menu" : "map loaded");
+        }
+    }
+    ensure_win32(hwnd);
+    dh2::dinput::SetUiCapture(g_ov.visible);
 
     ImGuiIO& io = ImGui::GetIO();
+    if (g_ov.hwnd) ImGui_ImplWin32_NewFrame();
     io.DisplaySize = display_size(dev, hwnd);
     io.DeltaTime = overlay_dt();
-    io.MousePos = ImVec2(-100000.0f, -100000.0f);
-    io.MouseDown[0] = io.MouseDown[1] = io.MouseDown[2] = false;
+    if (g_ov.visible && g_ov.hwnd) {
+        io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
+        io.MouseDrawCursor = true;
+        // The back buffer can differ from the client area (a resized window): put the cursor in back-buffer pixels.
+        POINT pt{};
+        RECT rc{};
+        if (GetCursorPos(&pt) && ScreenToClient(hwnd, &pt) && GetClientRect(hwnd, &rc) && rc.right > 0 && rc.bottom > 0)
+            io.AddMousePosEvent(static_cast<float>(pt.x) * io.DisplaySize.x / static_cast<float>(rc.right),
+                                static_cast<float>(pt.y) * io.DisplaySize.y / static_cast<float>(rc.bottom));
+    } else {
+        io.ConfigFlags |= ImGuiConfigFlags_NoMouse;
+        io.MouseDrawCursor = false;
+    }
 
     static bool logged_size = false;
     if (!logged_size) {
@@ -387,9 +660,9 @@ void on_present(void* device, const RECT* src, const RECT* dst, HWND window, con
     ImGui_ImplDX8_NewFrame();
     ImGui::NewFrame();
     const dh2::coop::SessionView view = dh2::coop::Snapshot();
-    if (g_ov.visible) draw_overlay(view);
+    if (g_ov.visible) draw_lobby(view, io.DisplaySize);
     if (g_ov.markers) draw_markers(view, io.DisplaySize);
-    if (!view.notice.empty()) {
+    if (!view.notice.empty() && !(g_ov.visible && view.noticeIsBanner)) {
         ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, 40.0f), ImGuiCond_Always, ImVec2(0.5f, 0.0f));
         ImGui::SetNextWindowBgAlpha(0.75f);
         ImGui::Begin("##coop_notice", nullptr,
@@ -439,7 +712,8 @@ public:
 
     void OnInit() override {
         const std::string ini = (dh2::core::self_dir() / "dh2coop.ini").string();
-        g_ov.visible = GetPrivateProfileIntA("Overlay", "Enabled", 1, ini.c_str()) != 0;
+        g_ov.auto_open = GetPrivateProfileIntA("Overlay", "Enabled", 1, ini.c_str()) != 0;
+        g_ov.visible = false;
         g_ov.markers = GetPrivateProfileIntA("Overlay", "Markers", 1, ini.c_str()) != 0;
         g_ov.marker_test = GetPrivateProfileIntA("Overlay", "MarkerTest", 0, ini.c_str()) != 0;
         spdlog::info("overlay: ini Enabled={} Markers={} MarkerTest={}", g_ov.visible ? 1 : 0, g_ov.markers ? 1 : 0,

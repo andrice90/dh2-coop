@@ -55,6 +55,7 @@ struct Remote {
     ENetPeer* peer = nullptr;
     uint8_t playerId = kInvalidPlayerId;
     std::string name;
+    uint8_t model = 0;
     bool active = false;
     bool localClose = false;
     bool waitHello = false;
@@ -224,6 +225,7 @@ struct Session::Impl {
         SetName(hello.name, identity.name);
         hello.modBuild = identity.modBuild;
         hello.passHash = identity.passHash;
+        hello.model = identity.model;
         Send(remote, Encode(hello), kChannelControl, true);
     }
 
@@ -245,6 +247,7 @@ struct Session::Impl {
     void Accept(Remote& remote, const Hello& hello, uint8_t id) {
         remote.playerId = id;
         remote.name = NameOf(hello.name);
+        remote.model = hello.model;
         remote.active = true;
         remote.waitHello = false;
 
@@ -257,6 +260,7 @@ struct Session::Impl {
         PlayerJoined hostJoin;
         hostJoin.playerId = 0;
         SetName(hostJoin.name, identity.name);
+        hostJoin.model = identity.model;
         Send(&remote, Encode(hostJoin), kChannelControl, true);
 
         for (auto& other : remotes) {
@@ -264,12 +268,14 @@ struct Session::Impl {
             PlayerJoined existing;
             existing.playerId = other->playerId;
             SetName(existing.name, other->name);
+            existing.model = other->model;
             Send(&remote, Encode(existing), kChannelControl, true);
         }
 
         PlayerJoined neu;
         neu.playerId = id;
         SetName(neu.name, remote.name);
+        neu.model = remote.model;
         const auto bytes = Encode(neu);
         for (auto& other : remotes) {
             if (other.get() == &remote || !other->active) continue;
@@ -280,6 +286,7 @@ struct Session::Impl {
         joined.type = EventType::PlayerJoined;
         joined.playerId = id;
         joined.name = remote.name;
+        joined.model = remote.model;
         Push(joined);
 
         Event link;
@@ -371,6 +378,7 @@ struct Session::Impl {
         ev.type = EventType::PlayerJoined;
         ev.playerId = joined.playerId;
         ev.name = NameOf(joined.name);
+        ev.model = joined.model;
         Push(ev);
     }
 

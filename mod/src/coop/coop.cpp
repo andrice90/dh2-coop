@@ -22,6 +22,7 @@
 #include "coop/animals.h"
 #include "coop/events.h"
 #include "coop/player_tracker.h"
+#include "coop/puppet_models.h"
 #include "coop/puppets.h"
 
 namespace dh2::coop::story {
@@ -52,6 +53,7 @@ Pending g_pending;
 
 struct RemotePlayer {
     std::string name;
+    int model = 0;
     net::PlayerState last{};
     uint32_t received = 0;
 };
@@ -64,6 +66,19 @@ uint32_t g_mod_build = 0;
 uint32_t g_pass_hash = 0;
 std::string g_notice;  // on-screen line (Snapshot().notice) until g_notice_until
 uint32_t g_notice_until = 0;
+
+// Lobby status line (Lobby()). A reject is followed by a disconnect: Failed keeps the reject's text.
+LobbyState g_lobby_state = LobbyState::Offline;
+std::string g_lobby_msg = "Not in a co-op game.";
+std::string g_join_target;  // "host:port" of the current or last join
+uint16_t g_join_port = 0;
+uint32_t g_join_started_ms = 0;
+
+void set_lobby(LobbyState state, std::string msg) {
+    if (g_lobby_state != state || g_lobby_msg != msg) spdlog::info("coop: lobby -> {}", msg);
+    g_lobby_state = state;
+    g_lobby_msg = std::move(msg);
+}
 
 uint32_t now_ms() {
     using namespace std::chrono;
@@ -180,6 +195,7 @@ void load_settings() {
     g_settings.join_retry_s = static_cast<float>(GetPrivateProfileIntA("Coop", "JoinRetrySeconds", 5, ini.c_str()));
     GetPrivateProfileStringA("Coop", "Password", "", buf, sizeof buf, ini.c_str());
     g_settings.password = buf;
+    g_settings.model = static_cast<int>(GetPrivateProfileIntA("Coop", "PuppetModel", 0, ini.c_str()));
     static const char kSalt[] = "dh2coop-password";
     g_pass_hash = g_settings.password.empty()
                       ? 0
@@ -376,6 +392,40 @@ void __cdecl cmd_trigger(const char* arg) {
     story::DebugActivate(name.c_str());
 }
 
+// Test: the lobby buttons without a mouse (name / model from dh2coop-lobby.ini). Console commands take one word,
+// so: coop_lobby host | leave | <ip[:port]> (join).
+void __cdecl cmd_lobby(const char* arg) {
+    const std::string a = core::safe_cstr(arg, 96);
+    const LobbyPrefs p = LoadLobbyPrefs();
+    if (a == "host") {
+        LobbyHost(p.name, p.model, p.host_port);
+    } else if (a == "leave") {
+        LobbyLeave();
+    } else if (!a.empty()) {
+        std::string host;
+        uint16_t port = p.join_port;
+        split_host_port(a.c_str(), host, port);
+        LobbyJoin(p.name, p.model, host, port);
+    } else {
+        spdlog::warn("coop_lobby: usage coop_lobby host | leave | <ip[:port]>");
+    }
+}
+
+// Test: draw remote player <id> with puppet model <index> on this machine only (model preview).
+void __cdecl cmd_puppetmodel(const char* arg) {
+    std::string a = core::safe_cstr(arg, 32);
+    for (char& c : a) {
+        if (c == ':' || c == ',') c = ' ';
+    }
+    int id = -1, model = -1;
+    if (std::sscanf(a.c_str(), "%d %d", &id, &model) != 2 || id < 0 || id > 255 || model < 0 ||
+        model >= PuppetModelCount()) {
+        spdlog::warn("coop_puppetmodel: usage coop_puppetmodel <player id>:<model 0..{}>", PuppetModelCount() - 1);
+        return;
+    }
+    puppets::SetModel(static_cast<uint8_t>(id), model);
+}
+
 void __cdecl cmd_claim(const char* arg) {
     const int id = std::atoi(core::safe_cstr(arg, 32).c_str());
     if (id <= 0) {
@@ -479,6 +529,8 @@ public:
             console_cmds::AddCommand0("coop_respawn", &cmd_respawn);
             console_cmds::AddCommand0("coop_tohost", &cmd_tohost);
             console_cmds::AddCommandStr("coop_tp", &cmd_tp);
+            console_cmds::AddCommandStr("coop_lobby", &cmd_lobby);
+            console_cmds::AddCommandStr("coop_puppetmodel", &cmd_puppetmodel);
         }
         cmd_poll_ += dt;
         if (commands_registered_ && cmd_poll_ >= 0.5f) {
@@ -490,6 +542,7 @@ public:
         RetryAutoJoin(dt);
         refresh_local_addresses();
         ApplyPending();
+        CheckJoinTimeout();
         g_frame_thread = GetCurrentThreadId();
         g_last_frame_ms = now_ms();
         if (g_flip_pumping) {
@@ -562,6 +615,7 @@ private:
         id.name = g_settings.player_name;
         id.modBuild = g_mod_build;
         id.passHash = g_pass_hash;
+        id.model = static_cast<uint8_t>(g_settings.model);
         if (p.kind == Pending::Kind::Host) spdlog::info("coop: host start port={}", p.port);
         else if (p.kind == Pending::Kind::Join) spdlog::info("coop: join start {}:{}", p.host, p.port);
         if (p.kind != Pending::Kind::None) {
@@ -573,25 +627,64 @@ private:
             case Pending::Kind::None:
                 return;
             case Pending::Kind::Host:
-                g_session.Disconnect();
-                g_remotes.clear();
+                DropSession();
             {
                 const bool ok = g_session.StartHost(p.port, net::kDefaultMaxClients, id);
                 spdlog::info("coop: hosting on UDP {} -> {}", p.port, ok);
-                if (!ok) show_notice(fmt::format("Could not host on UDP port {}. Another program (or another copy of the game) already uses it.", p.port), 30000);
+                if (ok) {
+                    set_lobby(LobbyState::Hosting, fmt::format("Lobby open on UDP port {}.", p.port));
+                } else {
+                    const std::string why = fmt::format(
+                        "Could not host on UDP port {}. Another program (or another copy of the game) already uses "
+                        "it.",
+                        p.port);
+                    set_lobby(LobbyState::Failed, why);
+                    show_notice(why, 30000);
+                }
                 return;
             }
-            case Pending::Kind::Join:
-                g_session.Disconnect();
-                g_remotes.clear();
-                spdlog::info("coop: joining {}:{} -> {}", p.host, p.port, g_session.Join(p.host, p.port, id));
+            case Pending::Kind::Join: {
+                DropSession();
+                g_join_target = fmt::format("{}:{}", p.host, p.port);
+                g_join_port = p.port;
+                g_join_started_ms = now_ms();
+                const bool ok = g_session.Join(p.host, p.port, id);
+                spdlog::info("coop: joining {}:{} -> {}", p.host, p.port, ok);
+                if (ok) {
+                    set_lobby(LobbyState::Connecting, fmt::format("Connecting to {} ...", g_join_target));
+                } else {
+                    set_lobby(LobbyState::Failed,
+                              fmt::format("'{}' is not an address this PC can reach. Type the host's tailnet IP "
+                                          "(100.x.y.z).",
+                                          p.host));
+                }
                 return;
+            }
             case Pending::Kind::Leave:
-                g_session.Disconnect();
-                g_remotes.clear();
+                DropSession();
+                set_lobby(LobbyState::Offline, "Not in a co-op game.");
                 spdlog::info("coop: left session");
                 return;
         }
+    }
+
+    // Ends the current session and throws away its queued events: a late disconnect of an earlier attempt must not
+    // land on the next one (it said "No answer from" the address that then connected, 2026-10-17 23:05).
+    void DropSession() {
+        g_session.Disconnect();
+        const size_t dropped = g_session.DrainEvents().size();
+        if (dropped) spdlog::info("coop: dropped {} event(s) of the previous session", dropped);
+        g_remotes.clear();
+    }
+
+    // ENet keeps retrying an unanswered connect for longer than a player waits. The lobby gives up after 8 s.
+    void CheckJoinTimeout() {
+        if (g_lobby_state != LobbyState::Connecting || g_session.IsConnected() || g_session.IsHost()) return;
+        if (now_ms() - g_join_started_ms < 8000) return;
+        DropSession();
+        set_lobby(LobbyState::Failed, fmt::format("No answer from {}. Check the IP and port, that the host pressed "
+                                                  "HOST, and that both PCs are connected to Tailscale.",
+                                                  g_join_target));
     }
 
     void HandleEvent(const net::Event& ev) {
@@ -606,7 +699,9 @@ private:
             case net::EventType::PlayerJoined:
                 // The new client asks for the map's events itself once its map is loaded (events kSyncRequest).
                 g_remotes[ev.playerId].name = ev.name;
-                spdlog::info("coop: player {} '{}' joined", ev.playerId, ev.name);
+                g_remotes[ev.playerId].model = ev.model;
+                puppets::SetModel(ev.playerId, ev.model);
+                spdlog::info("coop: player {} '{}' joined (model {})", ev.playerId, ev.name, ev.model);
                 return;
             case net::EventType::PlayerLeft:
                 g_remotes.erase(ev.playerId);
@@ -616,6 +711,8 @@ private:
                 return;
             case net::EventType::Welcome:
                 spdlog::info("coop: welcomed as player {} (max {})", ev.playerId, ev.maxPlayers);
+                set_lobby(LobbyState::Connected, fmt::format("Connected to {} as player {}.", g_join_target,
+                                                             static_cast<int>(ev.playerId)));
                 return;
             case net::EventType::AnimalStates:
                 // Snapshots and kMapStart travel on different channels: after a host map change the first
@@ -652,6 +749,7 @@ private:
                     default: why = fmt::format("The host refused this game ({}).", net::ToString(ev.reason)); break;
                 }
                 show_notice(why, 30000);
+                set_lobby(LobbyState::Failed, why);
                 return;
             }
             case net::EventType::Disconnected:
@@ -659,6 +757,14 @@ private:
                 spdlog::info("coop: {} player {}", ev.type == net::EventType::TimedOut ? "timeout" : "disconnect",
                              ev.playerId);
                 if (!g_session.IsHost()) {
+                    if (g_lobby_state == LobbyState::Connecting) {
+                        set_lobby(LobbyState::Failed,
+                                  fmt::format("No answer from {}. Check the IP and port, that the host pressed HOST, "
+                                              "and that both PCs are connected to Tailscale.",
+                                              g_join_target));
+                    } else if (g_lobby_state == LobbyState::Connected) {
+                        set_lobby(LobbyState::Failed, fmt::format("Lost the connection to the host ({}).", g_join_target));
+                    }
                     g_remotes.clear();
                     puppets::RemoveAll();
                     animals::Reset();
@@ -938,9 +1044,127 @@ SessionView Snapshot() {
             v.notice = "Co-op: connected to the host.\nStay in this menu: you follow the host into its game.";
         } else if (g_settings.auto_role == "join") {
             v.notice = fmt::format("Co-op: looking for the host at {} (retrying)...", g_settings.auto_join_addr);
+        } else {
+            v.notice = "Co-op: press F8 for the lobby (host or join).";
         }
+        v.noticeIsBanner = true;
     }
     return v;
+}
+
+// ---- lobby ----
+
+namespace {
+
+// Next to the logs: the game's Bin, or %LOCALAPPDATA%\dh2coop for a game under Program Files. Each local test tree
+// keeps its own names that way.
+std::string lobby_ini_path() { return (core::log_dir() / "dh2coop-lobby.ini").string(); }
+
+std::string clean_name(std::string s) {
+    while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.pop_back();
+    while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(s.begin());
+    if (s.size() > net::kNameBytes - 1) s.resize(net::kNameBytes - 1);
+    return s.empty() ? std::string("Hunter") : s;
+}
+
+void apply_identity(const std::string& name, int model) {
+    g_settings.player_name = clean_name(name);
+    g_settings.model = (model >= 0 && model < PuppetModelCount()) ? model : 0;
+    // The lobby replaces the launcher roles: no more automatic re-joins behind the player's back.
+    g_settings.auto_role.clear();
+    g_auto_stopped = true;
+}
+
+}  // namespace
+
+LobbyPrefs LoadLobbyPrefs() {
+    LobbyPrefs p;
+    const std::string game_ini = (core::self_dir() / "dh2coop.ini").string();
+    char buf[128] = {};
+    GetPrivateProfileStringA("Coop", "JoinAddress", "", buf, sizeof buf, game_ini.c_str());
+    const std::string ini = lobby_ini_path();
+    p.name = g_settings.player_name;
+    p.model = g_settings.model;
+    p.join_host = (std::string(buf) == "127.0.0.1") ? std::string() : std::string(buf);
+    p.join_port = g_settings.port;
+    p.host_port = g_settings.port;
+    GetPrivateProfileStringA("Lobby", "Name", p.name.c_str(), buf, sizeof buf, ini.c_str());
+    p.name = buf;
+    p.model = static_cast<int>(GetPrivateProfileIntA("Lobby", "Model", p.model, ini.c_str()));
+    if (p.model < 0 || p.model >= PuppetModelCount()) p.model = 0;
+    GetPrivateProfileStringA("Lobby", "JoinHost", p.join_host.c_str(), buf, sizeof buf, ini.c_str());
+    p.join_host = buf;
+    const int jp = static_cast<int>(GetPrivateProfileIntA("Lobby", "JoinPort", p.join_port, ini.c_str()));
+    const int hp = static_cast<int>(GetPrivateProfileIntA("Lobby", "HostPort", p.host_port, ini.c_str()));
+    if (jp > 0 && jp < 65536) p.join_port = static_cast<uint16_t>(jp);
+    if (hp > 0 && hp < 65536) p.host_port = static_cast<uint16_t>(hp);
+    return p;
+}
+
+void SaveLobbyPrefs(const LobbyPrefs& p) {
+    const std::string ini = lobby_ini_path();
+    WritePrivateProfileStringA("Lobby", "Name", clean_name(p.name).c_str(), ini.c_str());
+    WritePrivateProfileStringA("Lobby", "Model", std::to_string(p.model).c_str(), ini.c_str());
+    WritePrivateProfileStringA("Lobby", "JoinHost", p.join_host.c_str(), ini.c_str());
+    WritePrivateProfileStringA("Lobby", "JoinPort", std::to_string(p.join_port).c_str(), ini.c_str());
+    WritePrivateProfileStringA("Lobby", "HostPort", std::to_string(p.host_port).c_str(), ini.c_str());
+}
+
+LobbyView Lobby() {
+    LobbyView v;
+    v.state = g_lobby_state;
+    v.message = g_lobby_msg;
+    v.tailnetIp = g_addrs.tailnet;
+    v.otherIps = g_addrs.others;
+    v.map = events::CurrentMap();
+    v.atMenu = v.map == "MENUMAP";
+    // The session can drop without an event this module turned into a status (host stopped from the console).
+    if (v.state == LobbyState::Hosting && !g_session.IsHost()) v.state = LobbyState::Offline;
+    if (v.state == LobbyState::Connected && !g_session.IsConnected()) v.state = LobbyState::Offline;
+    if (v.state == LobbyState::Offline && g_session.IsHost()) v.state = LobbyState::Hosting;
+    if ((v.state == LobbyState::Offline || v.state == LobbyState::Connecting) && g_session.IsConnected())
+        v.state = LobbyState::Connected;
+    v.port = g_session.IsHost() ? g_session.BoundPort() : g_join_port;
+    if (!g_session.IsHost() && !g_session.IsConnected()) return v;
+    std::map<uint8_t, uint32_t> rtt;
+    for (const auto& p : g_session.Peers()) rtt[p.playerId] = p.rttMs;
+    LobbyPlayer me;
+    me.id = g_session.IsHost() ? 0 : g_session.LocalPlayerId();
+    me.name = g_settings.player_name;
+    me.model = g_settings.model;
+    me.you = true;
+    v.players.push_back(me);
+    for (const auto& [id, r] : g_remotes) {
+        LobbyPlayer lp;
+        lp.id = id;
+        lp.name = r.name;
+        lp.model = r.model;
+        const auto it = rtt.find(id);
+        lp.rttMs = it != rtt.end() ? it->second : (rtt.empty() ? 0 : rtt.begin()->second);
+        v.players.push_back(lp);
+    }
+    std::sort(v.players.begin(), v.players.end(), [](const LobbyPlayer& a, const LobbyPlayer& b) { return a.id < b.id; });
+    return v;
+}
+
+void LobbyHost(const std::string& name, int model, uint16_t port) {
+    apply_identity(name, model);
+    g_settings.port = port;
+    spdlog::info("coop: lobby host as '{}' model {} port {}", g_settings.player_name, g_settings.model, port);
+    RequestHost(port);
+}
+
+void LobbyJoin(const std::string& name, int model, const std::string& host, uint16_t port) {
+    apply_identity(name, model);
+    spdlog::info("coop: lobby join {}:{} as '{}' model {}", host, port, g_settings.player_name, g_settings.model);
+    set_lobby(LobbyState::Connecting, fmt::format("Connecting to {}:{} ...", host, port));
+    RequestJoin(host, port);
+}
+
+void LobbyLeave() {
+    g_settings.auto_role.clear();
+    g_auto_stopped = true;
+    RequestLeave();
 }
 
 bool BroadcastAnimalStates(const net::AnimalStates& states) {

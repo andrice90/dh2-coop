@@ -62,6 +62,7 @@ safetyhook::InlineHook* g_create = nullptr;
 safetyhook::InlineHook* g_create_device = nullptr;
 std::atomic<bool> g_factory_hooked{false};
 std::atomic<bool> g_only_focused{true};
+std::atomic<bool> g_ui_capture{false};  // SetUiCapture: the lobby overlay is open
 std::atomic<bool> g_install_logged{false};
 std::atomic<int> g_vt_n{0};
 VtFns g_vt[kMaxVt]{};
@@ -138,6 +139,7 @@ void note_focus(bool focused, HWND hwnd) {
 
 // True when this call should look like every key and button is up.
 bool block_input() {
+    if (g_ui_capture.load()) return true;
     if (!g_only_focused.load()) return false;
     const HWND hwnd = game_window();
     if (!hwnd) return false;
@@ -351,6 +353,10 @@ void PollFocus() {
 }
 
 }  // namespace
+
+void SetUiCapture(bool captured) {
+    if (g_ui_capture.exchange(captured) != captured) spdlog::info("dinput: lobby {} game input", captured ? "holds" : "released");
+}
 
 void TryInstall() {
     log_installed_once();

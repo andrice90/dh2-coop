@@ -9,6 +9,9 @@ namespace dh2::coop::puppets {
 
 // Feed every received remote PlayerState (localTimeMs = receiver's steady clock at arrival).
 void OnRemoteState(uint8_t playerId, const net::PlayerState& state, uint32_t localTimeMs);
+// The body (coop/puppet_models.h index) this player picked. Before the first state it only chooses the spawn;
+// later it replaces the puppet.
+void SetModel(uint8_t playerId, int model);
 // Remote player left: remove the puppet.
 void OnRemoteLeft(uint8_t playerId);
 // Session ended: remove all puppets.

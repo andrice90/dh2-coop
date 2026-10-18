@@ -5,5 +5,7 @@
 namespace dh2::dinput {
 
 void TryInstall();
+// The co-op lobby window has the keyboard and mouse: the game sees every key and button up meanwhile.
+void SetUiCapture(bool captured);
 
 }  // namespace dh2::dinput
