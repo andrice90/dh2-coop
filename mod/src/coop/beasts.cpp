@@ -111,8 +111,10 @@ bool g_tranq_clients = true;    // [Animals] TranqFromClients
 bool g_overdose_clients = false; // [Animals] TranqOverdoseFromClients: another player's second dart can fail the mission
 bool g_cobra_clients = true;    // [Animals] CobraHitsFromClients
 bool g_clip_check = true;       // [Animals] ClipCheck
+bool g_thaw_needs_camera = true;  // [Animals] ThawNeedsCamera
 bool g_cmd = false;
 void* g_test_bullet = nullptr;  // coop_tranq: one unspawned mod_obj_tranq_bullet per map (never added to the manager)
+void* g_test_plain_bullet = nullptr;  // coop_tranq <id>:b: the same for a plain mod_obj_bullet (a rifle round)
 std::map<uint16_t, uint32_t> g_last_dart_ms;
 std::map<uint16_t, uint8_t> g_tranq_by;  // host: animal id -> player whose dart tranquilized it
 
@@ -608,13 +610,19 @@ void __cdecl cmd_tranq(const char* arg) {
         spdlog::warn("beasts: coop_tranq: no weapon in hand");
         return;
     }
-    if (!g_test_bullet) g_test_bullet = entity::Create("mod_obj_tranq_bullet");
-    if (!g_test_bullet || !KindOf(g_test_bullet, "mod_obj_tranq_bullet")) {
-        spdlog::warn("beasts: coop_tranq: could not make a mod_obj_tranq_bullet");
+    // "<id>:b" fires a plain mod_obj_bullet instead of a dart (a client's rifle round on a mirror).
+    const std::string full = core::safe_cstr(arg, 16);
+    const bool plain = full.find(":b") != std::string::npos;
+    void*& bullet_slot = plain ? g_test_plain_bullet : g_test_bullet;
+    const char* bullet_kind = plain ? "mod_obj_bullet" : "mod_obj_tranq_bullet";
+    if (!bullet_slot) bullet_slot = entity::Create(bullet_kind);
+    if (!bullet_slot || !KindOf(bullet_slot, bullet_kind)) {
+        spdlog::warn("beasts: coop_tranq: could not make a {}", bullet_kind);
         return;
     }
-    Write<void*>(g_test_bullet, kBulletWeapon, weapon);
-    Write<void*>(g_test_bullet, kBulletHunter, me.entity);
+    void* test_bullet = bullet_slot;
+    Write<void*>(test_bullet, kBulletWeapon, weapon);
+    Write<void*>(test_bullet, kBulletHunter, me.entity);
     if (!cobra) {
         void* entries = Read<void*>(ent, kHitList + 0x10, nullptr);
         if (!entries) {
@@ -632,9 +640,9 @@ void __cdecl cmd_tranq(const char* arg) {
         for (float& d : dir) d /= len;
     }
     char* weapon_model = Read<char*>(weapon, kEntModelName, nullptr);
-    spdlog::info("beasts: coop_tranq id={} weapon='{}' {:.1f} m away", id,
+    spdlog::info("beasts: coop_tranq id={} {} weapon='{}' {:.1f} m away", id, plain ? "bullet" : "dart",
                  weapon_model ? core::safe_cstr(weapon_model, 120) : "", len);
-    const bool ok = CallVirtualOnHit(ent, g_test_bullet, pos, dir);
+    const bool ok = CallVirtualOnHit(ent, test_bullet, pos, dir);
     spdlog::info("beasts: coop_tranq id={} OnHit ok={} tranq={} hp={:.1f} state='{}'", id, ok,
                  Read<int>(ent, kTranqState, 0), Read<float>(ent, kEntHealth, 0.f), entity::BodyStateName(ent));
 }
@@ -650,9 +658,10 @@ public:
         g_overdose_clients = GetPrivateProfileIntA("Animals", "TranqOverdoseFromClients", 0, ini.c_str()) != 0;
         g_cobra_clients = GetPrivateProfileIntA("Animals", "CobraHitsFromClients", 1, ini.c_str()) != 0;
         g_clip_check = GetPrivateProfileIntA("Animals", "ClipCheck", 1, ini.c_str()) != 0;
+        g_thaw_needs_camera = GetPrivateProfileIntA("Animals", "ThawNeedsCamera", 1, ini.c_str()) != 0;
         events::SetHandler(events::kTranqHit, &OnTranqRequest, nullptr);
-        spdlog::info("beasts: tranq from clients={} overdose={} cobra hits={} clip check={}", g_tranq_clients,
-                     g_overdose_clients, g_cobra_clients, g_clip_check);
+        spdlog::info("beasts: tranq from clients={} overdose={} cobra hits={} clip check={} thaw needs camera={}", g_tranq_clients,
+                     g_overdose_clients, g_cobra_clients, g_clip_check, g_thaw_needs_camera);
     }
 
     void OnEngineReady(HMODULE engine) override {
@@ -679,7 +688,7 @@ public:
         g_last_cobra_ms.clear();
     }
 
-    void OnMapUnloading() override { g_test_bullet = nullptr; }  // freed with nothing; one small object per map
+    void OnMapUnloading() override { g_test_bullet = g_test_plain_bullet = nullptr; }  // freed with nothing; one small object per map
 
     void OnFrame(float) override {
         if (!g_cmd && console_cmds::Ready()) {
@@ -722,7 +731,16 @@ bool MirrorStateOk(void* ent, const std::string& state) {
     return true;
 }
 
-bool NoCutSceneThaw(void* ent) { return HasVt(ent, kVtCrocodileRva); }
+bool NoCutSceneThaw(void* ent) {
+    if (HasVt(ent, kVtCrocodileRva)) return true;
+    if (!g_thaw_needs_camera) return false;
+    // A scripted cutscene puts this process's render camera on a rail, metres from the hunter (story.cpp
+    // PlayerInCutscene); an animal's sync attack never does.
+    const LocalPlayerSample& p = LocalPlayer();
+    if (!p.valid || !p.viewValid) return false;
+    const float dx = p.viewPos.x - p.pos.x, dy = p.viewPos.y - p.pos.y, dz = p.viewPos.z - p.pos.z;
+    return dx * dx + dy * dy + dz * dz <= 16.f;
+}
 
 const char* NpcLegClipFor(void* ent, const char* preferred) {
     if (!preferred || !g_clip_check || !ent) return preferred;

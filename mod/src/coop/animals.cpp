@@ -388,7 +388,7 @@ bool g_sync_log = true;
 bool g_spike = false;
 bool g_spike_unlink = true;
 bool g_unfreeze_dead = true;  // [Animals] UnfreezeDead=1: release a client animal's brain after PresentDeath
-bool g_cobra_bites = false;   // [Animals] CobraBitesNearest=1: host points +0x728 at the nearest living player
+bool g_cobra_bites = true;    // [Animals] CobraBitesNearest (default 1): host points +0x728 at the nearest living player
 float g_spike_y = 0.7f;
 
 std::string ini_path() { return (core::self_dir() / "dh2coop.ini").string(); }
@@ -710,8 +710,9 @@ void PlaceEntity(void* ent, const entity::Vec3& pos, float yawDeg, const float r
     entity::BspUpdate(ent);
 }
 
-// Host only, and only when [Animals] CobraBitesNearest=1. Keeps +0x728 non-null so Update can still
-// run the death timer. Default off: the spawn pointer is this process's "hunter".
+// Host only, and only when [Animals] CobraBitesNearest=1 (default since 2026-10-18: MAP7 two-window test, the bite and
+// its poison reach a client standing at the cobra while the host is 9 m away; re/notes/beasts.md). Keeps +0x728
+// non-null so Update can still run the death timer. Off = the spawn pointer stays this process's "hunter".
 void AimCobras() {
     const LocalPlayerSample& hunter = LocalPlayer();
     for (void* ent : Animals()) {
@@ -720,6 +721,7 @@ void AimCobras() {
         if (!core::safe_read(static_cast<char*>(ent) + kEntHealth, hp) || hp <= 0.f) continue;
         float pos[3] = {};
         if (!core::safe_copy(static_cast<char*>(ent) + kEntPos, pos, sizeof pos)) continue;
+        if (pos[1] < -1000.f) continue;  // parked (not spawned yet / after its death): nobody is "nearest" to y = -10000
         float best = 1.0e12f;
         void* target = puppets::NearestLivingPuppet(pos, best);
         if (hunter.valid && hunter.entity) {
@@ -756,7 +758,7 @@ public:
         g_spike = GetPrivateProfileIntA("Animals", "Spike", 0, ini_path().c_str()) != 0;
         g_spike_unlink = GetPrivateProfileIntA("Animals", "SpikeUnlink", 1, ini_path().c_str()) != 0;
         g_unfreeze_dead = GetPrivateProfileIntA("Animals", "UnfreezeDead", 1, ini_path().c_str()) != 0;
-        g_cobra_bites = GetPrivateProfileIntA("Animals", "CobraBitesNearest", 0, ini_path().c_str()) != 0;
+        g_cobra_bites = GetPrivateProfileIntA("Animals", "CobraBitesNearest", 1, ini_path().c_str()) != 0;
         spdlog::info("animals: cobra bites nearest={}", g_cobra_bites);
         char y[32] = {};
         GetPrivateProfileStringA("Animals", "SpikeYOffset", "0.7", y, sizeof y, ini_path().c_str());
@@ -1503,9 +1505,10 @@ private:
             const bool host_dead = dead_.count(id) != 0 ||
                                    (!fresh_life && have_early &&
                                     ((early.flags & net::animal_flag::kDead) != 0 || early.health <= 0.f));
-            // beasts.cpp: a water crocodile copy is never thawed for the host's sync attack: its own brain would start a second
-            // attack ring on a local hunter or puppet, and the ring outlives the host's (MAP8 client, "Could not forward
-            // animation run from Legs to Legs", 2026-10-18).
+            // beasts.cpp (NoCutSceneThaw): a copy is not thawed for the host's sync attack. Its own brain would start a
+            // second attack ring on a local hunter, puppet or NPC and the ring outlives the host's: "Could not forward
+            // animation" (MAP8 water croc, fatal dialog; MAP7 tiger and Reginald). Water crocodiles never thaw, other
+            // animals only while this client's camera is on a cutscene rail (a scripted cutscene waits on their task).
             if (!m.is_npc && !host_dead && host_cutscene && entity::BodyStateName(ent) == "CutScene" &&
                 !beasts::NoCutSceneThaw(ent)) {
                 if (m.frozen) {

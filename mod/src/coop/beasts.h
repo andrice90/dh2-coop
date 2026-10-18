@@ -21,9 +21,11 @@ bool MirrorStateOk(void* ent, const std::string& state);
 // missing clip stops the part's animation, the bind pose the audits saw).
 const char* NpcLegClipFor(void* ent, const char* preferred);
 
-// Client mirror: true for a water crocodile (cObjCrocodile). animals.cpp keeps such a copy frozen while the host's state is
-// CutScene (a sync attack) instead of thawing it: a thawed croc brain starts its own attack ring with a local hunter or
-// puppet, and the stale ring later raises "Could not forward animation run from Legs to Legs" (MAP8 client crash).
+// Client mirror: true when animals.cpp must keep this copy frozen although the host's state is CutScene. A thawed copy
+// runs its own brain: an attack ring with a local hunter, puppet or NPC that outlives the host's, and the stale ring
+// later raises "Could not forward animation ..." (MAP8 water croc: fatal dialog; MAP7 tiger and Reginald, MAP4A lioness).
+// Water crocodiles (cObjCrocodile) are never thawed. Any other animal is thawed only while this process's camera is on
+// a cutscene rail (a scripted cutscene waits on the animal's task), [Animals] ThawNeedsCamera=1 (default).
 bool NoCutSceneThaw(void* ent);
 
 }  // namespace dh2::coop::beasts
