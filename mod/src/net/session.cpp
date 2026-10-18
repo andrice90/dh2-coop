@@ -1,5 +1,7 @@
 #include "net/session.h"
 
+#include "net/ban_guard.h"
+
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -69,6 +71,20 @@ struct Remote {
 // system dialog). Map loads take well under a second.
 constexpr enet_uint32 kPeerTimeoutMinMs = 10000;
 constexpr enet_uint32 kPeerTimeoutMaxMs = 45000;
+
+// Wrong-password guard (the game port can be open to the internet through UPnP). One per process: the key is the
+// peer address, which says nothing about which Session saw it.
+BanGuard g_ban;
+
+uint64_t now_ms() {
+    using namespace std::chrono;
+    return static_cast<uint64_t>(duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
+}
+
+// "97.x.x.166": ENet keeps the address in network byte order (first octet in the low byte on x86).
+std::string masked_addr(enet_uint32 host) {
+    return std::to_string(host & 255) + ".x.x." + std::to_string((host >> 24) & 255);
+}
 
 }  // namespace
 
@@ -322,6 +338,11 @@ struct Session::Impl {
         }
         if (hello.passHash != identity.passHash) {
             spdlog::info("net: '{}' sent a different password", ev.name);
+            if (remote.peer && g_ban.NoteFailure(remote.peer->address.host, now_ms())) {
+                spdlog::warn("net: {} wrong passwords from {}: that address is refused for {} minutes",
+                             BanGuard::kMaxFailures, masked_addr(remote.peer->address.host),
+                             BanGuard::kBanMs / 60000);
+            }
             RejectPeer(remote, RejectReason::BadPassword);
             return;
         }
@@ -334,6 +355,7 @@ struct Session::Impl {
             RejectPeer(remote, RejectReason::LobbyFull);
             return;
         }
+        if (remote.peer) g_ban.NoteSuccess(remote.peer->address.host);
         Accept(remote, hello, id);
     }
 
@@ -493,6 +515,10 @@ struct Session::Impl {
     }
 
     void OnConnect(ENetPeer* peer) {
+        if (hosting && g_ban.IsBanned(peer->address.host, now_ms())) {
+            enet_peer_disconnect_now(peer, kDisconnectReject);  // no event, no Remote: the slot is free again
+            return;
+        }
         Remote* existing = From(peer);
         if (!existing) {
             auto remote = std::make_unique<Remote>();

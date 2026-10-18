@@ -50,3 +50,8 @@ if (-not (Test-Path $exe)) { throw "expected output not found: $exe" }
 & $exe
 if ($LASTEXITCODE -ne 0) { throw "dh2net_test failed (exit $LASTEXITCODE)" }
 "dh2net_test passed"
+
+# UPnP / wrong-password guard tests (offline; `dh2upnp_test.exe --live [port]` talks to the real router).
+& (Join-Path $buildDir 'dh2upnp_test.exe')
+if ($LASTEXITCODE -ne 0) { throw "dh2upnp_test failed (exit $LASTEXITCODE)" }
+"dh2upnp_test passed"

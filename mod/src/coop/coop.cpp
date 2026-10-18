@@ -1479,6 +1479,8 @@ bool NetIsHost() { return g_session.IsHost(); }
 
 bool NetIsOnline() { return g_session.IsHost() || g_session.IsConnected(); }
 
+uint16_t NetHostPort() { return g_session.IsHost() ? g_session.BoundPort() : 0; }
+
 uint8_t NetLocalId() { return g_session.LocalPlayerId(); }
 
 int ConnectedPlayers() {
