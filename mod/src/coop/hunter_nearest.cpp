@@ -206,8 +206,10 @@ const char* Substitute(void* scr, const char* key) {
     void* pick = NearestLivingPlayer(pos, &d2);
     const uint8_t who = puppets::PlayerOf(pick);
     if (who == net::kInvalidPlayerId) return nullptr;  // the host is nearest: unchanged
-    // StartAttackTask only accepts an entity that is in the attack-target list.
-    if (animal && target && !InAttackList(pick)) return nullptr;
+    // StartAttackTask only accepts an entity that is in the attack-target list. A script that made the player
+    // unattackable (SetCanBeAttacked(0), GameDll 0x49ec0, takes only the host hunter off the list) meant "no
+    // attack": keep that, rather than sending the animal at a client.
+    if (animal && target && (!InAttackList(pick) || !InAttackList(LocalPlayer().entity))) return nullptr;
     if (!animal) npc_follow::NoteTarget(ent, pick);
     int16_t id = -1;
     core::safe_read(static_cast<char*>(ent) + 0x04, id);

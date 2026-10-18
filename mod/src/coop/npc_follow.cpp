@@ -14,6 +14,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <unordered_map>
@@ -28,6 +29,7 @@
 #include "core/log.h"
 #include "core/module.h"
 #include "core/safe_mem.h"
+#include "engine/console_cmds.h"
 
 namespace dh2::coop::npc_follow {
 namespace {
@@ -106,6 +108,38 @@ void on_player_lookup(safetyhook::Context& ctx) {
     }
 }
 
+// Test: coop_npcinfo <entity id> logs what the brain tick works with: AI type flags, the companion's far target,
+// hello/follow distances, the allowed-task mask and the command queue length.
+void __cdecl cmd_npcinfo(const char* arg) {
+    const int id = std::atoi(core::safe_cstr(arg, 16).c_str());
+    char* npc = static_cast<char*>(EntityById(id));
+    char* brain = nullptr;
+    uintptr_t vt = 0;
+    if (!npc || !core::safe_read(npc + kNpcBrain, brain) || !brain || !core::safe_read(brain, vt) ||
+        vt != g_base + kRvaBrainVt) {
+        spdlog::warn("coop_npcinfo: id {} is not an NPC with a cAIBrain_NPC", id);
+        return;
+    }
+    uint32_t flags = 0, mask = 0, state = 0;
+    void* far_t = nullptr;
+    float hello = 0.f, follow = 0.f;
+    char* queue = nullptr;
+    int count = -1;
+    core::safe_read(npc + kNpcAiFlags, flags);
+    core::safe_read(npc + kNpcFarTarget, far_t);
+    core::safe_read(brain + 0x130, hello);
+    core::safe_read(brain + 0x134, follow);
+    core::safe_read(brain + 0x78, mask);
+    core::safe_read(brain + 0x1a4, state);
+    if (core::safe_read(brain + 0xc8, queue) && queue) core::safe_read(queue + 8, count);
+    int16_t far_id = -1;
+    if (far_t) core::safe_read(static_cast<char*>(far_t) + 0x04, far_id);
+    spdlog::info("coop_npcinfo: id {} flags={:#x} far={:#x} (id {}, player {}) hello={:.1f} follow={:.1f} mask={:#x} "
+                 "state={} queue={}",
+                 id, flags, reinterpret_cast<uintptr_t>(far_t), far_id, far_t ? puppets::PlayerOf(far_t) : 0xFF, hello, follow,
+                 mask, state, count);
+}
+
 class NpcFollowModule : public dh2::Module {
 public:
     const char* Name() const override { return "npc_follow"; }
@@ -148,6 +182,14 @@ public:
         g_written.clear();
         g_last_pick.clear();
     }
+
+    void OnFrame(float) override {
+        if (!cmd_registered_ && console_cmds::Ready())
+            cmd_registered_ = console_cmds::AddCommandStr("coop_npcinfo", &cmd_npcinfo);
+    }
+
+private:
+    bool cmd_registered_ = false;
 };
 
 DH2_MODULE(NpcFollowModule)
