@@ -821,7 +821,8 @@ public:
             // on it: vehicles.cpp stops sync attacks on a rider before they start (claw hits still reach the rider's
             // own hunter as kPlayerHurt) and splits the lions between everyone in the truck.
             // The script's player.SetCanBeAttacked(0) takes the host's hunter off the attack list; puppets follow it.
-            if (p.dead || (riding && !vehicles::RidersAreTargets()) || !combat::PlayersAttackable()) unregister_target(p);
+            if (p.dead || (riding && !(vehicles::RidersAreTargets() && !local.pilot)) || !combat::PlayersAttackable())
+                unregister_target(p);  // a pilot is never prey: the heli flies, cObjPilot::Spawn leaves the attack list
             else register_target(p);
             set_collision(p, !riding);
             entity::Vec3 spot{s.pos[0], s.pos[1] + g_y_offset, s.pos[2]};

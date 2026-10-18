@@ -4,8 +4,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
@@ -313,7 +315,7 @@ struct Cfg {
     bool board_with_host = true;   // [Vehicles] BoardWithHost: client, seat our hunter when the host rides
     bool seat_sync = true;         // [Vehicles] SeatSync: host NPC seats (the driver) mirrored on clients
     bool board_request = true;     // [Vehicles] BoardRequest: a client's own boarding makes the host board
-    bool rider_targets = false;    // [Vehicles] RiderTargets: riders stay on the attack-target list (unverified: off)
+    bool rider_targets = true;     // [Vehicles] RiderTargets: riders stay on the attack-target list (MAP4A run 2026-10-18: on)
     bool rider_knock = true;       // [Vehicles] RiderKnock: a lion that would tackle a rider knocks its hunter down
     bool split_riders = true;      // [Vehicles] SplitRiders: lions after someone in the truck are shared out
     uint32_t rider_knock_ms = 2500;  // [Vehicles] RiderKnockMs: how long the truck knock keeps the rider down
@@ -358,11 +360,18 @@ bool in_cutscene() {
     return dx * dx + dy * dy + dz * dz > 16.f;
 }
 
+// An NPC by its model path, the tracker's own test (".../npc/..."), read from the entity: not Npcs() and not
+// LocalPlayer().entity, which are filled by the tracker's 1 s scan after the map load. MAP4A's driver and hunter are
+// seated in the first frames; the first version of seat sync swallowed the driver (list still empty) and committed the
+// host's own hunter as an NPC (LocalPlayer() still unset).
 bool is_npc(int id) {
     void* ent = id >= 0 ? EntityById(id) : nullptr;
     if (!ent || ent == LocalPlayer().entity || puppets::Owns(ent)) return false;
-    const auto& npcs = Npcs();
-    return std::find(npcs.begin(), npcs.end(), ent) != npcs.end();
+    char* model = nullptr;
+    if (!core::safe_read(static_cast<char*>(ent) + 0xE0, model) || !model) return false;
+    std::string path = core::safe_cstr(model, 160);
+    for (char& c : path) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return path.find("/npc/") != std::string::npos;
 }
 
 // Client: the host's last PlayerState flags.
@@ -402,6 +411,40 @@ int guarded_seat(GetInFn fn, void* veh, void* character, int place) {
 int16_t g_last_parent = -1;  // the local hunter's parent last frame (boarding detection)
 bool g_host_rides = false;   // client: the host's hunter sat in a vehicle at the last seat pump
 
+// cObjVehicle::Use (CommonDll7 0x5adc0): the character's vt +0x1d0 (AreFreeSlots(slot, 0), slot = byte at
+// vehicleDef +0x80 + place * 2, count +0x88) decides: free -> GetIn at once; busy -> vt +0x1c8 (ClearSlots) and the
+// boarding is queued in the character (+0x1e8 vehicle id, +0x1ec slot, +0x1f0 place + 1) for its own update.
+// F9 / coop_tohost run, 2026-10-18 15:10: GetInCar returned "ok" ten times and parent stayed -1.
+constexpr uintptr_t kVehDef = 0x1d8;
+constexpr uintptr_t kHunterAreFreeSlots = 0x1d0;
+constexpr uintptr_t kHunterSetInVehicle = 0x284;  // GetInCar's second call (GameDll 0x548c0): +0x4d8 bit 4, +0xc1c
+
+int place_slot(void* veh, int place) {
+    char* def = nullptr;
+    int count = 0;
+    uint8_t slot = 0;
+    if (!core::safe_read(static_cast<char*>(veh) + kVehDef, def) || !def || !core::safe_read(def + 0x88, count)) return -1;
+    if (place >= count) return 0;
+    return core::safe_read(def + 0x80 + place * 2, slot) ? slot : -1;
+}
+
+int hunter_free_slots(void* hunter, int slot) {
+    __try {
+        using Fn = int(__thiscall*)(void*, int, int);
+        return reinterpret_cast<Fn>((*reinterpret_cast<void***>(hunter))[kHunterAreFreeSlots / 4])(hunter, slot, 0);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+
+void hunter_set_in_vehicle(void* hunter, bool in) {
+    __try {
+        using Fn = void(__thiscall*)(void*, int);
+        reinterpret_cast<Fn>((*reinterpret_cast<void***>(hunter))[kHunterSetInVehicle / 4])(hunter, in ? 1 : 0);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+
 // Seat the local hunter the way the boarding scripts do (player.GetInCar(2)), in this process's copy.
 bool seat_local(const char* why) {
     void* h = LocalPlayer().entity;
@@ -416,11 +459,25 @@ bool seat_local(const char* why) {
         spdlog::info("vehicles: seat ({}) skipped: this map has no vehicle", why);
         return false;
     }
+    const int slot = place_slot(veh, kPlayerSeat - 1);
+    const int free_before = hunter_free_slots(h, slot);
     const bool ok = guarded_get_in_car(h, kPlayerSeat);
-    const int16_t par = parent_of(h);
+    int16_t par = parent_of(h);
+    bool direct = false;
+    if (par < 0) {
+        // Use() found the hunter's slot busy (a weapon in hand, or a revived hunter's item state) and only queued the
+        // boarding for the hunter's own update, which never finishes it for a revived hunter. Do what Use does when the
+        // slot is free: GetIn at place_1, then the hunter's in-vehicle bit (what GetInCar sets after Use).
+        const int r = guarded_seat(g_get_in, veh, h, kPlayerSeat - 1);
+        direct = r == 1;
+        if (direct) hunter_set_in_vehicle(h, true);
+        par = parent_of(h);
+        spdlog::info("vehicles: Use() left our hunter outside (slot {} free={}); direct GetIn -> {} parent={}", slot,
+                     free_before, r, par);
+    }
     g_last_parent = par;  // not a boarding of our own script (pump_board_request)
-    spdlog::info("vehicles: seat our hunter ({}) in vehicle id={}: call ok={} parent={} place_1={}", why, id_of(veh), ok,
-                 par, seat_of(veh, 1));
+    spdlog::info("vehicles: seat our hunter ({}) in vehicle id={}: call ok={} direct={} parent={} place_1={}", why,
+                 id_of(veh), ok, direct, par, seat_of(veh, 1));
     return par >= 0;
 }
 
@@ -833,7 +890,7 @@ public:
         g_cfg.board_with_host = key("BoardWithHost", true);
         g_cfg.seat_sync = key("SeatSync", true);
         g_cfg.board_request = key("BoardRequest", true);
-        g_cfg.rider_targets = key("RiderTargets", false);
+        g_cfg.rider_targets = key("RiderTargets", true);
         g_cfg.rider_knock = key("RiderKnock", true);
         g_cfg.split_riders = key("SplitRiders", true);
         g_cfg.rider_knock_ms = static_cast<uint32_t>(GetPrivateProfileIntA("Vehicles", "RiderKnockMs", 2500, ini.c_str()));
