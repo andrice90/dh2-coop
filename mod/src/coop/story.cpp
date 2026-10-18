@@ -19,6 +19,7 @@
 #include "coop/events.h"
 #include "coop/player_tracker.h"
 #include "coop/puppets.h"
+#include "engine/console_cmds.h"
 #include "engine/entity_api.h"
 #include "core/exports.h"
 #include "core/hook.h"
@@ -626,6 +627,94 @@ void __fastcall hk_CompleteTask(void* self, void*, int task) {
     g_task_hook->unsafe_thiscall<void>(self, task);
 }
 
+// ---- coop_tasks: this process's mission task list (re/notes/triggers.md) ----
+// cMission singleton GameDll7 0x1869e8. Task list at +0x1f8: +0x04 last index (-1 when empty, count 0xa5f40),
+// +0x10 the cMissionTask* array (element 0xa6080). Task: +0x64 id, +0x68 state (script TASK_NOT_STARTED 1,
+// STARTED 2, FINISHED 3 = End pending, PAUSED 4, FAILED 5, HAS_END 6), +0x5c bonus, +0xd4 / +0xd8 trigger entity hit when it ends / fails (cMissionTask::End 0x96da0), +0xf0 species or object to
+// find, +0xf4 count still needed (cTaskShoot 0x999a0, cTaskFind 0x99da0).
+constexpr uintptr_t kRvaMissionPtr = 0x1869e8;
+constexpr uintptr_t kMissionTaskList = 0x1f8;
+constexpr uintptr_t kMissionLastAction = 0x1dc;  // UpdateMissionStatus (0x91e80): action, value
+constexpr uintptr_t kMissionStatus = 0x254;      // 1 running, 2 success, 3 failed
+constexpr uintptr_t kMissionNextTrig = 0x25c;    // char*: NextTrig / forced task-end trigger name
+constexpr int kMaxTasks = 64;
+
+void* MissionPtr() {
+    void* m = nullptr;
+    if (g_game_base) core::safe_read(reinterpret_cast<void*>(g_game_base + kRvaMissionPtr), m);
+    return m;
+}
+
+const char* TaskType(uintptr_t vt) {
+    if (!g_game_base || !vt) return "?";
+    switch (vt - g_game_base) {
+        case 0x111c0c: return "shoot";
+        case 0x111c98: return "find";
+        case 0x111d08: return "race";
+        case 0x111b54: return "base";
+        default: return "?";
+    }
+}
+
+const char* TaskStateName(int s) {
+    switch (s) {
+        case 1: return "not started";
+        case 2: return "started";
+        case 3: return "finished";
+        case 4: return "paused";
+        case 5: return "failed";
+        case 6: return "ended";
+        default: return "?";
+    }
+}
+
+std::string EntityName(void* ent) { return ent ? NameOf(ent) : std::string(); }
+
+void __cdecl cmd_tasks() {
+    char* mission = static_cast<char*>(MissionPtr());
+    if (!mission) {
+        spdlog::info("story: coop_tasks [{}] no cMission on this map", Role());
+        return;
+    }
+    int status = 0, last = -1, action = 0, value = 0;
+    void** arr = nullptr;
+    char* next = nullptr;
+    core::safe_read(mission + kMissionStatus, status);
+    core::safe_read(mission + kMissionTaskList + 0x04, last);
+    core::safe_read(mission + kMissionTaskList + 0x10, arr);
+    core::safe_read(mission + kMissionLastAction, action);
+    core::safe_read(mission + kMissionLastAction + 4, value);
+    core::safe_read(mission + kMissionNextTrig, next);
+    const int count = (last < -1 || last >= kMaxTasks) ? 0 : last + 1;
+    spdlog::info("story: coop_tasks [{}] mission status={} tasks={} last action={}/{} next trigger='{}'", Role(), status,
+                 count, action, value, next ? core::safe_cstr(next, 48) : std::string());
+    for (int i = 0; i < count && arr; ++i) {
+        char* task = nullptr;
+        if (!core::safe_read(arr + i, task) || !task) continue;
+        uintptr_t vt = 0;
+        int id = -1, state = 0, bonus = 0, target = 0, left = 0;
+        void* on_end = nullptr;
+        void* on_fail = nullptr;
+        core::safe_read(task, vt);
+        core::safe_read(task + 0x64, id);
+        core::safe_read(task + 0x68, state);
+        core::safe_read(task + 0x5c, bonus);
+        core::safe_read(task + 0xd4, on_end);
+        core::safe_read(task + 0xd8, on_fail);
+        const char* type = TaskType(vt);
+        const bool counted = std::strcmp(type, "shoot") == 0 || std::strcmp(type, "find") == 0;
+        if (counted) {
+            core::safe_read(task + 0xf0, target);
+            core::safe_read(task + 0xf4, left);
+        }
+        spdlog::info("story:   task id={} {} state={} ({}){} bonus={} onEnd='{}' onFail='{}'", id, type, state,
+                     TaskStateName(state), counted ? fmt::format(" target={} left={}", target, left) : std::string(),
+                     bonus, EntityName(on_end), EntityName(on_fail));
+    }
+}
+
+bool g_cmd_tasks = false;
+
 }  // namespace
 
 // Test hook (console coop_trigger <name>): activate a cObjTriggerEvent by name through the normal hook path.
@@ -677,6 +766,7 @@ public:
     }
 
     void OnFrame(float) override {
+        if (!g_cmd_tasks && console_cmds::Ready()) g_cmd_tasks = console_cmds::AddCommand0("coop_tasks", &cmd_tasks);
         PumpSkips();
         PumpDeferredFires();
         PumpGather();
