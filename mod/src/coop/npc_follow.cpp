@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <string>
 #include <unordered_map>
 
 #include <safetyhook.hpp>
@@ -134,10 +135,41 @@ void __cdecl cmd_npcinfo(const char* arg) {
     if (core::safe_read(brain + 0xc8, queue) && queue) core::safe_read(queue + 8, count);
     int16_t far_id = -1;
     if (far_t) core::safe_read(static_cast<char*>(far_t) + 0x04, far_id);
+    // Queue entries (layout assumed: cList, element array at +4; each entry a copy of the command FUN_100aae00 got:
+    // +4 priority, +8 task mask, +0x1c target entity, +0x30 "keep" flag).
+    std::string items;
+    char** arr = nullptr;
+    if (queue && count > 0 && count < 16 && core::safe_read(queue + 4, arr) && arr) {
+        for (int i = 0; i < count; ++i) {
+            char* it = nullptr;
+            int prio = 0, tmask = 0, keep = 0;
+            void* tgt = nullptr;
+            if (!core::safe_read(arr + i, it) || !it) continue;
+            core::safe_read(it + 4, prio);
+            core::safe_read(it + 8, tmask);
+            core::safe_read(it + 0x1c, tgt);
+            core::safe_read(it + 0x30, keep);
+            int16_t tid = -1;
+            if (tgt) core::safe_read(static_cast<char*>(tgt) + 0x04, tid);
+            items += fmt::format(" [prio {} mask {:#x} target id {} keep {}]", prio, tmask, tid, keep);
+        }
+    }
     spdlog::info("coop_npcinfo: id {} flags={:#x} far={:#x} (id {}, player {}) hello={:.1f} follow={:.1f} mask={:#x} "
-                 "state={} queue={}",
+                 "state={} queue={}{}",
                  id, flags, reinterpret_cast<uintptr_t>(far_t), far_id, far_t ? puppets::PlayerOf(far_t) : 0xFF, hello, follow,
-                 mask, state, count);
+                 mask, state, count, items);
+}
+
+// Test: coop_npcclear <entity id> drops that NPC's queued commands (the script StopAllTask), so the next brain tick
+// picks a player again.
+void __cdecl cmd_npcclear(const char* arg) {
+    const int id = std::atoi(core::safe_cstr(arg, 16).c_str());
+    char* npc = static_cast<char*>(EntityById(id));
+    char* brain = nullptr;
+    uintptr_t vt = 0;
+    const bool ok = g_clear_ok && npc && core::safe_read(npc + kNpcBrain, brain) && brain &&
+                    core::safe_read(brain, vt) && vt == g_base + kRvaBrainVt && guarded_clear(brain);
+    spdlog::info("coop_npcclear: id {} cleared={}", id, ok);
 }
 
 class NpcFollowModule : public dh2::Module {
@@ -184,8 +216,10 @@ public:
     }
 
     void OnFrame(float) override {
-        if (!cmd_registered_ && console_cmds::Ready())
+        if (!cmd_registered_ && console_cmds::Ready()) {
             cmd_registered_ = console_cmds::AddCommandStr("coop_npcinfo", &cmd_npcinfo);
+            console_cmds::AddCommandStr("coop_npcclear", &cmd_npcclear);
+        }
     }
 
 private:
