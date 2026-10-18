@@ -735,6 +735,28 @@ void __cdecl cmd_ammofake(const char* arg) {
                  g_ammo_fake < 0 ? "real" : (g_ammo_fake ? "has ammo" : "dry"));
 }
 
+// coop_die: this process's hunter dies as a killed hunter does: cObjHunter::OnDie (0x50350, thiscall(hunter, killer),
+// no killer = "Mission failed / Your hunt has ended!"): +0x6cc = 1, mission status 3 (0x965e0). coop_down only sets
+// health 0 and a body state, so it never reaches this. Test for a client's death and F9.
+using HunterDieFn = void(__thiscall*)(void* hunter, void* killer);
+void __cdecl cmd_die() {
+    const LocalPlayerSample& lp = LocalPlayer();
+    if (!lp.valid || !lp.entity || !g_game) {
+        spdlog::warn("flow: coop_die: no local hunter");
+        return;
+    }
+    bool ok = false;
+    __try {
+        reinterpret_cast<HunterDieFn>(Rva(0x50350))(lp.entity, nullptr);
+        ok = true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+    int dead = -1, status = -1;
+    core::safe_read(static_cast<char*>(lp.entity) + kHunterDead, dead);
+    if (void* mission = Mission()) core::safe_read(static_cast<char*>(mission) + kMissionStatus, status);
+    spdlog::info("flow: coop_die ok={} hunter dead flag={} mission status={}", ok, dead, status);
+}
+
 // coop_profilemap <map>: the profile's mission index points at <map> (what SetMapIsComplete does after the level
 // before it), so a continue plays that map's chapter movie and loads it. Tests a map whose end is hard to reach.
 void __cdecl cmd_profilemap(const char* arg) {
@@ -884,6 +906,7 @@ public:
             console_cmds::AddCommand0("coop_ammocheck", &cmd_ammocheck);
             console_cmds::AddCommandStr("coop_npcdie", &cmd_npcdie);
             console_cmds::AddCommandStr("coop_profilemap", &cmd_profilemap);
+            console_cmds::AddCommand0("coop_die", &cmd_die);
             console_cmds::AddCommand0("coop_flow", &cmd_flow);
         }
         if (!NetIsOnline()) {
