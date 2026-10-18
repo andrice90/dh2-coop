@@ -19,6 +19,7 @@
 
 #include "coop/animals.h"
 #include "coop/coop.h"
+#include "coop/flow.h"
 #include "coop/player_tracker.h"
 #include "core/exports.h"
 #include "core/hook.h"
@@ -51,6 +52,8 @@ constexpr uintptr_t kAnimalClaimable = 0x404;
 constexpr uintptr_t kAnimalHealth = 0x19C;
 constexpr char kMsgSuccess = 5;
 constexpr char kMsgFailed = 6;
+constexpr char kMsgCheckpoint = 7;  // cObjTriggerLevel (level exit): "Checkpoint reached", then the autosave menu
+constexpr int kExitHunterArg = 0x40000000;  // the exit's 0x50760(hunter, 2.0f), passed as the float's bits
 
 struct Handlers {
     Handler request = nullptr;
@@ -140,6 +143,23 @@ bool guarded_success_side_effects(void* mission) {
     }
 }
 
+// A level exit marks the map complete on the activator's profile before its checkpoint message (cObjTriggerLevel
+// GameDll 0x6c420 / 0x6c610), then calls 0x50760(hunter, 2.0f). A client never runs its own exit (flow.cpp asks the
+// host), so it gets the same here: its profile moves on to the next map like the host's.
+bool guarded_checkpoint_side_effects(void* mission) {
+    __try {
+        void* hunter = *reinterpret_cast<void**>(static_cast<char*>(mission) + kMissionHunter);
+        if (hunter) {
+            void* profile = *reinterpret_cast<void**>(static_cast<char*>(hunter) + kHunterProfile);
+            if (profile && g_set_map_complete) g_set_map_complete(profile);
+            if (g_hunter_end) g_hunter_end(hunter, kExitHunterArg);
+        }
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
 bool guarded_claim(void* animal) {
     __try {
         g_claim_hook->unsafe_ccall<void>(animal);
@@ -175,6 +195,9 @@ bool ApplyMissionEnd(const net::GameEvent& ev) {
     bool ok = true;
     if (code == kMsgSuccess) ok = guarded_success_side_effects(mission);
     else if (code == kMsgFailed) *reinterpret_cast<int*>(static_cast<char*>(mission) + kMissionStatus) = 3;
+    else if (code == kMsgCheckpoint) ok = guarded_checkpoint_side_effects(mission);
+    // The HUD shows it a moment later (stream message 0x87); flow.cpp lets exactly this one through.
+    flow::AllowMissionMessage(code);
     ok = guarded_message(mission, code, ev.key.c_str()) && ok;
     g_in_apply = false;
     spdlog::info("events: applied host mission end code={} text='{}' ok={}", static_cast<int>(code), ev.key, ok);
@@ -273,14 +296,22 @@ void OnMapStartCommit(const net::GameEvent& ev) {
     }
     g_followed_serial = ev.subjectId;
     g_followed_ms = GetTickCount();
-    // spmap also closes the main and in-game menus; menumap is how the game itself enters the menu map.
-    // A new serial for the map we are on is the host replaying it.
+    // This client continued with the host from its results screen (flow.cpp, kLevelNext): its own mod_newlevel plays
+    // the chapter movies and loads that map. Starting another load would cut it short.
+    if (want != g_map && flow::AlreadyFollowing(want)) {
+        spdlog::info("events: host map '{}' (serial {}): this client is already on its way there", want, ev.subjectId);
+        return;
+    }
+    // A new serial for the map we are on is the host replaying it ([Coop] FullReloadOnReplay makes that a full load).
     // From the main menu, spmap is fatal: it queues closemainmenu and loads the map first, and the deferred close then
     // unloads the menu's GUI models after their world is gone (cBoneStatic::UnlinkFromParent AV, 2026-10-17 22:30).
-    // mod_spmap is the game's own menu loader (GameDll MOD_LoadLevel 0x36b0): it closes the menus at once, sets the
-    // profile's map, then queues spmap.
-    const char* verb = IsMenuMap(want) ? "menumap " : (IsMenuMap(g_map) ? "mod_spmap " : "spmap ");
-    const std::string cmd = verb + want;
+    // mod_spmap is the game's own menu loader (GameDll MOD_LoadLevel 0x36b0): it closes the main and game menus at
+    // once (a results screen too), records the map as the profile's mission (its next map then matches the host's),
+    // then queues spmap. Its mission table names are lower case. menumap is how the game itself enters the menu map.
+    if (!IsMenuMap(g_map)) flow::BeforeFollow();
+    std::string lower = want;
+    for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    const std::string cmd = IsMenuMap(want) ? "menumap " + want : "mod_spmap " + lower;
     const int r = console::Exec(cmd.c_str());
     spdlog::info("events: following host to '{}' (serial {}, here '{}'): {} -> {}", want, ev.subjectId, g_map, cmd, r);
 }
@@ -640,6 +671,14 @@ bool SnapshotIsCurrent(uint16_t hostMapSerial) {
     // Nothing announced yet (fresh join): the ids may belong to another map.
     if (g_host_map.empty()) return false;
     return hostMapSerial == g_host_serial && g_host_map == g_map;
+}
+
+void CommitHudMissionMessage(int code, const char* text) {
+    if (!NetIsHost() || !NetIsOnline()) return;
+    const std::string t = core::safe_cstr(text, 64).substr(0, net::kMaxGameEventKeyChars);
+    if (FindJournal(kMissionEnd, 0, t) >= 0) return;  // came through 0x91c20, already committed
+    spdlog::info("events: host HUD mission message code={} text='{}' did not pass cMission; committing it", code, t);
+    Commit(kMissionEnd, 0, static_cast<uint32_t>(code), 0.f, t, 0);
 }
 
 void DebugClaim(uint16_t animalId) {

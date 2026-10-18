@@ -17,7 +17,7 @@ constexpr uint16_t kAnimalDied = 1;   // commit. subject = entity id, key = "lif
                                       // i0 = life | report << 16 | fled << 24; report = 1 + the MISSION_ACTION_* this end
                                       // gave the host's mission (0 = none), fled = reached a flee point (parked, no
                                       // corpse). The client presents the death once and gives its mission the same report.
-constexpr uint16_t kMissionEnd = 2;   // commit. i0 = message code (5 success, 6 failed), key = text.
+constexpr uint16_t kMissionEnd = 2;   // commit. i0 = message code (5 success, 6 failed, 7 level exit), key = text.
 constexpr uint16_t kTrophyClaim = 3;  // request (client pressed the claim key) and commit. subject = entity id.
 constexpr uint16_t kMapStart = 4;     // commit. key = map name (e.g. HUNTMAP4, MENUMAP), subject = host map serial.
                                       // Clients follow with spmap/menumap; a same-name commit is a replay.
@@ -55,6 +55,15 @@ constexpr uint16_t kAnimalRevive = 20;   // commit (animals.cpp). subject = anim
                                          // that had died or fled; the client resets that mirror and re-freezes it.
 constexpr uint16_t kScaleConfig = 21;    // commit, not journaled (scale.cpp), sent to each client once per connection.
                                          // i0 = Bodies | Reserves << 8: the host's [Scale] values decide entity ids.
+// Mission flow (flow.cpp, re/notes/flow.md).
+constexpr uint16_t kLevelExit = 24;      // request. subject = cObjTriggerLevel entity id, key = its name ("exit_1"),
+                                         // i0 = 1 fast path (ActivateTriggerLevel). A client reached a level exit; the
+                                         // host runs it for its own hunter when it is armed there (one exit per map).
+constexpr uint16_t kAmmoState = 25;      // request. i0 = 1 while this client's ammo check (GameDll 0x2f530) passes.
+                                         // The host fails an ammo-gated task only when no living player has ammo.
+constexpr uint16_t kLevelNext = 26;      // commit (Send, not journaled). The host left its results/pause menu: i0 = 1
+                                         // continue (key = "map|spawn", the profile's next map and the exit's spawn
+                                         // point), 2 end-of-game movie, 3 retry (key = map), 4 main menu.
 constexpr uint16_t kScaleMax = 40;       // commit (scale.cpp). subject = animal id, f0 = its new max health (+0x4C0),
                                          // key = "<factor> #<serial>". Player-count scaling of a boss / lone large animal.
 
@@ -84,6 +93,10 @@ void OnPeerLeft(uint8_t playerId);
 // Client: between its kSyncRequest and the end of the catch-up (replayed commits applied, cutscenes
 // skipped, hunter moved to the host). Story code skips cutscenes while this is true.
 bool CatchingUp();
+
+// Host: the HUD showed a mission message (5 success, 6 failed, 7 checkpoint). One that did not pass cMission's
+// 0x91c20 (a guide's death, a level exit, the task status report 0x96750) is committed as kMissionEnd here.
+void CommitHudMissionMessage(int code, const char* text);
 
 // Test hook (console coop_claim <id>): run the claim path for an animal as if the engine called it.
 void DebugClaim(uint16_t animalId);

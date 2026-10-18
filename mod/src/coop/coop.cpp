@@ -1383,6 +1383,11 @@ std::vector<uint8_t> PeerIds() {
 
 bool TeleportToHost(const char* why) {
     if (g_session.IsHost() || !g_session.IsConnected()) return false;
+    // While a map change is under way the host's last position belongs to its next map (flow.cpp).
+    if (!events::SameMapAsHost()) {
+        spdlog::info("coop: teleport to host ({}) skipped: the host is on another map", why ? why : "");
+        return false;
+    }
     const auto host = g_remotes.find(0);
     if (host == g_remotes.end() || host->second.received == 0) {
         spdlog::info("coop: teleport to host ({}) skipped: no host position yet", why ? why : "");

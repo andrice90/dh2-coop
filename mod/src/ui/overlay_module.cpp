@@ -6,6 +6,7 @@
 #include "core/safe_mem.h"
 #include "display/display.h"
 #include "coop/coop.h"
+#include "coop/flow.h"
 #include "coop/player_tracker.h"
 #include "coop/puppet_models.h"
 #include "engine/d3d8_hooks.h"
@@ -682,6 +683,18 @@ void on_present(void* device, const RECT* src, const RECT* dst, HWND window, con
                          ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
                          ImGuiWindowFlags_AlwaysAutoResize);
         ImGui::TextUnformatted(view.notice.c_str());
+        ImGui::End();
+    }
+    // Mission flow line for a client (waiting for the host's choice, following it): coop/flow.cpp.
+    const std::string flow_line = dh2::coop::flow::Banner();
+    if (!flow_line.empty() && !g_ov.visible) {
+        ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, 8.0f), ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+        ImGui::SetNextWindowBgAlpha(0.70f);
+        ImGui::Begin("##coop_flow", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs |
+                         ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
+                         ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::TextColored(ImVec4(1.0f, 0.86f, 0.35f, 1.0f), "%s", flow_line.c_str());
         ImGui::End();
     }
     ImGui::Render();
