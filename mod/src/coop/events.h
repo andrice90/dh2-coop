@@ -41,6 +41,8 @@ constexpr uint16_t kKnockRequest = 15;   // request. subject = victim player id,
 constexpr uint16_t kPropHit = 16;        // request and commit. subject = cObjTarget entity id, i0 = 1 stump / 0 bottle.
                                          // Journaled, so a late joiner breaks the same props during catch-up.
                                          // Not sent with Send: a broken bottle or stump stays broken.
+constexpr uint16_t kHostNotice = 17;     // commit (Send, not journaled). key = a short on-screen line from the host
+                                         // ("Host restarts MAP3B"); the map change itself is the usual kMapStart.
 
 // onRequest runs on the host. onCommit runs on a client. Either may be null.
 using Handler = void (*)(const net::GameEvent&);

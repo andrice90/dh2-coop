@@ -6,6 +6,7 @@
 #include <iphlpapi.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -73,6 +74,17 @@ std::string g_lobby_msg = "Not in a co-op game.";
 std::string g_join_target;  // "host:port" of the current or last join
 uint16_t g_join_port = 0;
 uint32_t g_join_started_ms = 0;
+
+// Host level recovery (HostRestartLevel / HostNextLevel, F5 / F6). Restart goes through the main menu: loading
+// the map that is already loaded resets it in place, the same-map replay that crashed at the next teardown.
+struct LevelJump {
+    int armed = 0;              // 1 restart, 2 next level: the first press, waiting for the second
+    uint32_t armed_until = 0;
+    std::string restart_map;    // set while hopping through the main menu
+    uint32_t restart_at = 0;    // menu loaded: load restart_map at this time
+    bool f5_down = false;
+    bool f6_down = false;
+} g_jump;
 
 void set_lobby(LobbyState state, std::string msg) {
     if (g_lobby_state != state || g_lobby_msg != msg) spdlog::info("coop: lobby -> {}", msg);
@@ -411,6 +423,18 @@ void __cdecl cmd_lobby(const char* arg) {
     }
 }
 
+// Test: F5 / F6 without the keyboard. coop_level restart | next (arms and confirms in one go).
+void __cdecl cmd_level(const char* arg) {
+    const std::string a = core::safe_cstr(arg, 32);
+    if (a == "restart") {
+        if (!HostRestartLevel()) HostRestartLevel();
+    } else if (a == "next") {
+        if (!HostNextLevel()) HostNextLevel();
+    } else {
+        spdlog::warn("coop_level: usage coop_level restart | next");
+    }
+}
+
 // Test: draw remote player <id> with puppet model <index> on this machine only (model preview).
 void __cdecl cmd_puppetmodel(const char* arg) {
     std::string a = core::safe_cstr(arg, 32);
@@ -482,6 +506,8 @@ public:
         g_coop = this;
         load_settings();
         g_cmd_epoch = std::filesystem::file_time_type::clock::now();
+        events::SetHandler(events::kHostNotice, nullptr,
+                           [](const net::GameEvent& ev) { show_notice(ev.key, 6000); });
     }
 
     void OnEngineReady(HMODULE engine) override {
@@ -495,6 +521,18 @@ public:
     }
 
     void OnMapLoaded(const char* bspName) override {
+        // Restart hop: the main menu is up, the level follows a moment later (OnFrame). Any other map ends the hop.
+        if (!g_jump.restart_map.empty()) {
+            std::string label = bspName ? bspName : "";
+            for (char& c : label) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            const bool menu = label.find("menumap") != std::string::npos;
+            if (menu && g_jump.restart_at == 0) {
+                g_jump.restart_at = now_ms() + 1500;
+            } else if (!menu) {
+                g_jump.restart_map.clear();
+                g_jump.restart_at = 0;
+            }
+        }
         if (!self_test_done_) {
             self_test_done_ = true;
             // Proves registration + argument passing end to end (handlers log what they receive).
@@ -531,6 +569,7 @@ public:
             console_cmds::AddCommandStr("coop_tp", &cmd_tp);
             console_cmds::AddCommandStr("coop_lobby", &cmd_lobby);
             console_cmds::AddCommandStr("coop_puppetmodel", &cmd_puppetmodel);
+            console_cmds::AddCommandStr("coop_level", &cmd_level);
         }
         cmd_poll_ += dt;
         if (commands_registered_ && cmd_poll_ >= 0.5f) {
@@ -543,6 +582,7 @@ public:
         refresh_local_addresses();
         ApplyPending();
         CheckJoinTimeout();
+        PollLevelKeys();
         g_frame_thread = GetCurrentThreadId();
         g_last_frame_ms = now_ms();
         if (g_flip_pumping) {
@@ -675,6 +715,24 @@ private:
         const size_t dropped = g_session.DrainEvents().size();
         if (dropped) spdlog::info("coop: dropped {} event(s) of the previous session", dropped);
         g_remotes.clear();
+    }
+
+    // F5 restart / F6 next level (host; window in front), and the second half of a restart hop.
+    void PollLevelKeys() {
+        const bool f5 = (GetAsyncKeyState(VK_F5) & 0x8000) != 0;
+        const bool f6 = (GetAsyncKeyState(VK_F6) & 0x8000) != 0;
+        if (own_foreground()) {
+            if (f5 && !g_jump.f5_down) HostRestartLevel();
+            if (f6 && !g_jump.f6_down) HostNextLevel();
+        }
+        g_jump.f5_down = f5;
+        g_jump.f6_down = f6;
+        if (g_jump.restart_at != 0 && static_cast<int32_t>(now_ms() - g_jump.restart_at) >= 0) {
+            const std::string cmd = "mod_spmap " + g_jump.restart_map;
+            g_jump.restart_map.clear();
+            g_jump.restart_at = 0;
+            spdlog::info("coop: restart hop: {} -> {}", cmd, console::Exec(cmd.c_str()));
+        }
     }
 
     // ENet keeps retrying an unanswered connect for longer than a player waits. The lobby gives up after 8 s.
@@ -1165,6 +1223,81 @@ void LobbyLeave() {
     g_settings.auto_role.clear();
     g_auto_stopped = true;
     RequestLeave();
+}
+
+// ---- host level recovery ----
+
+std::string NextStoryMap(const std::string& map) {
+    static const char* const kStory[] = {"MAP1",  "MAP2A", "MAP2B", "MAP2C",  "MAP3A",  "MAP3B",  "MAP3C",
+                                         "MAP4A", "MAP4B", "MAP5",  "MAP6",   "MAP7",   "MAP8",   "MAP9",
+                                         "MAP10", "MAP11A", "MAP11B", "MAP11C", "MAP12A", "MAP12B", "MAP12C"};
+    constexpr size_t n = sizeof kStory / sizeof kStory[0];
+    for (size_t i = 0; i + 1 < n; ++i) {
+        if (map == kStory[i]) return kStory[i + 1];
+    }
+    return {};
+}
+
+namespace {
+
+// First call arms and says how to confirm; a second call of the same kind within 3 s returns true.
+bool confirm_level_jump(int which, const std::string& what) {
+    const uint32_t now = now_ms();
+    if (g_jump.armed == which && static_cast<int32_t>(g_jump.armed_until - now) > 0) {
+        g_jump.armed = 0;
+        return true;
+    }
+    g_jump.armed = which;
+    g_jump.armed_until = now + 3000;
+    show_notice(fmt::format("Press {} again (or click again) to {}.", which == 1 ? "F5" : "F6", what), 3000);
+    return false;
+}
+
+// A client cannot change the level; the host (or a solo player) can.
+bool may_change_level() {
+    if (!g_session.IsHost() && g_session.IsConnected()) {
+        show_notice("Only the host can restart the level (F5) or skip to the next one (F6).", 4000);
+        return false;
+    }
+    return true;
+}
+
+void tell_everyone(const std::string& text) {
+    show_notice(text, 6000);
+    if (g_session.IsHost())
+        events::Send(events::kHostNotice, 0, 0, 0.f, text.substr(0, net::kMaxGameEventKeyChars), 0);
+}
+
+}  // namespace
+
+bool HostRestartLevel() {
+    if (!may_change_level()) return false;
+    const std::string map = events::CurrentMap();
+    if (map.empty() || map == "MENUMAP") return false;
+    if (!confirm_level_jump(1, fmt::format("restart {} for everyone", map))) return false;
+    tell_everyone(fmt::format("Host restarts {}", map));
+    g_jump.restart_map = map;
+    g_jump.restart_at = 0;
+    const int r = console::Exec("menumap menumap");
+    spdlog::info("coop: host restarts '{}' through the main menu -> {}", map, r);
+    return true;
+}
+
+bool HostNextLevel() {
+    if (!may_change_level()) return false;
+    const std::string map = events::CurrentMap();
+    if (map.empty() || map == "MENUMAP") return false;
+    const std::string next = NextStoryMap(map);
+    if (next.empty()) {
+        show_notice(fmt::format("{} has no next story level (last level, hunt or bonus map). F5 restarts it.", map),
+                    5000);
+        return false;
+    }
+    if (!confirm_level_jump(2, fmt::format("skip to {} for everyone", next))) return false;
+    tell_everyone(fmt::format("Host skips to {}", next));
+    const std::string cmd = "mod_spmap " + next;
+    spdlog::info("coop: host skips '{}' -> '{}': {} -> {}", map, next, cmd, console::Exec(cmd.c_str()));
+    return true;
 }
 
 bool BroadcastAnimalStates(const net::AnimalStates& states) {

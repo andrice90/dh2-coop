@@ -34,6 +34,13 @@ PLAY
 6. Hunting map: close the CHOOSE ITEM menu with Enter, Left, Enter.
 Friends can also join later, while the host is already playing: they catch up and appear next to the host.
 
+IF A LEVEL GETS STUCK (host only, everyone comes along)
+- F5, then F5 again within 3 seconds: restart the current level from its start (the game's own
+  checkpoints are level starts; there are none inside a level).
+- F6, then F6 again within 3 seconds: skip to the next story level.
+- The same two buttons are in the lobby window (F8) while you host a level.
+- A player stuck somewhere can press F9 after dying to stand up next to the host.
+
 WHAT WORKS TODAY
 - Up to 4 players. You see each other (the character you picked, with your weapon), moving, aiming, firing.
 - F7 toggles markers over the other players (name and distance, or an arrow at the screen edge).

@@ -91,6 +91,15 @@ void LobbyHost(const std::string& name, int model, uint16_t port);
 void LobbyJoin(const std::string& name, int model, const std::string& host, uint16_t port);
 void LobbyLeave();
 
+// Host recovery (F5 / F6 and the lobby buttons). The game has no checkpoints inside a level (its "Checkpoint
+// reached" is the level exit), so these are the level-sized ones: restart the current level from its start, or go
+// on to the next story level. The first call arms (on-screen "press again"), a second within 3 s does it; clients
+// follow the map change. Returns false on a client or when there is nothing to do (main menu, last level).
+bool HostRestartLevel();
+bool HostNextLevel();
+// Next story level after `map` ("" after MAP12C or for hunt / bonus maps).
+std::string NextStoryMap(const std::string& map);
+
 // Deferred: applied on the next frame (game thread).
 void RequestHost(uint16_t port);
 void RequestJoin(const std::string& host, uint16_t port);

@@ -365,6 +365,18 @@ void draw_lobby(const dh2::coop::SessionView& view, ImVec2 disp) {
         else if (lobby.state == LobbyState::Connecting)
             hint = "Waiting for the host to answer (a few seconds).";
         if (hint) ImGui::TextWrapped("%s", hint);
+        if (lobby.state == LobbyState::Hosting && !lobby.atMenu && !lobby.map.empty()) {
+            // Level recovery for everyone: the first click arms (on-screen "click again"), the second does it.
+            ImGui::Text("Level %s", lobby.map.c_str());
+            ImGui::SameLine();
+            if (ImGui::Button("Restart level (F5)")) dh2::coop::HostRestartLevel();
+            const std::string next = dh2::coop::NextStoryMap(lobby.map);
+            if (!next.empty()) {
+                ImGui::SameLine();
+                const std::string label = "Next level: " + next + " (F6)";
+                if (ImGui::Button(label.c_str())) dh2::coop::HostNextLevel();
+            }
+        }
         const char* leave = lobby.state == LobbyState::Hosting   ? "Stop hosting"
                             : lobby.state == LobbyState::Connecting ? "Cancel"
                                                                     : "Leave";
