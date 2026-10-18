@@ -279,6 +279,7 @@ function Run-Timed([string]$M, [string]$Name, [int]$Players, [int]$Secs, $Cmds, 
     $errFile = Join-Path $dest 'run-error.txt'
     $aliveFile = Join-Path $dest 'alive.txt'
     foreach ($f in $outFile, $errFile, $aliveFile) { Remove-Item -LiteralPath $f -ErrorAction SilentlyContinue }
+    $mb = (& git -C $root merge-base HEAD main 2>$null); if ($mb) { Put-Text (Join-Path $dest 'build.txt') ("main " + $mb.Substring(0, 7)) }
     Progress "[$M] $Name start (players $Players, ${Secs}s)"
     if (Get-Process Main7 -ErrorAction SilentlyContinue | Where-Object { try { $_.Path -like "$root\game*\Bin\Main7.exe" } catch { $false } }) { Stop-Ours }
     $ra = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$runScript`"", '-Map', $M, '-Port', $Port,
