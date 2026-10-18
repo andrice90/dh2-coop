@@ -1,6 +1,26 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-18 00:3x by the lead (Claude). Earlier: Grok removed DLSS 5 from the retail Bin; the co-op mod stayed.
+**Last updated:** 2026-10-18 by the lead (Claude). Earlier: Grok removed DLSS 5 from the retail Bin; the co-op mod stayed.
+
+## Wave "playthrough" (2026-10-18): clean co-op run MAP1 → MAP12C
+User: extend the MAP4A lessons (movers, riders, NPC/animal sync) and the earlier map work to every story map; research each map, cross-reference, implement and test targeted fixes; full end-to-end runs are not feasible, test sections. Brief: `re/jobs/_wave-playthrough.md` (MAP4A lessons, roster, pre-allocated event kinds / msg ids / flags, test conventions). The old audits (`re/notes/audit-maps-a/b/c.md`) are the starting gap lists.
+
+| Agent (model) | Worktree / branch | Port / slot | Scope |
+|---|---|---|---|
+| research-A (Opus) | main, `re/notes/playthrough-a.md` | – / A | MAP1–MAP3C delta audit, routing |
+| research-B (Opus) | main, `re/notes/playthrough-b.md` | – / B | MAP4A–MAP8 |
+| research-C (Opus) | main, `re/notes/playthrough-c.md` | – / C | MAP9–MAP12C + game end |
+| triggers (Opus) | `dh2coop-trig` / `triggers` (moved from `dh2coop-scale`) | 27610 / T | `coop_tasks`, OnHit/BeginCutScene replication (`kTriggerHit` 18), host fire guards, journal serials, spawner volumes |
+| life (Opus) | `dh2coop-life` / `journal-life` | 27620 / J | kill credit for client kills, second lives (`kAnimalRevive` 20), scale interplay, host scale settings win |
+| beasts (Opus) | `dh2coop-beasts` / `beasts` | 27630 / K | client tranq hits (MAP6/MAP7), water crocodiles, claim side effects, clip coverage, cobra bites |
+| flow (Opus) | `dh2coop-flow` / `mission-flow` (old WIP → `mission-flow-wip`) | 27640 / D | host-decided exits, guide death, ammo tasks, results/retry, game end |
+| vehicles (Opus) | `dh2coop-truck` / `trucks` | 27650 / N | MAP5 truck, mover sweep, MAP4A riders as targets / late join |
+| pilot (Opus) | `dh2coop-pilot` / `pilot-maps` | 27660 / P | MAP11A/11C `cObjPilot`, host-driven helicopter |
+| hunter (Opus) | `dh2coop-hunter` / `hunter-nearest` (rebase) | 27670 / M | hunter = nearest, companions follow nearest, `SetCanBeAttacked` for puppets |
+| bosses (Opus) | `dh2coop-yeti` / `yeti` (rebase) | 27680 / W | yeti, Hogzilla, Big Grimm, NPC PlayAnim beats |
+| smoke (Sonnet) | `dh2coop-smoke` / `smoke-pass` | 27690 / G | baseline 2-window smoke on all 21 story maps, F5/F6, 3 players |
+
+Lead: review + cherry-pick every branch into main; merge `replay-crash` and `puppet-polish` now; integration test; route research findings to owners.
 
 ## Pivot to real testing (2026-10-17 late night)
 User: pause the wide fan-out; make install and host/join very easy; start real testing over Tailscale; implement player-count scaling; fix the compass; then a lobby overlay (one DH2 COOP shortcut → main menu → lobby with HOST / JOIN).
