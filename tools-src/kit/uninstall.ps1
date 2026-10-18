@@ -5,7 +5,7 @@
 #   powershell -ExecutionPolicy Bypass -File uninstall.ps1 -DryRun   (lists what it would remove, changes nothing)
 # What goes:
 #   - in the game's Bin: dh2coop.asi, dh2coop.ini, every dh2coop* file the mod writes (logs, crash dump, lobby
-#     settings with the saved friend key, command and test files), the debug.1/2.log copies, host.bat, join.bat,
+#     settings, port forward record, command and test files), the debug.1/2.log copies, host.bat, join.bat,
 #     host_dlss5.bat, this uninstaller's copy
 #   - the ASI loader dinput8.dll when this kit put it there; another mod's loader that the installer kept as
 #     dinput8.dll.dh2coop-backup is put back
@@ -14,6 +14,8 @@
 #   - the desktop shortcuts DH2 COOP, DH2 HOST, DH2 JOIN, DH2 HOST DLSS
 #   - Windows Firewall rules named "DH2 coop ..." (one administrator prompt, only when there is one to remove or the
 #     game folder needs it)
+#   - a router port forward a crashed game left open while hosting (UPnP; only when the router still shows it as
+#     the mod's, pointing at this PC)
 # What stays: the game itself, Tailscale (other programs may use it), and the firewall entries Windows made itself
 # for Main7.exe when it asked the first time (the game uses them without the mod too).
 # Run from the kit folder it finds every game folder with the mod in it; run from a Bin folder it cleans that one.
@@ -108,9 +110,71 @@ function Get-FirewallRules {
     try { return @(Get-NetFirewallRule -DisplayName $fwPattern -ErrorAction SilentlyContinue) } catch { return @() }
 }
 
+# A game that crashed while hosting leaves its router port forward behind (some routers, eero included, ignore the
+# lease), named in dh2coop-upnp.state ("udp <port> <this PC's LAN IP>"). Close exactly that one: only when the router
+# still shows it pointing at this PC with the mod's description. SOAP over plain HTTP to the router (the mod does the
+# same); the router is found through Windows' UPnP device finder (no listening socket, no firewall prompt).
+function Close-LeftoverForward([string]$stateFile) {
+    $m = [regex]::Match(([IO.File]::ReadAllText($stateFile)).Trim(), '^udp (\d{1,5}) (\d{1,3}(\.\d{1,3}){3})$')
+    if (-not $m.Success) { return }
+    $port = [int]$m.Groups[1].Value
+    $client = $m.Groups[2].Value
+    if ($DryRun) { Write-Host "   would close the router port forward UDP $port (left by a crash)" -ForegroundColor DarkYellow; $script:removed++; return }
+    try {
+        if (-not ('Dh2Un.DocUrl' -as [type])) {
+            Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+namespace Dh2Un {
+[ComImport, Guid("E7772804-3287-418E-9072-CF2B47238981"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IUPnPDeviceDocumentAccess { [PreserveSig] int GetDocumentURL([MarshalAs(UnmanagedType.BStr)] out string url); }
+public static class DocUrl {
+    public static string Of(object dev) { string u; int hr = ((IUPnPDeviceDocumentAccess)dev).GetDocumentURL(out u); return hr == 0 ? u : ""; }
+}
+}
+"@
+        }
+        $finder = New-Object -ComObject UPnP.UPnPDeviceFinder
+        $closed = $false
+        foreach ($dev in $finder.FindByType('urn:schemas-upnp-org:device:InternetGatewayDevice:1', 0)) {
+            $loc = [Dh2Un.DocUrl]::Of($dev)
+            if (-not $loc) { continue }
+            $wc = New-Object System.Net.WebClient
+            $wc.Proxy = $null
+            [xml]$x = $wc.DownloadString($loc)
+            $svc = Select-Xml -Xml $x -Namespace @{ u = 'urn:schemas-upnp-org:device-1-0' } -XPath '//u:service[contains(u:serviceType, "WANIPConnection") or contains(u:serviceType, "WANPPPConnection")]' | Select-Object -First 1
+            if (-not $svc) { continue }
+            $type = $svc.Node.serviceType
+            $url = (New-Object Uri(([Uri]$loc), $svc.Node.controlURL)).AbsoluteUri
+            $soap = {
+                param($action, $argXml)
+                $body = "<?xml version=`"1.0`"?><s:Envelope xmlns:s=`"http://schemas.xmlsoap.org/soap/envelope/`" s:encodingStyle=`"http://schemas.xmlsoap.org/soap/encoding/`"><s:Body><u:$action xmlns:u=`"$type`">$argXml</u:$action></s:Body></s:Envelope>"
+                $w = New-Object System.Net.WebClient
+                $w.Proxy = $null
+                $w.Headers.Add('Content-Type', 'text/xml; charset="utf-8"')
+                $w.Headers.Add('SOAPAction', "`"$type#$action`"")
+                try { return $w.UploadString($url, $body) } catch { return '' }
+            }
+            $key = "<NewRemoteHost></NewRemoteHost><NewExternalPort>$port</NewExternalPort><NewProtocol>UDP</NewProtocol>"
+            $entry = & $soap 'GetSpecificPortMappingEntry' $key
+            if ($entry -match '<errorCode>') { Say "router port forward UDP ${port}: already closed"; $closed = $true; break }
+            $mc = [regex]::Match($entry, 'NewInternalClient>([^<]*)<').Groups[1].Value
+            $md = [regex]::Match($entry, 'NewPortMappingDescription>([^<]*)<').Groups[1].Value
+            if ($mc -ne $client -or $md -ne 'DH2 coop') { Keep "router port forward UDP $port (it now belongs to $mc '$md')"; $closed = $true; break }
+            $r = & $soap 'DeletePortMapping' $key
+            if ($r -and $r -notmatch '<errorCode>') { Gone "router port forward UDP $port (left by a crash)"; $closed = $true; break }
+        }
+        if (-not $closed) { Keep "router port forward UDP ${port}: the router did not answer (look for 'DH2 coop' in the router's UPnP list)" }
+    } catch {
+        Keep "router port forward UDP ${port}: $($_.Exception.Message)"
+    }
+}
+
 function Remove-ModFromBin([string]$bin) {
     Write-Host ''
     Write-Host "== $bin" -ForegroundColor Cyan
+    $state = Join-Path $bin 'dh2coop-upnp.state'
+    if (Test-Path -LiteralPath $state) { Close-LeftoverForward $state }
     # The ASI loader decision needs to know whether other ASI mods stay, so the mod itself goes first.
     foreach ($f in @(Get-ChildItem -LiteralPath $bin -Filter 'dh2coop*' -File -ErrorAction SilentlyContinue)) {
         Remove-Path $f.FullName $f.Name
@@ -253,6 +317,8 @@ try {
     if ($dataHas -and -not ($bins -contains (Resolve-Path -LiteralPath $DataDir).Path)) {
         Write-Host ''
         Write-Host "== $DataDir" -ForegroundColor Cyan
+        $state = Join-Path $DataDir 'dh2coop-upnp.state'
+        if (Test-Path -LiteralPath $state) { Close-LeftoverForward $state }
         # The whole folder only when it is the mod's own (%LOCALAPPDATA%\dh2coop); elsewhere only the mod's files.
         if ((Split-Path -Leaf $DataDir) -eq 'dh2coop' -and -not (Test-Path -LiteralPath (Join-Path $DataDir 'Main7.exe'))) {
             Remove-Path $DataDir 'the folder and everything in it'

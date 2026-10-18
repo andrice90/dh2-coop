@@ -2,7 +2,7 @@
 rem Co-op client without the lobby window: the game starts at its main menu and joins the host (retrying until the
 rem host is up), then follows the host into its game. The DH2 COOP shortcut (lobby, F8) does the same with buttons.
 rem   join.bat                 asks for the host's address, remembers the last one
-rem   join.bat 100.64.1.2      joins that host directly
+rem   join.bat 192.168.1.20    joins that host directly
 cd /d "%~dp0"
 rem The last answer is kept per user: a game under Program Files cannot be written by cmd.
 set STORE=%LOCALAPPDATA%\dh2coop
@@ -17,11 +17,11 @@ if not "%HOSTIP%"=="" goto have
 set LAST=
 if exist "%STORE%\lasthost.txt" set /p LAST=<"%STORE%\lasthost.txt"
 if "%LAST%"=="" goto ask
-set /p HOSTIP=Host tailnet IP address [Enter = %LAST%]:
+set /p HOSTIP=Host IP address [Enter = %LAST%]:
 if "%HOSTIP%"=="" set HOSTIP=%LAST%
 goto have
 :ask
-set /p HOSTIP=Host tailnet IP address:
+set /p HOSTIP=Host IP address:
 :have
 if "%HOSTIP%"=="" (
   echo No address given.

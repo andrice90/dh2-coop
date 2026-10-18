@@ -35,12 +35,11 @@ struct LobbyFields {
     bool loaded = false;
     char name[32] = {};
     int model = 0;
-    char join_host[640] = {};  // an address, or a pasted join code (up to 300 characters) until it is swapped for the address
-    int join_port = 27420;
+    char join_text[640] = {};  // a join code (up to 300 characters), or IP / IP:port
+    int join_port = 27420;     // the port for an IP typed without one
     int host_port = 27420;
-    char friend_key[200] = {};  // typed / pasted, masked; wiped after Save
     std::string error;  // input check before HOST / JOIN
-    std::string info;   // what the last join code / friend key / Tailscale button did
+    std::string info;   // what the JOIN field holds, or what the last Copy did
 };
 
 struct OverlayState {
@@ -178,7 +177,7 @@ void load_lobby_fields() {
     const dh2::coop::LobbyPrefs p = dh2::coop::LoadLobbyPrefs();
     std::snprintf(f.name, sizeof f.name, "%s", p.name.c_str());
     f.model = p.model;
-    std::snprintf(f.join_host, sizeof f.join_host, "%s", p.join_host.c_str());
+    std::snprintf(f.join_text, sizeof f.join_text, "%s", p.join_host.c_str());
     f.join_port = p.join_port;
     f.host_port = p.host_port;
     f.loaded = true;
@@ -189,7 +188,7 @@ void save_lobby_fields() {
     dh2::coop::LobbyPrefs p;
     p.name = f.name;
     p.model = f.model;
-    p.join_host = f.join_host;
+    p.join_host = f.join_text;
     p.join_port = static_cast<uint16_t>(f.join_port);
     p.host_port = static_cast<uint16_t>(f.host_port);
     dh2::coop::SaveLobbyPrefs(p);
@@ -233,99 +232,79 @@ bool model_combo(const char* label, int* model) {
     return changed;
 }
 
-// The JOIN address field got text. A join code is swapped for the address inside it (port and a note go to the
-// fields); returns the new field text, or "" to leave the text alone. A damaged code sets the error line.
-std::string resolve_join_text(LobbyFields& f, const std::string& text) {
+// What the JOIN field holds, as the line under it: a code's host, or why the text cannot be used.
+void describe_join_text(LobbyFields& f) {
     f.error.clear();
     f.info.clear();
-    const dh2::coop::JoinInput in = dh2::coop::ParseJoinInput(text);
-    if (in.kind == dh2::coop::JoinInput::Kind::Code) {
-        f.join_port = in.port;
-        f.info = in.message;
-        spdlog::info("lobby: join code pasted -> {}:{} (host '{}')", in.host, in.port, in.hostName);
-        return in.host;
-    }
-    if (in.kind == dh2::coop::JoinInput::Kind::BadCode) f.error = in.message;
-    return {};
+    const dh2::coop::JoinInput in = dh2::coop::ParseJoinInput(f.join_text, static_cast<uint16_t>(f.join_port));
+    if (in.kind == dh2::coop::JoinInput::Kind::Code) f.info = in.message;
+    else if (in.kind == dh2::coop::JoinInput::Kind::Bad) f.error = in.message;
 }
 
-// ImGuiInputTextFlags_CallbackEdit: the only safe way to rewrite the text of a field that has the focus.
-int join_text_edited(ImGuiInputTextCallbackData* data) {
-    auto* f = static_cast<LobbyFields*>(data->UserData);
-    const std::string host = resolve_join_text(*f, std::string(data->Buf, static_cast<size_t>(data->BufTextLen)));
-    if (!host.empty()) {
-        data->DeleteChars(0, data->BufTextLen);
-        data->InsertChars(0, host.c_str());
-    }
-    return 0;
+// Where the address column starts (window padding + the widest label).
+float label_column() {
+    const ImGuiStyle& s = ImGui::GetStyle();
+    return s.WindowPadding.x + ImGui::CalcTextSize("Join code").x + s.ItemSpacing.x * 2.f;
 }
 
-// HOST: the friend key (once), the join code and the Tailscale help. `setup` adds the key field (shown before hosting).
-void draw_invite_controls(const dh2::coop::LobbyView& lobby, bool setup, uint16_t port, float scale) {
-    LobbyFields& f = g_ov.lobby;
-    const int chars = dh2::coop::FriendKeyChars();
-    if (setup) {
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted("Friend key");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(250.f * scale);
-        const bool enter = ImGui::InputTextWithHint(
-            "##friendkey", chars > 0 ? "saved - paste a new key to replace it" : "tskey-auth-...", f.friend_key,
-            sizeof f.friend_key, ImGuiInputTextFlags_Password | ImGuiInputTextFlags_EnterReturnsTrue);
-        ImGui::SameLine();
-        if (ImGui::Button("Save") || enter) {
-            f.error.clear();
-            f.info.clear();
-            std::string msg;
-            if (dh2::coop::SaveFriendKey(trimmed(f.friend_key), msg)) {
-                f.info = msg;
-                SecureZeroMemory(f.friend_key, sizeof f.friend_key);
-            } else {
-                f.error = msg;
-            }
-        }
-        if (chars > 0) {
-            ImGui::SameLine();
-            if (ImGui::Button("Remove")) {
-                dh2::coop::ClearFriendKey();
-                f.error.clear();
-                f.info = "Friend key removed.";
-            }
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-            ImGui::TextWrapped("A friend key is saved (%d characters). The join code lets new friends in without an account.",
-                               chars);
-            ImGui::PopStyleColor();
-        } else {
-            ImGui::TextWrapped("No friend key yet: the join code will hold your IP only (for friends already on your "
-                               "tailnet). Press Tailscale setup help to make a key, once.");
-        }
-    }
-    const bool noIp = lobby.tailnetIp.empty();
-    ImGui::BeginDisabled(noIp);
-    if (ImGui::Button("Copy join code")) {
-        f.error.clear();
-        f.info.clear();
-        std::string msg;
-        const std::string name = trimmed(f.name);
-        if (dh2::coop::CopyJoinCode(port, name.empty() ? std::string("Hunter") : name, msg))
-            f.info = msg;
-        else
-            f.error = msg;
-    }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    if (ImGui::Button("Tailscale setup help")) {
-        f.error.clear();
-        f.info.clear();
-        std::string msg;
-        dh2::coop::OpenTailscaleHelp(port, msg);
-        f.info = msg;
-    }
-    if (noIp) {
-        ImGui::PushStyleColor(ImGuiCol_Text, state_color(dh2::coop::LobbyState::Connecting));
-        ImGui::TextWrapped("Tailscale is not connected on this PC (no tailnet IP), so there is no join code yet.");
+// One "how friends reach you" row on the host: label, address:port, Copy. An empty address shows `why` instead.
+void address_row(const char* label, const std::string& ip, uint16_t port, const std::string& why, const char* id) {
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(label);
+    ImGui::SameLine(label_column());
+    if (ip.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("%s", why.c_str());
         ImGui::PopStyleColor();
+        return;
     }
+    const std::string text = ip + ":" + std::to_string(port);
+    ImGui::TextUnformatted(text.c_str());
+    ImGui::SameLine();
+    ImGui::PushID(id);
+    if (ImGui::SmallButton("Copy")) {
+        ImGui::SetClipboardText(text.c_str());
+        g_ov.lobby.error.clear();
+        g_ov.lobby.info = std::string(label) + " address copied: " + text;
+    }
+    ImGui::PopID();
+}
+
+// HOST: how friends reach this PC, best first: the internet (UPnP port forward, with the join code), the tailnet
+// (Tailscale, set up by hand), the LAN.
+void draw_host_addresses(const dh2::coop::LobbyView& lobby) {
+    LobbyFields& f = g_ov.lobby;
+    ImGui::TextUnformatted("Friends join with:");
+    if (lobby.internetOpen) {
+        address_row("Internet", lobby.internetIp, lobby.internetPort, {}, "inet");
+        const std::string name = trimmed(f.name);
+        const dh2::coop::JoinCodeResult code = dh2::coop::MakeJoinCode(name.empty() ? std::string("Hunter") : name);
+        if (!code.code.empty()) {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("Join code");
+            ImGui::SameLine(label_column());
+            ImGui::TextUnformatted(code.code.c_str());
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Copy##code")) {
+                std::string msg;
+                f.error.clear();
+                f.info.clear();
+                if (dh2::coop::CopyJoinCode(name.empty() ? std::string("Hunter") : name, msg)) f.info = msg;
+                else f.error = msg;
+            }
+        }
+    } else {
+        address_row("Internet", {}, 0,
+                    lobby.internetWorking ? std::string("asking your router to open the port (UPnP) ...")
+                    : lobby.internetMessage.empty() ? std::string("off")
+                                                    : lobby.internetMessage,
+                    "inet");
+    }
+    address_row("Tailnet", lobby.tailnetIp, lobby.port, "- (Tailscale is not running on this PC)", "tail");
+    std::string lan = lobby.otherIps;
+    const size_t comma = lan.find(',');
+    if (comma != std::string::npos) lan.resize(comma);
+    address_row("LAN", lan, lobby.port, "- (no LAN address)", "lan");
 }
 
 void draw_lobby(const dh2::coop::SessionView& view, ImVec2 disp) {
@@ -363,8 +342,8 @@ void draw_lobby(const dh2::coop::SessionView& view, ImVec2 disp) {
     // Test twin of a paste into the JOIN field (console: coop_joinfield <join code>).
     std::string pasted;
     if (dh2::coop::TakePendingJoinPaste(pasted)) {
-        const std::string host = resolve_join_text(f, pasted);
-        std::snprintf(f.join_host, sizeof f.join_host, "%s", host.empty() ? pasted.c_str() : host.c_str());
+        std::snprintf(f.join_text, sizeof f.join_text, "%s", pasted.c_str());
+        describe_join_text(f);
     }
 
     // Your player: name and body are sent when the session starts, so they are fixed while in one.
@@ -405,56 +384,31 @@ void draw_lobby(const dh2::coop::SessionView& view, ImVec2 disp) {
                 dh2::coop::LobbyHost(trimmed(f.name), f.model, static_cast<uint16_t>(f.host_port));
             }
         }
-        draw_invite_controls(lobby, true, static_cast<uint16_t>(std::clamp(f.host_port, 1, 65535)), scale);
         ImGui::Spacing();
         ImGui::TextUnformatted("Join a friend");
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted("Host IP");
+        ImGui::SetNextItemWidth(330.f * scale);
+        if (ImGui::InputTextWithHint("##join", "join code, or IP / IP:port", f.join_text, sizeof f.join_text))
+            describe_join_text(f);
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(250.f * scale);
-        ImGui::InputTextWithHint("##joinhost", "100.x.y.z, or paste the join code", f.join_host, sizeof f.join_host,
-                                 ImGuiInputTextFlags_CallbackEdit, &join_text_edited, &f);
-        ImGui::SameLine();
-        ImGui::TextUnformatted("Port");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(110.f * scale);
-        ImGui::InputInt("##joinport", &f.join_port, 0, 0);
         if (ImGui::Button("JOIN", ImVec2(110.f * scale, 0.f))) {
+            const dh2::coop::JoinInput in =
+                dh2::coop::ParseJoinInput(f.join_text, static_cast<uint16_t>(std::clamp(f.join_port, 1, 65535)));
             f.error.clear();
-            std::string host = trimmed(f.join_host);
-            if (dh2::coop::ParseJoinInput(host).kind == dh2::coop::JoinInput::Kind::BadCode ||
-                dh2::coop::ParseJoinInput(host).kind == dh2::coop::JoinInput::Kind::Code) {
-                // A code that was not swapped yet (loaded from the ini, or pasted before the field had focus).
-                const std::string swapped = resolve_join_text(f, host);
-                if (!swapped.empty()) {
-                    host = swapped;
-                    std::snprintf(f.join_host, sizeof f.join_host, "%s", host.c_str());
-                }
-            }
-            if (!f.error.empty()) {
-                // resolve_join_text said why the code is no good
-            } else if (trimmed(f.name).empty()) {
+            if (trimmed(f.name).empty()) {
                 f.error = "Type a player name first.";
-            } else if (host.empty()) {
-                f.error = "Type the host's IP address (their tailnet IP, 100.x.y.z).";
-            } else if (f.join_port < 1 || f.join_port > 65535) {
-                f.error = "The port must be 1 to 65535 (default 27420).";
+            } else if (in.kind == dh2::coop::JoinInput::Kind::Empty) {
+                f.error = "Paste the host's join code, or type their IP (IP:port when it is not 27420).";
+            } else if (in.kind == dh2::coop::JoinInput::Kind::Bad) {
+                f.error = in.message;
             } else {
                 save_lobby_fields();
-                dh2::coop::LobbyJoin(trimmed(f.name), f.model, host, static_cast<uint16_t>(f.join_port));
+                dh2::coop::LobbyJoin(trimmed(f.name), f.model, in.host, in.port, in.pass);
             }
         }
     } else {
         if (lobby.state == LobbyState::Hosting) {
-            if (!lobby.tailnetIp.empty()) {
-                ImGui::Text("Friends join with  %s  port %u", lobby.tailnetIp.c_str(), lobby.port);
-                ImGui::SameLine();
-                if (ImGui::SmallButton("Copy")) ImGui::SetClipboardText(lobby.tailnetIp.c_str());
-                draw_invite_controls(lobby, false, lobby.port, scale);
-            } else {
-                ImGui::TextWrapped("Tailscale is not connected on this PC. Friends on your LAN can use %s, port %u.",
-                                   lobby.otherIps.empty() ? "-" : lobby.otherIps.c_str(), lobby.port);
-            }
+            draw_host_addresses(lobby);
+            ImGui::Spacing();
         }
         ImGui::Text("Players (%d of 4)", static_cast<int>(lobby.players.size()));
         if (ImGui::BeginTable("players", 4, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |

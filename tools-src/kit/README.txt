@@ -1,46 +1,43 @@
-DH2 co-op mod: test kit (build 2026-10-17)
+DH2 co-op mod: test kit (build 2026-10-18)
 ==================================================
 
 Needs: the retail game, v1.0 (build 434), installed and starting normally on its own.
-Both players need the same game version and the same kit.
+All players need the same game version and the same kit.
 
 INSTALL (everyone)
 1. Unzip the whole kit anywhere (for example your Downloads folder).
 2. Double-click install.bat. It finds the game (...\Activision Value\Magic Wand\DNGH2\Bin, on any
    local drive), asks for your player name once, copies the mod in, and puts one shortcut on your
-   desktop: DH2 COOP. Windows asks for permission once: the installer adds Tailscale (the network
-   the game uses) and one firewall rule (Tailscale addresses only).
-   It also asks for the join code from your host. The host just presses Enter.
+   desktop: DH2 COOP. Windows asks for permission once: the installer adds one firewall rule so
+   friends can reach a game you host (Main7.exe, UDP 27420).
    Game somewhere else?  powershell -ExecutionPolicy Bypass -File install.ps1 -GameDir "<your Bin folder>"
-3. Updating to a newer kit: run install.bat from the new kit (your player name is kept; the old
-   DH2 HOST / DH2 JOIN shortcuts are removed).
+3. Updating to a newer kit: run install.bat from the new kit (your player name is kept).
 4. Uninstall: double-click uninstall.bat (in this kit, or in the game's Bin folder, where the
    installer leaves a copy). It removes every version of the mod completely: the mod files, its
-   logs and settings (also in %LOCALAPPDATA%\dh2coop), the shortcuts and the firewall rule. A
-   dinput8.dll from another mod is put back; Tailscale stays installed.
+   logs and settings (also in %LOCALAPPDATA%\dh2coop), the shortcuts and the firewall rules. A
+   dinput8.dll from another mod is put back.
    uninstall.bat -DryRun only lists what it would remove. install.bat -Uninstall does the same.
 
-NETWORK (Tailscale, free)
-Host, once:
-1. Run install.bat, press Enter at the join code question. It installs Tailscale and opens your
-   browser: sign in (a free Tailscale account).
-2. The installer prints two things for the Tailscale admin pages and opens them (the first is
-   already on your clipboard): paste the policy text over the policy file and Save; then
-   Settings > Keys > Generate auth key: Reusable on, Ephemeral on, Tags tag:dh2friend, expiry 90
-   days. The policy replaces the default allow-everything policy: if you have your own rules,
-   merge by hand. The lobby button "Tailscale setup help" shows these steps again.
-3. Start DH2 COOP, paste the key into "Friend key" in the HOST section, press Save.
-Host, every time: DH2 COOP, HOST, "Copy join code", send the code to your friends.
-Friend: run install.bat and paste the code when asked. Tailscale installs and joins the host's
-network by itself: no account, no browser. Then DH2 COOP, JOIN (the host's address is filled in).
+HOW FRIENDS REACH THE HOST
+When you press HOST, the lobby lists every way in, best first:
+- Internet: the mod asks your router to open the game port (UPnP) while you host, and shows your
+  public address and a JOIN CODE. Send the code (or the address) to your friends. The port closes
+  again when you stop hosting or quit the game. Most home routers allow this; if yours does not,
+  the line says why (UPnP off in the router, or an internet provider that shares one address).
+- Tailnet: your Tailscale address, if you use Tailscale (set up by hand: everyone installs
+  Tailscale from tailscale.com and joins the same tailnet, or the host shares this PC with them).
+- LAN: your address at home, for players on the same network.
+Anyone who has the address and port can join while you host. To keep strangers out, set
+Password= in the [Coop] section of dh2coop.ini; the join code then carries it, and friends who type
+an address need the same Password= in their dh2coop.ini.
 
 PLAY
 1. Everyone: DH2 COOP on the desktop. The game opens at its main menu with the co-op lobby window.
    Type your name and pick the character the others will see you as.
-2. Host: press HOST. The lobby shows "Lobby open" and the address friends use.
-3. Friends: the host's address and port are already in the JOIN box (from the join code; you can
-   also paste a code there, or type the host's IP). Press JOIN. The status line says "Connected",
-   or what went wrong. Everyone in the lobby sees the player list.
+2. Host: press HOST. The lobby shows the join code and the addresses (Copy buttons next to them).
+3. Friends: paste the join code into the JOIN box, or type the host's IP (IP:port when the port is
+   not 27420), and press JOIN. The status line says "Connected", or what went wrong. Everyone in
+   the lobby sees the player list.
 4. Host: press F8 to close the lobby, then start a New Game or Load a save from the game's menu.
    Friends stay in their main menu: they follow the host into the game automatically.
 5. F8 opens and closes the lobby window at any time (it shows the players and their ping).
@@ -68,19 +65,25 @@ WHAT WORKS TODAY
 - Shooting or kicking another player knocks them over for a couple of seconds (no damage).
 
 NOT YET / KNOWN PROBLEMS
-- MAP12C (the yeti): joining players crash when the yeti fight starts. Avoid that map for now.
-- Do NOT press ESC "replay mission" on the results screen: the next map change crashes.
-  Quit and start again instead.
+- The final yeti fight (MAP12C) and the truck ride (MAP4A) were fixed in this build but not yet
+  played through by two real PCs. The host's truck sometimes rolls over on the MAP4A ramp.
 - Guide and companion characters follow / wait for the HOST only.
 - Pause menus are per player (the host pausing freezes animals for everyone).
 
 IF JOIN DOES NOT CONNECT
-The host must have pressed HOST and have Tailscale running; the friend needs Tailscale running too
-(tray icon). Run install.bat again after a Windows or Tailscale reinstall.
+- The host must have pressed HOST. Over the internet, the host's lobby line "Internet" must show an
+  address (not a reason). If it shows a reason, use the tailnet or LAN address instead.
+- The host's firewall: run install.bat again on the host PC and press Yes at the Windows prompt.
+- Both players need the same kit (the host refuses a different mod build and says so).
+
+IF THE MOD DOES NOT LOAD ("dh2coop.asi ... error 0xc0e90002", then the game starts without co-op)
+Windows 11 Smart App Control blocked the mod: it refuses DLLs that are not signed. The installer
+says so when it is on. The mod only loads with Smart App Control off (Windows Security, App &
+browser control, Smart App Control settings). On most Windows 11 versions it cannot be turned back
+on without resetting Windows, so decide for yourself.
 
 IF SOMETHING BREAKS
 Send the log files from both players. They are in the game's Bin folder, or, when the game is installed
 under Program Files, in %LOCALAPPDATA%\dh2coop (paste that into the Explorer address bar):
   dh2coop.log, debug.1.log (this run's engine log is debug.log in Bin), and after a crash and a restart also
   dh2coop.1.log (the run before) and debug.2.log.
-

@@ -9,9 +9,7 @@ namespace {
 constexpr char kPrefix[] = "DH2-";
 constexpr size_t kPrefixLen = 4;
 constexpr char kEllipsis[] = "\xE2\x80\xA6";  // U+2026 in UTF-8
-constexpr char kKeyPrefix[] = "tskey-auth-";
-constexpr size_t kKeyPrefixLen = 11;
-constexpr size_t kMaskedKeyChars = 14;  // "tskey-auth-" + 3 more
+constexpr char kDamaged[] = "That join code is damaged (copy it again, all of it).";
 
 void fail(std::string* err, const char* text) {
     if (err) *err = text;
@@ -40,6 +38,14 @@ bool parse_port(std::string_view s, uint16_t& out) {
 }
 
 bool printable_ascii(char c) { return c >= 0x20 && c <= 0x7E; }
+
+bool valid_pass(std::string_view p) {
+    if (p.size() > kMaxPassChars) return false;
+    for (char c : p) {
+        if (!printable_ascii(c) || c == '|') return false;
+    }
+    return true;
+}
 
 int b64_value(char c) {
     if (c >= 'A' && c <= 'Z') return c - 'A';
@@ -84,8 +90,7 @@ std::vector<std::string_view> split_bar(std::string_view s) {
 
 }  // namespace
 
-bool IsTailnetIp(std::string_view ip) {
-    unsigned oct[4] = {};
+bool ParseIpv4(std::string_view ip, unsigned (&oct)[4]) {
     size_t from = 0;
     for (int i = 0; i < 4; ++i) {
         const size_t dot = ip.find('.', from);
@@ -95,16 +100,18 @@ bool IsTailnetIp(std::string_view ip) {
         if (!parse_uint(part, 3, oct[i]) || oct[i] > 255) return false;
         from = dot + 1;
     }
-    return oct[0] == 100 && oct[1] >= 64 && oct[1] <= 127;
+    return true;
 }
 
-bool IsAuthKey(std::string_view key) {
-    if (key.size() <= kKeyPrefixLen || key.substr(0, kKeyPrefixLen) != kKeyPrefix) return false;
-    for (char c : key.substr(kKeyPrefixLen)) {
-        const bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || is_digit(c) || c == '-';
-        if (!ok) return false;
-    }
-    return true;
+bool IsTailnetIp(std::string_view ip) {
+    unsigned oct[4] = {};
+    return ParseIpv4(ip, oct) && oct[0] == 100 && oct[1] >= 64 && oct[1] <= 127;
+}
+
+bool IsUsableIp(std::string_view ip) {
+    unsigned oct[4] = {};
+    if (!ParseIpv4(ip, oct)) return false;
+    return oct[0] != 0 && oct[0] != 127 && oct[0] < 224 && !(oct[0] == 169 && oct[1] == 254);
 }
 
 std::string CleanName(std::string_view name) {
@@ -169,19 +176,19 @@ bool Base64UrlDecode(std::string_view text, std::string& out) {
 }
 
 std::string Encode(const Fields& f, std::string* err) {
-    if (!IsTailnetIp(f.ip)) {
-        fail(err, "The address is not a Tailscale address (100.64.0.0 to 100.127.255.255).");
+    if (!IsUsableIp(f.ip)) {
+        fail(err, "The address is not an IPv4 address a friend can reach.");
         return {};
     }
     if (f.port < 1) {
         fail(err, "The port must be 1 to 65535.");
         return {};
     }
-    if (!f.key.empty() && !IsAuthKey(f.key)) {
-        fail(err, "The friend key must look like tskey-auth-...");
+    if (!valid_pass(f.pass)) {
+        fail(err, "The password may only hold printable characters (no '|'), at most 63.");
         return {};
     }
-    std::string payload = "v1|" + f.ip + "|" + std::to_string(f.port) + "|" + f.key + "|" + CleanName(f.name);
+    std::string payload = "v2|" + f.ip + "|" + std::to_string(f.port) + "|" + f.pass + "|" + CleanName(f.name);
     std::string code = std::string(kPrefix) + Base64UrlEncode(payload);
     if (code.size() > kMaxCodeChars) {
         fail(err, "The join code would be too long.");
@@ -208,27 +215,31 @@ bool Decode(std::string_view text, Fields& out, std::string* err) {
     }
     std::string payload;
     if (!Base64UrlDecode(std::string_view(code).substr(kPrefixLen), payload)) {
-        fail(err, "That join code is damaged (copy it again, all of it).");
+        fail(err, kDamaged);
         return false;
     }
     for (char c : payload) {
         if (!printable_ascii(c)) {
-            fail(err, "That join code is damaged (copy it again, all of it).");
+            fail(err, kDamaged);
             return false;
         }
     }
     const std::vector<std::string_view> parts = split_bar(payload);
-    if (parts.size() != 5) {
-        fail(err, "That join code is damaged (copy it again, all of it).");
+    if (!parts.empty() && parts[0] == "v1") {
+        fail(err, "That is an old Tailscale join code. Ask the host for a new one (or type their IP and port).");
         return false;
     }
-    if (parts[0] != "v1") {
+    if (parts.size() != 5) {
+        fail(err, kDamaged);
+        return false;
+    }
+    if (parts[0] != "v2") {
         fail(err, "That join code is from a newer kit. Ask the host for the new kit.");
         return false;
     }
     Fields f;
-    if (!IsTailnetIp(parts[1])) {
-        fail(err, "That join code holds an address that is not a Tailscale address.");
+    if (!IsUsableIp(parts[1])) {
+        fail(err, "That join code holds an invalid address.");
         return false;
     }
     f.ip = std::string(parts[1]);
@@ -236,11 +247,11 @@ bool Decode(std::string_view text, Fields& out, std::string* err) {
         fail(err, "That join code holds an invalid port.");
         return false;
     }
-    if (!parts[3].empty() && !IsAuthKey(parts[3])) {
-        fail(err, "That join code holds an invalid friend key.");
+    if (!valid_pass(parts[3])) {
+        fail(err, "That join code holds an invalid password.");
         return false;
     }
-    f.key = std::string(parts[3]);
+    f.pass = std::string(parts[3]);
     if (parts[4].size() > kMaxNameChars) {
         fail(err, "That join code holds a host name that is too long.");
         return false;
@@ -264,9 +275,7 @@ std::string RedactSecrets(std::string_view text) {
         size_t j = i;
         while (j < text.size() && token_char(text[j])) ++j;
         const std::string_view tok = text.substr(i, j - i);
-        if (tok.size() > 6 && tok.substr(0, 6) == "tskey-")
-            out += MaskKey(tok);
-        else if (tok.size() > kPrefixLen + 3 && iequals_prefix(tok, kPrefix, kPrefixLen))
+        if (tok.size() > kPrefixLen + 3 && iequals_prefix(tok, kPrefix, kPrefixLen))
             out += std::string(kPrefix) + kEllipsis + "(hidden)";
         else
             out += tok;
@@ -275,22 +284,12 @@ std::string RedactSecrets(std::string_view text) {
     return out;
 }
 
-std::string MaskKey(std::string_view key) {
-    if (key.empty()) return "(none)";
-    return std::string(key.substr(0, kMaskedKeyChars)) + kEllipsis;
-}
-
 std::string Describe(const Fields& f) {
     std::string s = f.ip + ":" + std::to_string(f.port) + ", host '" + f.name + "', ";
-    if (f.key.empty())
-        s += "no key";
-    else
-        s += "key " + MaskKey(f.key) + " (" + std::to_string(f.key.size()) + " chars)";
+    s += f.pass.empty() ? "no password" : "password (" + std::to_string(f.pass.size()) + " chars)";
     return s;
 }
 
-std::string MaskedCode(const Fields& f) {
-    return std::string(kPrefix) + kEllipsis + (f.key.empty() ? "(no key)" : "(key hidden)");
-}
+std::string MaskedCode(const Fields&) { return std::string(kPrefix) + kEllipsis + "(hidden)"; }
 
 }  // namespace dh2::coop::joincode

@@ -88,48 +88,48 @@ struct LobbyView {
     uint16_t port = 0;  // hosting / joined port
     bool atMenu = false;  // this process is on the main menu map
     std::string map;      // current map name (upper case)
+    // Host: the UPnP port forward (net/upnp.h). Open = friends can join over the internet at internetIp:internetPort.
+    bool internetOpen = false;
+    bool internetWorking = false;   // still asking the router
+    std::string internetIp;         // public address (lobby and join code only, never logged)
+    uint16_t internetPort = 0;
+    std::string internetMessage;    // "Internet: open on port 27420" / why not
 };
 LobbyView Lobby();
-// Name and model are applied before the session starts (they travel in Hello).
+// Name and model are applied before the session starts (they travel in Hello). `password`: the one a join code
+// carried ("" = this PC's [Coop] Password).
 void LobbyHost(const std::string& name, int model, uint16_t port);
-void LobbyJoin(const std::string& name, int model, const std::string& host, uint16_t port);
+void LobbyJoin(const std::string& name, int model, const std::string& host, uint16_t port,
+               const std::string& password = std::string());
 void LobbyLeave();
+// [Coop] Password ("" = none): what the host's join code carries.
+std::string HostPassword();
 
-// ---- Join code and friend key (coop/lobby_invite.cpp) ----
-// The host's lobby makes a join code (coop/joincode.h) for friends: this PC's tailnet IP, the host port, the saved
-// friend key and the player name. The friend key is a reusable Tailscale auth key (tag:dh2friend) the host
-// generates once; it is kept in dh2coop-lobby.ini key [Lobby] FriendKey as base64 of a DPAPI blob (current user),
-// never in plain text, and never logged (logs say "friend key saved (N chars)").
-// Save: false and `message` filled when the text is not a tskey-auth-... key.
-bool SaveFriendKey(const std::string& key, std::string& message);
-void ClearFriendKey();
-int FriendKeyChars();  // length of the saved key, 0 = none (or not readable by this Windows account)
+// ---- Join code (coop/lobby_invite.cpp) ----
+// The host's lobby makes a join code (coop/joincode.h) while the UPnP port forward is open: the public IP, the
+// forwarded port, [Coop] Password and the player name. LAN and tailnet friends type IP or IP:port instead.
 struct JoinCodeResult {
     std::string code;     // "" when it cannot be made (message says why)
-    bool hasKey = false;  // the code carries the friend key
-    std::string masked;   // "DH2-…(key hidden)" for logs
-    std::string message;  // for the lobby: why not, or what the code holds
+    std::string masked;   // "DH2-…(hidden)" for logs
+    std::string message;  // for the lobby: why not, or what to do with it
 };
-JoinCodeResult MakeJoinCode(uint16_t port, const std::string& playerName);
+JoinCodeResult MakeJoinCode(const std::string& playerName);
 // Copy join code button: MakeJoinCode, then the clipboard (CF_UNICODETEXT). `message` is the lobby line to show.
-bool CopyJoinCode(uint16_t port, const std::string& playerName, std::string& message);
-// Tailscale setup help button: opens Tailscale's policy file and keys pages, copies the ACL snippet for this PC's
-// tailnet IP and `port`.
-bool OpenTailscaleHelp(uint16_t port, std::string& message);
-std::string AclSnippet(const std::string& hostTailnetIp, uint16_t port);
-// What the JOIN field makes of its text: a pasted join code fills address and port (the key is ignored there).
+bool CopyJoinCode(const std::string& playerName, std::string& message);
+// What the JOIN field makes of its text: a join code (address, port, password), or IP / IP:port.
 struct JoinInput {
-    enum class Kind { Empty, Address, Code, BadCode } kind = Kind::Empty;
-    std::string host;      // Code: the host's tailnet IP
-    uint16_t port = 0;     // Code: the host's port
+    enum class Kind { Empty, Address, Code, Bad } kind = Kind::Empty;
+    std::string host;
+    uint16_t port = 0;
+    std::string pass;      // Code: the host's password ("" = none)
     std::string hostName;  // Code: the host's player name
-    std::string message;   // Code: "Join code accepted: ..."; BadCode: why not
+    std::string message;   // Code: what it holds; Bad: why it cannot be used
 };
-JoinInput ParseJoinInput(const std::string& text);
+JoinInput ParseJoinInput(const std::string& text, uint16_t defaultPort = 27420);
 // Test twin of pasting into the JOIN field: the overlay takes this text on its next frame as if it was pasted.
 void SetPendingJoinPaste(const std::string& text);
 bool TakePendingJoinPaste(std::string& text);
-void RegisterInviteCommands();  // coop_friendkey, coop_joincode, coop_joinfield, coop_tshelp
+void RegisterInviteCommands();  // coop_joincode, coop_joinfield
 
 // Host recovery (F5 / F6 and the lobby buttons). The game has no checkpoints inside a level (its "Checkpoint
 // reached" is the level exit), so these are the level-sized ones: restart the current level from its start, or go

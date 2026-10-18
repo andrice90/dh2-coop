@@ -847,37 +847,40 @@ void Dump(const Box& b) {
     }
 }
 
-// Join code (mod/src/coop/joincode.cpp): round trips, vectors shared with install.ps1's twin, and rejections.
+// Join code (mod/src/coop/joincode.cpp): round trips, vectors from an independent encoder, and rejections.
 void TestJoinCode(Tally& t) {
     namespace jc = dh2::coop::joincode;
     std::string err;
 
-    // Vectors shared with install.ps1 -SelfTest (made by an independent encoder, python's urlsafe_b64encode).
-    const char* kVecFull = "DH2-djF8MTAwLjEwMS4xMDIuMTAzfDI3NDIwfHRza2V5LWF1dGgta1RFU1QxMjM0LUFCQ0RFRkdIfEFuZHJp";
-    const char* kVecNoKey = "DH2-djF8MTAwLjY0LjAuMXwyNzQyMHx8SG9zdA";
-    const char* kVecEdge = "DH2-djF8MTAwLjEyNy4yNTUuMjU0fDF8dHNrZXktYXV0aC1rMS1BYkN8WA";
-    jc::Fields full{"100.101.102.103", 27420, "tskey-auth-kTEST1234-ABCDEFGH", "Andri"};
-    jc::Fields noKey{"100.64.0.1", 27420, "", "Host"};
-    jc::Fields edge{"100.127.255.254", 1, "tskey-auth-k1-AbC", "X"};
+    // Vectors made by an independent encoder (.NET Convert.ToBase64String, url-safe, no padding).
+    const char* kVecFull = "DH2-djJ8MjAzLjAuMTEzLjd8Mjc0MjB8czNjcmV0fEFuZHJp";  // v2|203.0.113.7|27420|s3cret|Andri
+    const char* kVecNoPass = "DH2-djJ8MjAzLjAuMTEzLjd8Mjc0MjF8fEhvc3Q";        // v2|203.0.113.7|27421||Host
+    const char* kVecEdge = "DH2-djJ8MTAwLjEyNy4yNTUuMjU0fDF8cHxY";              // v2|100.127.255.254|1|p|X
+    const char* kVecOld = "DH2-djF8MTAwLjY0LjAuMXwyNzQyMHx8SG9zdA";            // v1 (Tailscale) code
+    jc::Fields full{"203.0.113.7", 27420, "s3cret", "Andri"};
+    jc::Fields noPass{"203.0.113.7", 27421, "", "Host"};
+    jc::Fields edge{"100.127.255.254", 1, "p", "X"};
     t.Check(jc::Encode(full) == kVecFull, "join code: full vector encodes");
-    t.Check(jc::Encode(noKey) == kVecNoKey, "join code: no-key vector encodes");
+    t.Check(jc::Encode(noPass) == kVecNoPass, "join code: no-password vector encodes");
     t.Check(jc::Encode(edge) == kVecEdge, "join code: edge vector encodes");
     jc::Fields got;
-    t.Check(jc::Decode(kVecFull, got, &err) && got.ip == full.ip && got.port == full.port && got.key == full.key &&
+    t.Check(jc::Decode(kVecFull, got, &err) && got.ip == full.ip && got.port == full.port && got.pass == full.pass &&
                 got.name == full.name,
             "join code: full vector decodes");
-    t.Check(jc::Decode(kVecNoKey, got, &err) && got.ip == noKey.ip && got.key.empty() && got.name == "Host",
-            "join code: no-key vector decodes");
+    t.Check(jc::Decode(kVecNoPass, got, &err) && got.ip == noPass.ip && got.pass.empty() && got.name == "Host",
+            "join code: no-password vector decodes");
     t.Check(jc::Decode(kVecEdge, got, &err) && got.port == 1 && got.ip == edge.ip, "join code: edge vector decodes");
+    t.Check(!jc::Decode(kVecOld, got, &err) && err.find("old Tailscale") != std::string::npos,
+            "join code: an old v1 code says so");
 
     // Round trip over names of every length (all base64 padding cases) and a printable-ASCII sweep.
     bool roundTrip = true;
     for (size_t len = 0; len <= jc::kMaxNameChars; ++len) {
-        jc::Fields f{"100.100.100.100", static_cast<uint16_t>(1000 + len), len % 2 ? "tskey-auth-kAB12-xyz" : "", ""};
+        jc::Fields f{"198.51.100.20", static_cast<uint16_t>(1000 + len), len % 2 ? "pw" + std::to_string(len) : "", ""};
         for (size_t i = 0; i < len; ++i) f.name.push_back(static_cast<char>('a' + (i * 7) % 26));
         const std::string code = jc::Encode(f);
         jc::Fields back;
-        if (code.empty() || !jc::Decode(code, back) || back.ip != f.ip || back.port != f.port || back.key != f.key ||
+        if (code.empty() || !jc::Decode(code, back) || back.ip != f.ip || back.port != f.port || back.pass != f.pass ||
             back.name != f.name)
             roundTrip = false;
     }
@@ -885,26 +888,38 @@ void TestJoinCode(Tally& t) {
     std::string everyChar;
     for (int c = 0x20; c <= 0x7E; ++c) everyChar.push_back(static_cast<char>(c));
     {
-        jc::Fields f{"100.80.1.2", 27420, "", everyChar};
+        jc::Fields f{"198.51.100.20", 27420, "", everyChar};
         jc::Fields back;
         const std::string code = jc::Encode(f);
         t.Check(!code.empty() && jc::Decode(code, back) && back.name == jc::CleanName(everyChar) &&
                     back.name.size() <= jc::kMaxNameChars && back.name.find('|') == std::string::npos,
                 "join code: a name with '|' and 95 printable characters is cleaned and kept to 32");
     }
+    {
+        std::string pw;
+        for (char c : everyChar) {
+            if (c != '|') pw.push_back(c);
+        }
+        pw.resize(jc::kMaxPassChars);
+        jc::Fields back;
+        t.Check(jc::Decode(jc::Encode({"198.51.100.20", 27420, pw, "N"}), back) && back.pass == pw,
+                "join code: a 63 character printable password round-trips");
+    }
 
-    // Port and address limits.
-    jc::Fields lim{"100.64.0.0", 65535, "", "N"};
-    t.Check(jc::Decode(jc::Encode(lim), got) && got.port == 65535 && got.ip == "100.64.0.0", "join code: port 65535 and 100.64.0.0 ok");
-    lim.ip = "100.127.255.255";
-    t.Check(jc::Decode(jc::Encode(lim), got) && got.ip == "100.127.255.255", "join code: 100.127.255.255 ok");
-    t.Check(jc::Encode({"100.63.255.255", 27420, "", "N"}, &err).empty() && !err.empty(), "join code: encode rejects 100.63.x.x");
-    t.Check(jc::Encode({"100.128.0.0", 27420, "", "N"}).empty(), "join code: encode rejects 100.128.0.0");
-    t.Check(jc::Encode({"192.168.1.2", 27420, "", "N"}).empty(), "join code: encode rejects a LAN address");
-    t.Check(jc::Encode({"100.64.0.1", 0, "", "N"}).empty(), "join code: encode rejects port 0");
-    t.Check(jc::Encode({"100.64.0.1", 27420, "tskey-api-kABC", "N"}).empty(), "join code: encode rejects a non-auth key");
-    t.Check(jc::Encode({"100.64.0.1", 27420, "tskey-auth-", "N"}).empty(), "join code: encode rejects an empty key body");
-    t.Check(jc::Encode({"100.64.0.1", 27420, "tskey-auth-k_x", "N"}).empty(), "join code: encode rejects '_' in a key");
+    // Addresses: public, LAN and tailnet are fine; nothing a friend cannot send to.
+    t.Check(!jc::Encode({"192.168.1.2", 27420, "", "N"}).empty() && !jc::Encode({"100.64.0.1", 27420, "", "N"}).empty() &&
+                !jc::Encode({"8.8.8.8", 65535, "", "N"}).empty(),
+            "join code: public, LAN and tailnet addresses encode");
+    t.Check(jc::Encode({"127.0.0.1", 27420, "", "N"}, &err).empty() && !err.empty(), "join code: encode rejects loopback");
+    t.Check(jc::Encode({"0.0.0.0", 27420, "", "N"}).empty(), "join code: encode rejects 0.0.0.0");
+    t.Check(jc::Encode({"169.254.3.4", 27420, "", "N"}).empty(), "join code: encode rejects link-local");
+    t.Check(jc::Encode({"224.0.0.1", 27420, "", "N"}).empty(), "join code: encode rejects multicast");
+    t.Check(jc::Encode({"203.0.113.7", 0, "", "N"}).empty(), "join code: encode rejects port 0");
+    t.Check(jc::Encode({"203.0.113.7", 27420, "a|b", "N"}).empty(), "join code: encode rejects '|' in a password");
+    t.Check(jc::Encode({"203.0.113.7", 27420, std::string(64, 'p'), "N"}).empty(), "join code: encode rejects a 64 char password");
+    t.Check(jc::IsTailnetIp("100.64.0.0") && jc::IsTailnetIp("100.127.255.255") && !jc::IsTailnetIp("100.63.255.255") &&
+                !jc::IsTailnetIp("100.128.0.0") && !jc::IsTailnetIp("192.168.0.1"),
+            "join code: IsTailnetIp");
 
     // Rejections on decode, from hand-made payloads.
     auto codeOf = [](const std::string& payload) { return "DH2-" + dh2::coop::joincode::Base64UrlEncode(payload); };
@@ -912,84 +927,75 @@ void TestJoinCode(Tally& t) {
         const char* what;
         std::string text;
     };
-    const std::string longKey = "tskey-auth-k" + std::string(260, 'A');
+    const std::string longPass = std::string(260, 'A');
     const Bad bad[] = {
         {"empty text", ""},
-        {"no prefix", "djF8MTAwLjY0LjAuMXwyNzQyMHx8SG9zdA"},
-        {"wrong prefix", "DH3-djF8MTAwLjY0LjAuMXwyNzQyMHx8SG9zdA"},
+        {"no prefix", "djJ8MjAzLjAuMTEzLjd8Mjc0MjF8fEhvc3Q"},
+        {"wrong prefix", "DH3-djJ8MjAzLjAuMTEzLjd8Mjc0MjF8fEhvc3Q"},
         {"prefix only", "DH2-"},
-        {"standard base64 characters", "DH2-djF8MTAwLjY0LjAuMXwyNzQyMHx8SG9zdA+/"},
-        {"base64 padding", std::string(kVecNoKey) + "=="},
-        {"base64 length 1 mod 4", std::string(kVecNoKey) + "A"},
-        {"non-zero trailing bits", "DH2-djF8MTAwLjY0LjAuMXwyNzQyMHx8SG9zdB"},
-        {"truncated code", std::string(kVecFull).substr(0, 40)},
-        {"unknown version", codeOf("v2|100.64.0.1|27420||Host")},
-        {"too few fields", codeOf("v1|100.64.0.1|27420|Host")},
-        {"too many fields", codeOf("v1|100.64.0.1|27420||Host|extra")},
-        {"LAN address", codeOf("v1|192.168.0.5|27420||Host")},
-        {"100.63.255.255", codeOf("v1|100.63.255.255|27420||Host")},
-        {"100.128.0.0", codeOf("v1|100.128.0.0|27420||Host")},
-        {"address 100.64.0.256", codeOf("v1|100.64.0.256|27420||Host")},
-        {"address leading zero", codeOf("v1|100.064.0.1|27420||Host")},
-        {"address 3 parts", codeOf("v1|100.64.1|27420||Host")},
-        {"address 5 parts", codeOf("v1|100.64.0.1.2|27420||Host")},
-        {"port 0", codeOf("v1|100.64.0.1|0||Host")},
-        {"port 65536", codeOf("v1|100.64.0.1|65536||Host")},
-        {"port empty", codeOf("v1|100.64.0.1|||Host")},
-        {"port text", codeOf("v1|100.64.0.1|27x20||Host")},
-        {"port negative", codeOf("v1|100.64.0.1|-5||Host")},
-        {"port leading zero", codeOf("v1|100.64.0.1|027420||Host")},
-        {"api key", codeOf("v1|100.64.0.1|27420|tskey-api-kABC|Host")},
-        {"key without body", codeOf("v1|100.64.0.1|27420|tskey-auth-|Host")},
-        {"key with a bad character", codeOf("v1|100.64.0.1|27420|tskey-auth-kA_B|Host")},
-        {"key with a space", codeOf("v1|100.64.0.1|27420|tskey-auth-kA B|Host")},
-        {"name of 33 characters", codeOf("v1|100.64.0.1|27420||" + std::string(33, 'n'))},
-        {"name with a control character", codeOf(std::string("v1|100.64.0.1|27420||Ho\x01st"))},
-        {"name with a high byte", codeOf(std::string("v1|100.64.0.1|27420||Ho\xC3\xA9st"))},
-        {"longer than 300 characters", codeOf("v1|100.64.0.1|27420|" + longKey + "|Host")},
+        {"standard base64 characters", std::string(kVecNoPass) + "+/"},
+        {"base64 padding", std::string(kVecNoPass) + "=="},
+        {"base64 length 1 mod 4", std::string(kVecNoPass) + "A"},
+        {"non-zero trailing bits", "DH2-djJ8MjAzLjAuMTEzLjd8Mjc0MjF8fEhvc3R"},
+        {"truncated code", std::string(kVecFull).substr(0, 30)},
+        {"unknown version", codeOf("v3|203.0.113.7|27420||Host")},
+        {"too few fields", codeOf("v2|203.0.113.7|27420|Host")},
+        {"too many fields", codeOf("v2|203.0.113.7|27420||Host|extra")},
+        {"loopback", codeOf("v2|127.0.0.1|27420||Host")},
+        {"0.0.0.0", codeOf("v2|0.0.0.0|27420||Host")},
+        {"multicast", codeOf("v2|239.1.2.3|27420||Host")},
+        {"address 203.0.113.256", codeOf("v2|203.0.113.256|27420||Host")},
+        {"address leading zero", codeOf("v2|203.0.013.7|27420||Host")},
+        {"address 3 parts", codeOf("v2|203.0.113|27420||Host")},
+        {"address 5 parts", codeOf("v2|203.0.113.7.1|27420||Host")},
+        {"a host name", codeOf("v2|example.com|27420||Host")},
+        {"port 0", codeOf("v2|203.0.113.7|0||Host")},
+        {"port 65536", codeOf("v2|203.0.113.7|65536||Host")},
+        {"port empty", codeOf("v2|203.0.113.7|||Host")},
+        {"port text", codeOf("v2|203.0.113.7|27x20||Host")},
+        {"port negative", codeOf("v2|203.0.113.7|-5||Host")},
+        {"port leading zero", codeOf("v2|203.0.113.7|027420||Host")},
+        {"password of 64 characters", codeOf("v2|203.0.113.7|27420|" + std::string(64, 'p') + "|Host")},
+        {"name of 33 characters", codeOf("v2|203.0.113.7|27420||" + std::string(33, 'n'))},
+        {"name with a control character", codeOf(std::string("v2|203.0.113.7|27420||Ho\x01st"))},
+        {"name with a high byte", codeOf(std::string("v2|203.0.113.7|27420||Ho\xC3\xA9st"))},
+        {"longer than 300 characters", codeOf("v2|203.0.113.7|27420|" + longPass + "|Host")},
     };
     for (const Bad& b : bad) {
         jc::Fields keep = full;
         std::string why;
         const bool ok = jc::Decode(b.text, keep, &why);
-        t.Check(!ok && !why.empty() && keep.ip == full.ip && keep.key == full.key,
+        t.Check(!ok && !why.empty() && keep.ip == full.ip && keep.pass == full.pass,
                 std::string("join code: decode rejects ") + b.what);
     }
     // 32 characters is the longest name that decodes.
-    t.Check(jc::Decode(codeOf("v1|100.64.0.1|27420||" + std::string(32, 'n')), got) && got.name.size() == 32,
+    t.Check(jc::Decode(codeOf("v2|203.0.113.7|27420||" + std::string(32, 'n')), got) && got.name.size() == 32,
             "join code: a 32 character name decodes");
 
     // Whitespace and case tolerance (chat clients wrap and trim), nothing else.
     const std::string code = kVecFull;
     t.Check(jc::Decode("  " + code + "\r\n", got), "join code: surrounding whitespace ignored");
-    t.Check(jc::Decode(code.substr(0, 30) + "\n" + code.substr(30), got) && got.name == "Andri",
+    t.Check(jc::Decode(code.substr(0, 20) + "\n" + code.substr(20), got) && got.name == "Andri",
             "join code: a line break inside ignored");
     t.Check(jc::Decode("dh2-" + code.substr(4), got), "join code: prefix is case-insensitive");
     t.Check(jc::LooksLikeCode("  dh2-xyz") && !jc::LooksLikeCode("100.64.0.1") && !jc::LooksLikeCode(""),
             "join code: LooksLikeCode");
 
-    // Secrets stay out of anything meant to be printed.
+    // The password stays out of anything meant to be printed.
     const std::string desc = jc::Describe(full);
-    t.Check(desc.find("ABCDEFGH") == std::string::npos && desc.find("tskey-auth-kTE") != std::string::npos &&
-                desc.find("29 chars") != std::string::npos,
-            "join code: Describe masks the key");
-    t.Check(jc::MaskedCode(full) == "DH2-\xE2\x80\xA6(key hidden)" && jc::MaskedCode(noKey) == "DH2-\xE2\x80\xA6(no key)",
-            "join code: MaskedCode");
-    t.Check(jc::MaskKey("tskey-auth-kTEST1234-ABCDEFGH") == "tskey-auth-kTE\xE2\x80\xA6" && jc::MaskKey("") == "(none)",
-            "join code: MaskKey");
+    t.Check(desc.find("s3cret") == std::string::npos && desc.find("password (6 chars)") != std::string::npos &&
+                jc::Describe(noPass).find("no password") != std::string::npos,
+            "join code: Describe hides the password");
+    t.Check(jc::MaskedCode(full) == "DH2-\xE2\x80\xA6(hidden)", "join code: MaskedCode");
     {
-        const std::string line = std::string("coop_friendkey tskey-auth-kTEST1234-ABCDEFGH then ") + kVecFull + " done";
+        const std::string line = std::string("coop_joinfield ") + kVecFull + " done";
         const std::string red = jc::RedactSecrets(line);
-        t.Check(red == "coop_friendkey tskey-auth-kTE\xE2\x80\xA6 then DH2-\xE2\x80\xA6(hidden) done" &&
-                    red.find("ABCDEFGH") == std::string::npos && red.find("djF8") == std::string::npos,
-                "join code: RedactSecrets masks keys and codes in a command line");
+        t.Check(red == "coop_joinfield DH2-\xE2\x80\xA6(hidden) done" && red.find("djJ8") == std::string::npos,
+                "join code: RedactSecrets masks codes in a command line");
         t.Check(jc::RedactSecrets("coop_lobby 100.64.0.1:27420 host") == "coop_lobby 100.64.0.1:27420 host" &&
                     jc::RedactSecrets("DH2-") == "DH2-" && jc::RedactSecrets("") == "",
                 "join code: RedactSecrets leaves ordinary lines alone");
     }
-    t.Check(jc::IsAuthKey("tskey-auth-kTEST1234CNTRL-abcdefghijklmnopqrstuvwxyz12345678") && !jc::IsAuthKey("") &&
-                !jc::IsAuthKey("tskey-auth-k!"),
-            "join code: IsAuthKey");
 }
 
 bool JoinVec(const std::vector<uint8_t>& got, std::initializer_list<uint8_t> expect) {

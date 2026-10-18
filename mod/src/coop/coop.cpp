@@ -44,6 +44,7 @@ void DebugActivate(const char* name);  // story.cpp
 #include "engine/console_cmds.h"
 #include "engine/dinput_hooks.h"
 #include "net/session.h"
+#include "net/upnp.h"
 
 namespace dh2::coop {
 namespace {
@@ -71,6 +72,9 @@ int* g_allow_background = nullptr;  // &cApplication::m_bAllowBackground (Engine
 // Hello identity: two friends may only play when their dh2coop.asi files are identical (and passwords match).
 uint32_t g_mod_build = 0;
 uint32_t g_pass_hash = 0;
+// LobbyJoin with a join code that carries a password: used for that join instead of g_pass_hash.
+uint32_t g_join_pass_hash = 0;
+bool g_join_pass_set = false;
 std::string g_notice;  // on-screen line (Snapshot().notice) until g_notice_until
 uint32_t g_notice_until = 0;
 
@@ -116,6 +120,12 @@ uint32_t fnv1a(const void* data, size_t n, uint32_t h = 2166136261u) {
     return h;
 }
 
+// Hello passHash of a password ("" = 0, no password).
+uint32_t password_hash(const std::string& pw) {
+    static const char kSalt[] = "dh2coop-password";
+    return pw.empty() ? 0 : fnv1a(pw.data(), pw.size(), fnv1a(kSalt, sizeof kSalt - 1));
+}
+
 uint32_t hash_own_asi() {
     std::ifstream in(core::self_path(), std::ios::binary);
     if (!in) return 0;
@@ -130,8 +140,8 @@ void show_notice(std::string text, uint32_t ms) {
     g_notice_until = now_ms() + ms;
 }
 
-// This PC's addresses for the F8 panel and the host's menu line. Friends play over Tailscale: its adapter is named
-// "Tailscale" and hands out 100.64.0.0/10 addresses. Adapters that are down, loopback and link-local are skipped.
+// This PC's addresses for the F8 panel and the host's menu line: LAN, and the tailnet fallback (Tailscale's adapter is
+// named "Tailscale" and hands out 100.64.0.0/10 addresses). Adapters that are down, loopback and link-local are skipped.
 // Refreshed every few seconds on the game thread (Tailscale may connect after the game starts).
 struct LocalAddrs {
     std::string tailnet;  // first IPv4 of the Tailscale adapter ("" = Tailscale not up)
@@ -237,10 +247,7 @@ void load_settings() {
     GetPrivateProfileStringA("Coop", "BindAddress", "", buf, sizeof buf, ini.c_str());
     net::Session::SetBindAddress(buf);
     if (buf[0]) spdlog::info("coop: sockets bind to {} only ([Coop] BindAddress)", buf);
-    static const char kSalt[] = "dh2coop-password";
-    g_pass_hash = g_settings.password.empty()
-                      ? 0
-                      : fnv1a(g_settings.password.data(), g_settings.password.size(), fnv1a(kSalt, sizeof kSalt - 1));
+    g_pass_hash = password_hash(g_settings.password);
     g_mod_build = hash_own_asi();
 
     // Command line switches for automated tests (run-coop-local.ps1). The engine ignores unknown switches.
@@ -479,7 +486,7 @@ void __cdecl cmd_lobby(const char* arg) {
         const JoinInput in = ParseJoinInput(a);
         if (in.kind == JoinInput::Kind::Code) {
             spdlog::info("coop_lobby: {}", in.message);
-            LobbyJoin(p.name, p.model, in.host, in.port);
+            LobbyJoin(p.name, p.model, in.host, in.port, in.pass);
         } else {
             spdlog::warn("coop_lobby: join code rejected: {}", in.message);
         }
@@ -726,7 +733,7 @@ private:
         net::Session::Identity id;
         id.name = g_settings.player_name;
         id.modBuild = g_mod_build;
-        id.passHash = g_pass_hash;
+        id.passHash = (p.kind == Pending::Kind::Join && g_join_pass_set) ? g_join_pass_hash : g_pass_hash;
         id.model = static_cast<uint8_t>(g_settings.model);
         if (p.kind == Pending::Kind::Host) spdlog::info("coop: host start port={}", p.port);
         else if (p.kind == Pending::Kind::Join) spdlog::info("coop: join start {}:{}", p.host, p.port);
@@ -766,8 +773,8 @@ private:
                     set_lobby(LobbyState::Connecting, fmt::format("Connecting to {} ...", g_join_target));
                 } else {
                     set_lobby(LobbyState::Failed,
-                              fmt::format("'{}' is not an address this PC can reach. Type the host's tailnet IP "
-                                          "(100.x.y.z).",
+                              fmt::format("'{}' is not an address this PC can reach. Check the join code or the "
+                                          "host's IP.",
                                           p.host));
                 }
                 return;
@@ -813,7 +820,7 @@ private:
         if (now_ms() - g_join_started_ms < 8000) return;
         DropSession();
         set_lobby(LobbyState::Failed, fmt::format("No answer from {}. Check the IP and port, that the host pressed "
-                                                  "HOST, and that both PCs are connected to Tailscale.",
+                                                  "HOST, and that its port is open (join code, same LAN or Tailscale).",
                                                   g_join_target));
     }
 
@@ -898,7 +905,7 @@ private:
                     if (g_lobby_state == LobbyState::Connecting) {
                         set_lobby(LobbyState::Failed,
                                   fmt::format("No answer from {}. Check the IP and port, that the host pressed HOST, "
-                                              "and that both PCs are connected to Tailscale.",
+                                              "and that its port is open (join code, same LAN or Tailscale).",
                                               g_join_target));
                     } else if (g_lobby_state == LobbyState::Connected) {
                         set_lobby(LobbyState::Failed, fmt::format("Lost the connection to the host ({}).", g_join_target));
@@ -1190,7 +1197,11 @@ SessionView Snapshot() {
         // The kit starts everyone at the main menu: say what happens next.
         const size_t friends = g_remotes.size();
         if (g_session.IsHost()) {
-            const std::string join_with = !g_addrs.tailnet.empty() ? g_addrs.tailnet : g_addrs.others;
+            const net::upnp::Status up = net::upnp::GetStatus();
+            const bool internet = up.state == net::upnp::State::Open && !up.publicIp.empty();
+            const std::string join_with = internet                  ? "the join code (F8)"
+                                          : !g_addrs.tailnet.empty() ? g_addrs.tailnet
+                                                                     : g_addrs.others;
             v.notice = fmt::format("Co-op: hosting on UDP {}, {} friend{} connected.{}{}\nStart a new game or load a "
                                    "save: everyone follows you.",
                                    g_settings.port, friends, friends == 1 ? "" : "s",
@@ -1282,6 +1293,14 @@ LobbyView Lobby() {
     if ((v.state == LobbyState::Offline || v.state == LobbyState::Connecting) && g_session.IsConnected())
         v.state = LobbyState::Connected;
     v.port = g_session.IsHost() ? g_session.BoundPort() : g_join_port;
+    if (g_session.IsHost()) {
+        const net::upnp::Status up = net::upnp::GetStatus();
+        v.internetOpen = up.state == net::upnp::State::Open && up.kind == net::upnp::AddrKind::Public;
+        v.internetWorking = up.state == net::upnp::State::Working;
+        v.internetIp = v.internetOpen ? up.publicIp : std::string();
+        v.internetPort = up.externalPort;
+        v.internetMessage = up.message;
+    }
     if (!g_session.IsHost() && !g_session.IsConnected()) return v;
     std::map<uint8_t, uint32_t> rtt;
     for (const auto& p : g_session.Peers()) rtt[p.playerId] = p.rttMs;
@@ -1306,17 +1325,25 @@ LobbyView Lobby() {
 
 void LobbyHost(const std::string& name, int model, uint16_t port) {
     apply_identity(name, model);
+    g_join_pass_set = false;
     g_settings.port = port;
     spdlog::info("coop: lobby host as '{}' model {} port {}", g_settings.player_name, g_settings.model, port);
     RequestHost(port);
 }
 
-void LobbyJoin(const std::string& name, int model, const std::string& host, uint16_t port) {
+void LobbyJoin(const std::string& name, int model, const std::string& host, uint16_t port,
+               const std::string& password) {
     apply_identity(name, model);
-    spdlog::info("coop: lobby join {}:{} as '{}' model {}", host, port, g_settings.player_name, g_settings.model);
+    // A join code's password wins over [Coop] Password for this join; a typed address uses [Coop] Password.
+    g_join_pass_set = !password.empty();
+    g_join_pass_hash = password_hash(password);
+    spdlog::info("coop: lobby join {}:{} as '{}' model {}{}", host, port, g_settings.player_name, g_settings.model,
+                 g_join_pass_set ? " (password from the join code)" : "");
     set_lobby(LobbyState::Connecting, fmt::format("Connecting to {}:{} ...", host, port));
     RequestJoin(host, port);
 }
+
+std::string HostPassword() { return g_settings.password; }
 
 void LobbyLeave() {
     g_settings.auto_role.clear();
