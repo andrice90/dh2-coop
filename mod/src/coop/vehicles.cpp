@@ -74,6 +74,7 @@ struct Track {
     bool frozen = false;
     bool logged_update = false;
     int refrozen = 0;          // client: times something gave the copy its gravity back (DriveTo calls UnFreeze)
+    int uprighted = 0;         // host: times the rollover guard stood the chassis up
     int seats[4] = {-1, -1, -1, -1};  // host: last seat occupants seen (+0x298), for kVehicleSeat
     bool seats_known = false;
     // Smoothness diagnostics (client): per-frame step of the applied position, logged every 2 s for a minute.
@@ -268,6 +269,66 @@ void follow(Track& t, void* veh, uint32_t now) {
     }
 }
 
+// ---- rollover guard (host and offline) ----
+// MAP4A's truck rolls over on the ramp after PathNode23 in about one ride in six (host-only runs too, 2 of 6, so not
+// the puppets): roll 46, 136, 180 degrees within two seconds, then it drives on its roof with every rider's camera
+// upside down. Normal rides stay under 27 degrees of roll. When the chassis' up axis points more than 70 degrees away
+// from vertical, stand it up again: same heading, same spot (+0.3 m), no spin, wheels carried along. Clients follow
+// the host's pose, so they see the same recovery.
+constexpr float kUprightBelow = 0.34f;  // chassis up.y (rotation row 1): cos(70 degrees)
+bool g_upright = false;  // [Vehicles] Upright (default off: forced-flip test righted it, then the truck went erratic)
+
+void cross3(const float* a, const float* b, float* out) {
+    out[0] = a[1] * b[2] - a[2] * b[1];
+    out[1] = a[2] * b[0] - a[0] * b[2];
+    out[2] = a[0] * b[1] - a[1] * b[0];
+}
+
+void make_upright(Track& t, void* veh) {
+    char* phys = nullptr;
+    char* body = nullptr;
+    float rot[9], pos[3];
+    if (!g_set_pos || !g_set_rot || !core::safe_read(static_cast<char*>(veh) + kVehPhys, phys) || !phys ||
+        !core::safe_read(phys + 4, body) || !body || !core::safe_copy(body + kBodyRot, rot, sizeof rot) ||
+        !core::safe_copy(body + kBodyPos, pos, sizeof pos))
+        return;
+    if (rot[4] >= kUprightBelow) return;
+    // A rolled truck keeps its forward axis horizontal and loses its up axis: keep the more horizontal of rows 0 / 2.
+    const float h0 = std::sqrt(rot[0] * rot[0] + rot[2] * rot[2]);
+    const float h2 = std::sqrt(rot[6] * rot[6] + rot[8] * rot[8]);
+    if (std::max(h0, h2) < 0.2f) return;  // nose or tail straight up: no heading to keep
+    const float det = rot[0] * (rot[4] * rot[8] - rot[5] * rot[7]) - rot[1] * (rot[3] * rot[8] - rot[5] * rot[6]) +
+                      rot[2] * (rot[3] * rot[7] - rot[4] * rot[6]);
+    const float s = det < 0.f ? -1.f : 1.f;  // keep the matrix' handedness
+    const float up[3] = {0.f, 1.f, 0.f};
+    float nrot[9], tmp[3];
+    if (h0 >= h2) {
+        const float a[3] = {rot[0] / h0, 0.f, rot[2] / h0};
+        cross3(a, up, tmp);
+        std::memcpy(nrot, a, sizeof a);
+        std::memcpy(nrot + 3, up, sizeof up);
+        for (int k = 0; k < 3; ++k) nrot[6 + k] = s * tmp[k];
+    } else {
+        const float c[3] = {rot[6] / h2, 0.f, rot[8] / h2};
+        cross3(up, c, tmp);
+        for (int k = 0; k < 3; ++k) nrot[k] = s * tmp[k];
+        std::memcpy(nrot + 3, up, sizeof up);
+        std::memcpy(nrot + 6, c, sizeof c);
+    }
+    Pose p;
+    std::memcpy(p.rot, nrot, sizeof nrot);
+    std::memcpy(p.pos, pos, sizeof pos);
+    p.pos[1] += 0.3f;
+    g_set_rot(phys, p.rot);
+    g_set_pos(phys, p.pos);
+    const float zero[3] = {};
+    std::memcpy(body + kBodyAngVel, zero, sizeof zero);
+    carry_wheels(phys, rot, pos, p, false);
+    if (t.uprighted++ < 5)
+        spdlog::info("vehicles: id={} rolled over (up.y {:.2f}): stood upright at ({:.1f},{:.1f},{:.1f}) #{}", id_of(veh),
+                     rot[4], pos[0], pos[1], pos[2], t.uprighted);
+}
+
 void __fastcall hk_Update(void* self, void*, float dt) {
     const int16_t id = id_of(self);
     if (id >= 0) {
@@ -283,6 +344,7 @@ void __fastcall hk_Update(void* self, void*, float dt) {
         }
     }
     g_update->unsafe_thiscall<void>(self, dt);
+    if (id >= 0 && g_enabled && g_upright && (!NetIsOnline() || NetIsHost())) make_upright(g_tracks[static_cast<uint16_t>(id)], self);
 }
 
 // ---- seats and boarding ----
@@ -867,12 +929,34 @@ void __cdecl cmd_vehinfo() {
                  g_cfg.rider_targets);
     for (auto& [id, t] : g_tracks) {
         if (!t.ent || EntityById(id) != t.ent) continue;
-        float pos[3] = {};
+        float pos[3] = {}, rot[9] = {};
         char* body = body_of(t.ent);
-        if (body) core::safe_copy(body + kBodyPos, pos, sizeof pos);
+        if (body) {
+            core::safe_copy(body + kBodyPos, pos, sizeof pos);
+            core::safe_copy(body + kBodyRot, rot, sizeof rot);
+        }
         spdlog::info("coop_vehinfo: vehicle id={} pos=({:.1f},{:.1f},{:.1f}) driving={} frozen={} samples={} seats {} {} {} {}",
                      id, pos[0], pos[1], pos[2], driving(t.ent), t.frozen, t.samples, seat_of(t.ent, 0),
                      seat_of(t.ent, 1), seat_of(t.ent, 2), seat_of(t.ent, 3));
+        spdlog::info("coop_vehinfo: vehicle id={} rot rows ({:.2f},{:.2f},{:.2f}) ({:.2f},{:.2f},{:.2f}) ({:.2f},{:.2f},{:.2f}) "
+                     "uprighted={}",
+                     id, rot[0], rot[1], rot[2], rot[3], rot[4], rot[5], rot[6], rot[7], rot[8], t.uprighted);
+    }
+}
+
+// coop_flipveh (host or offline): roll every vehicle 180 degrees about its first axis, as the MAP4A ramp does.
+void __cdecl cmd_flipveh() {
+    for (auto& [id, t] : g_tracks) {
+        if (!t.ent || EntityById(id) != t.ent || !g_set_rot) continue;
+        char* body = body_of(t.ent);
+        char* phys = nullptr;
+        float rot[9];
+        if (!body || !core::safe_read(static_cast<char*>(t.ent) + kVehPhys, phys) || !phys ||
+            !core::safe_copy(body + kBodyRot, rot, sizeof rot))
+            continue;
+        for (int k = 3; k < 9; ++k) rot[k] = -rot[k];
+        g_set_rot(phys, rot);
+        spdlog::info("coop_flipveh: vehicle id={} rolled 180 degrees (guard {})", id, g_upright ? "on" : "off");
     }
 }
 
@@ -893,13 +977,14 @@ public:
         g_cfg.rider_targets = key("RiderTargets", true);
         g_cfg.rider_knock = key("RiderKnock", true);
         g_cfg.split_riders = key("SplitRiders", true);
+        g_upright = key("Upright", false);
         g_cfg.rider_knock_ms = static_cast<uint32_t>(GetPrivateProfileIntA("Vehicles", "RiderKnockMs", 2500, ini.c_str()));
         events::SetHandler(events::kVehicleSeat, nullptr, &OnSeatCommit);
         events::SetHandler(events::kVehicleBoard, &OnBoardRequest, nullptr);
         spdlog::info("vehicles: VehicleSync={} BoardWithHost={} SeatSync={} BoardRequest={} RiderTargets={} RiderKnock={} "
-                     "({} ms) SplitRiders={}",
+                     "({} ms) SplitRiders={} Upright={}",
                      g_enabled ? 1 : 0, g_cfg.board_with_host, g_cfg.seat_sync, g_cfg.board_request, g_cfg.rider_targets,
-                     g_cfg.rider_knock, g_cfg.rider_knock_ms, g_cfg.split_riders);
+                     g_cfg.rider_knock, g_cfg.rider_knock_ms, g_cfg.split_riders, g_upright);
     }
 
     void OnEngineReady(HMODULE engine) override {
@@ -1004,6 +1089,7 @@ public:
             console_cmds::AddCommand0("coop_unboard", &cmd_unboard);
             console_cmds::AddCommandStr("coop_rideknock", &cmd_rideknock);
             console_cmds::AddCommand0("coop_vehinfo", &cmd_vehinfo);
+            console_cmds::AddCommand0("coop_flipveh", &cmd_flipveh);
         }
         if (!NetIsOnline()) {
             g_last_parent = parent_of(LocalPlayer().entity);
