@@ -121,6 +121,8 @@ bool NetIsHost();
 bool NetIsOnline();
 // This process's player id (0 = host), net::kInvalidPlayerId (0xFF) before a client is welcomed.
 uint8_t NetLocalId();
+// Players in this session including this process (1 offline or while hosting alone). Game thread.
+int ConnectedPlayers();
 
 // Client: put the local hunter 1.5 m beside the host's last reported position, facing the host's way.
 // False when there is no host position yet or no local hunter. Health and death state are not touched.

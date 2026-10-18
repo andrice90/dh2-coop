@@ -10,6 +10,7 @@
 #include <windows.h>
 #include <intrin.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <chrono>
@@ -591,6 +592,7 @@ public:
         send_started_ = false;
         logged_tx_ = false;
         logged_rx_ = false;
+        logged_cap_ = false;
         log_sync_ = 2.f;
     }
 
@@ -736,6 +738,13 @@ public:
         if (!logged_tx_ && !msg.animals.empty()) {
             logged_tx_ = true;
             spdlog::info("animals: host snapshot {} animals seq={}", msg.animals.size(), msg.seq);
+        }
+        // Reserve animals (scale.cpp) share these slots. A full snapshot drops the rest of the list.
+        const size_t total = Animals().size() + static_cast<size_t>(std::count_if(
+                                 Npcs().begin(), Npcs().end(), [](void* n) { return !puppets::Owns(n); }));
+        if (total > net::kMaxAnimals && !logged_cap_) {
+            logged_cap_ = true;
+            spdlog::warn("animals: snapshot full: {} animals and NPCs, {} sent (kMaxAnimals)", total, msg.animals.size());
         }
         if (!BroadcastAnimalStates(msg) && !logged_send_fail_) {
             logged_send_fail_ = true;
@@ -1297,6 +1306,7 @@ private:
     bool logged_tx_ = false;
     bool logged_rx_ = false;
     bool logged_send_fail_ = false;
+    bool logged_cap_ = false;
     uint32_t last_send_ms_ = 0;
     uint16_t seq_ = 0;
     float log_sync_ = 2.f;

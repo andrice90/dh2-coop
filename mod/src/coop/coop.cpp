@@ -1362,6 +1362,15 @@ bool NetIsOnline() { return g_session.IsHost() || g_session.IsConnected(); }
 
 uint8_t NetLocalId() { return g_session.LocalPlayerId(); }
 
+int ConnectedPlayers() {
+    if (!NetIsOnline()) return 1;
+    int n = 1;
+    for (const auto& [id, r] : g_remotes) {
+        if (id != g_session.LocalPlayerId()) ++n;
+    }
+    return n;
+}
+
 std::string StatusLine() {
     const char* role = g_session.IsHost() ? "host" : (g_session.IsConnected() ? "client" : "offline");
     const auto& lp = LocalPlayer();

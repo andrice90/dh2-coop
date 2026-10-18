@@ -43,6 +43,8 @@ constexpr uint16_t kPropHit = 16;        // request and commit. subject = cObjTa
                                          // Not sent with Send: a broken bottle or stump stays broken.
 constexpr uint16_t kHostNotice = 17;     // commit (Send, not journaled). key = a short on-screen line from the host
                                          // ("Host restarts MAP3B"); the map change itself is the usual kMapStart.
+constexpr uint16_t kScaleMax = 40;       // commit (scale.cpp). subject = animal id, f0 = its new max health (+0x4C0),
+                                         // key = "<factor> #<serial>". Player-count scaling of a boss / lone large animal.
 
 // onRequest runs on the host. onCommit runs on a client. Either may be null.
 using Handler = void (*)(const net::GameEvent&);
