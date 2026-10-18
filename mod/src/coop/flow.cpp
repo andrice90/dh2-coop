@@ -735,6 +735,18 @@ void __cdecl cmd_ammofake(const char* arg) {
                  g_ammo_fake < 0 ? "real" : (g_ammo_fake ? "has ammo" : "dry"));
 }
 
+// coop_profilemap <map>: the profile's mission index points at <map> (what SetMapIsComplete does after the level
+// before it), so a continue plays that map's chapter movie and loads it. Tests a map whose end is hard to reach.
+void __cdecl cmd_profilemap(const char* arg) {
+    const std::string map = Lower(core::safe_cstr(arg, 24));
+    if (!PlainName(map, 24)) {
+        spdlog::warn("flow: usage coop_profilemap <map from the mission table, lower case>");
+        return;
+    }
+    const bool ok = SetProfileMap(map, "coop_profilemap");
+    spdlog::info("flow: coop_profilemap '{}' -> ok={} profile map '{}' {}", map, ok, ProfileMap(), ProfileState());
+}
+
 // coop_ammocheck: run the task's ammo check as the game does and log the answer.
 void __cdecl cmd_ammocheck() {
     void* obj = AmmoObj();
@@ -871,6 +883,7 @@ public:
             console_cmds::AddCommandStr("coop_ammofake", &cmd_ammofake);
             console_cmds::AddCommand0("coop_ammocheck", &cmd_ammocheck);
             console_cmds::AddCommandStr("coop_npcdie", &cmd_npcdie);
+            console_cmds::AddCommandStr("coop_profilemap", &cmd_profilemap);
             console_cmds::AddCommand0("coop_flow", &cmd_flow);
         }
         if (!NetIsOnline()) {

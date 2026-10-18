@@ -97,6 +97,13 @@ void set_lobby(LobbyState state, std::string msg) {
     g_lobby_msg = std::move(msg);
 }
 
+// mod_spmap's profile step (0xa800) compares the name with the lower-case mission table: "MAP2B" matches nothing and
+// leaves the profile on its old map (a hunt map has no other sync, so the next exit went to the wrong map).
+std::string spmap_command(std::string map) {
+    for (char& c : map) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return "mod_spmap " + map;
+}
+
 uint32_t now_ms() {
     using namespace std::chrono;
     return static_cast<uint32_t>(duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
@@ -770,7 +777,7 @@ private:
         g_jump.f5_down = f5;
         g_jump.f6_down = f6;
         if (g_jump.restart_at != 0 && static_cast<int32_t>(now_ms() - g_jump.restart_at) >= 0) {
-            const std::string cmd = "mod_spmap " + g_jump.restart_map;
+            const std::string cmd = spmap_command(g_jump.restart_map);
             g_jump.restart_map.clear();
             g_jump.restart_at = 0;
             spdlog::info("coop: restart hop: {} -> {}", cmd, console::Exec(cmd.c_str()));
@@ -1368,7 +1375,7 @@ bool HostNextLevel() {
     }
     if (!confirm_level_jump(2, fmt::format("skip to {} for everyone", next))) return false;
     tell_everyone(fmt::format("Host skips to {}", next));
-    const std::string cmd = "mod_spmap " + next;
+    const std::string cmd = spmap_command(next);
     spdlog::info("coop: host skips '{}' -> '{}': {} -> {}", map, next, cmd, console::Exec(cmd.c_str()));
     return true;
 }
