@@ -68,3 +68,9 @@ add_executable(dh2net_test main.cpp)
 target_compile_features(dh2net_test PRIVATE cxx_std_20)
 target_compile_options(dh2net_test PRIVATE /W4 /permissive- /wd4100)
 target_link_libraries(dh2net_test PRIVATE dh2net)
+
+# UPnP router logic, worker thread and the wrong-password guard (offline), plus --live for the real router.
+add_executable(dh2upnp_test upnp_test.cpp)
+target_compile_features(dh2upnp_test PRIVATE cxx_std_20)
+target_compile_options(dh2upnp_test PRIVATE /W4 /permissive- /wd4100)
+target_link_libraries(dh2upnp_test PRIVATE dh2net)

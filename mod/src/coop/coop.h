@@ -123,6 +123,8 @@ bool SendGameEventTo(uint8_t playerId, const net::GameEvent& ev);
 std::vector<uint8_t> PeerIds();
 bool NetIsHost();
 bool NetIsOnline();
+// UDP port this process hosts on (the bound port); 0 when it is not hosting.
+uint16_t NetHostPort();
 // This process's player id (0 = host), net::kInvalidPlayerId (0xFF) before a client is welcomed.
 uint8_t NetLocalId();
 // Players in this session including this process (1 offline or while hosting alone). Game thread.
