@@ -27,6 +27,7 @@
 #include <spdlog/spdlog.h>
 
 #include "coop/beasts.h"
+#include "coop/bosses.h"
 #include "coop/coop.h"
 #include "coop/player_tracker.h"
 #include "coop/puppets.h"
@@ -1007,8 +1008,10 @@ public:
             st.health = hp;
             st.state = entity::BodyStateName(a);
             // A sync attack (PlaySA: every part in CutScene, part 0 on the paired clip). Clients play the clip on
-            // their mirror without the partner link (re/notes/yeti-bosses.md).
-            if (InSyncAttack(a)) {
+            // their mirror without the partner link (re/notes/yeti-bosses.md). A scripted clip in CutScene is sent the
+            // same way: the MAP12C yeti's throw ("throwup", AttackThrowers) showed as idleattack1 on clients. Not a
+            // cutscene's AIHuntTask_PlayAnim: the client's own cutscene runs that task on its copy (thaw above).
+            if (InSyncAttack(a) || (st.state == "CutScene" && !entity::BrainTaskActive(a, "AIHuntTask_PlayAnim"))) {
                 st.flags |= net::animal_flag::kSyncAttack;
                 st.arms = entity::PartClipName(a, 0);
             }
@@ -1658,14 +1661,6 @@ private:
                 const bool ok = entity::CharacterBrainFreeze(ent, true);
                 if (m.refreeze_logs++ < 5) spdlog::info("animals: mirror id={} brain was unfrozen; frozen again ok={}", id, ok);
             }
-            // Same for an animal's hunt brain: a script MoveToPos runs the respawn (GameDll7 0x14610), which clears
-            // +0x79 (MAP12C BeginCutScene / the cutscene's Skip move the yeti). A running local brain starts attack
-            // tasks and sync attacks of its own.
-            if (!m.is_npc && !cobra && m.frozen && !entity::IsHuntBrainFrozen(ent)) {
-                const bool ok = entity::FreezeBrain(ent, true);
-                if (m.refreeze_logs++ < 5)
-                    spdlog::info("animals: mirror id={} hunt brain was unfrozen by the game; frozen again ok={}", id, ok);
-            }
             if (!m.frozen) {
                 const bool ok = m.is_npc ? entity::CharacterBrainFreeze(ent, true) : entity::FreezeBrain(ent, true);
                 if (!m.freeze_logged) {
@@ -1809,6 +1804,8 @@ private:
                 }
             }
             if (m.is_npc) {
+                // A host AITaskNPC_PlayAnim clip (bosses.cpp kNpcAnim: "hurtdown", "syncguidegetup") holds the pose.
+                if (bosses::NpcAnimHold(id, sample.state)) continue;
                 if (!sample.state.empty() && entity::BodyStateName(ent) != sample.state && !m.failed_states.count(sample.state))
                     NoteStateResult(id, m, sample.state, entity::SetBodyState(ent, sample.state.c_str(), true));
                 if (m.applied_state != sample.state) {

@@ -6,7 +6,8 @@
 # Usage:
 #   .\tools-src\boss-test.ps1 -Map MAP12C -Port 27460 -Phases 'stay|stay','-187.6:1.6:-121|stay','stay|-187.6:1.6:-121'
 #   .\tools-src\boss-test.ps1 -Map MAP12B -Triggers 'cScrTask03' -Phases 'stay|stay' -Keep
-# A phase is '<host>|<client>': 'stay', 'tohost' (client only), or 'x:y:z' (metres, as the logs print them).
+# A phase is '<host>|<client>': 'stay', 'tohost' (client only), 'x:y:z' (metres, as the logs print them), or
+# 'cmd:<console line>;<console line>'.
 param(
     [string]$Map = 'MAP12C',
     [int]$Port = 27460,
@@ -39,6 +40,8 @@ function Read-Shared([string]$path) {
 function Move-Player([string]$tree, [string]$where) {
     if ($where -eq 'stay' -or -not $where) { return }
     if ($where -eq 'tohost') { Send-Cmd $tree 'coop_tohost'; return }
+    # 'cmd:<line>;<line>' sends console lines instead (e.g. 'cmd:coop_trigger cScrTask10;coop_tp 749.6:159.5:-562').
+    if ($where.StartsWith('cmd:')) { foreach ($l in $where.Substring(4).Split(';')) { Send-Cmd $tree $l }; return }
     Send-Cmd $tree "coop_tp $where"
 }
 $stamp = Get-Date -Format 'HHmmss'
@@ -58,7 +61,7 @@ for ($ph = 0; $ph -lt $Phases.Count; $ph++) {
         foreach ($t in 'game', 'game2') {
             $p = Get-Game $t
             if ($p) {
-                & (Join-Path $PSScriptRoot 'capture-window.ps1') -ProcessId $p.Id -Out "re\notes\coop-local\$Prefix-$stamp-p$ph-$i-$t.png" -NoFocus -Print 2>&1 | Out-Null
+                & (Join-Path $PSScriptRoot 'capture-window.ps1') -ProcessId $p.Id -Out "re\notes\coop-local\$Prefix-$stamp-p$ph-$i-$t.png" -NoFocus -PrintWindow 2>&1 | Out-Null
             } elseif ($alive[$t]) {
                 $alive[$t] = $false
                 "$t EXITED during phase $ph step $i ($(Get-Date -Format HH:mm:ss))"
@@ -74,7 +77,7 @@ if ($FinalHostCmds.Count -gt 0) {
         foreach ($t in 'game', 'game2') {
             $p = Get-Game $t
             if ($p) {
-                & (Join-Path $PSScriptRoot 'capture-window.ps1') -ProcessId $p.Id -Out "re\notes\coop-local\$Prefix-$stamp-end-$i-$t.png" -NoFocus -Print 2>&1 | Out-Null
+                & (Join-Path $PSScriptRoot 'capture-window.ps1') -ProcessId $p.Id -Out "re\notes\coop-local\$Prefix-$stamp-end-$i-$t.png" -NoFocus -PrintWindow 2>&1 | Out-Null
             } elseif ($alive[$t]) {
                 $alive[$t] = $false
                 "$t EXITED after the final commands ($(Get-Date -Format HH:mm:ss))"

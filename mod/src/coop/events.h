@@ -79,6 +79,15 @@ constexpr uint16_t kVehicleSeat = 28;    // commit (journaled). subject = vehicl
 constexpr uint16_t kVehicleBoard = 29;   // request. subject = vehicle id, i0 = driver NPC id (0xFFFF none), key = the
                                          // waypoint the client's script drove to. A client's own script seated it while
                                          // the host's hunter is not seated: the host boards too and drives.
+
+// Bosses and scripted beats (bosses.cpp, re/notes/yeti-bosses.md).
+constexpr uint16_t kNpcAnim = 34;        // commit. subject = NPC entity id, key = "<clip>#<n>" (n counts per NPC, so the
+                                         // journal does not swallow a repeated clip). An AITaskNPC_PlayAnim clip without
+                                         // a partner (MAP12A Reggie "hurtdown", MAP2B Hugh "syncguidegetup").
+constexpr uint16_t kPropSA = 35;         // commit. subject = cObjAIHuntMoveObject id (MAP12B falling tree), key = clip.
+constexpr uint16_t kPropSAEnd = 36;      // commit. Same subject and key; f0 = seconds since the start on the host.
+constexpr uint16_t kBossThrow = 37;      // commit (Send). subject = thrower id, key = "x y z vx vy vz" of the rock as it
+                                         // left the hand: clients throw a harmless copy (MAP12C yeti).
 constexpr uint16_t kScaleMax = 40;       // commit (scale.cpp). subject = animal id, f0 = its new max health (+0x4C0),
                                          // key = "<factor> #<serial>". Player-count scaling of a boss / lone large animal.
 

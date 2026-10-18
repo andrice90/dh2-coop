@@ -668,6 +668,10 @@ void RetargetToNearestPlayer() {
         int task_state = 0;
         if (task) core::safe_read(static_cast<char*>(task) + 4, task_state);
         if (task && task_state != 1) continue;  // ProcessAttackStuck only switches a task in state 1
+        // Not in the middle of a throw (attack sub-state +0x18 0x8000) or a sync attack (0x2000): a switch during the
+        // MAP12C yeti's "throwup" left it standing in that clip for 50 s until the new target walked in front of it.
+        int sub = 0;
+        if (task && core::safe_read(static_cast<char*>(task) + 0x18, sub) && (sub == 0x8000 || sub == 0x2000)) continue;
         const bool ok = guarded_switch(ch.brain, task, cands[ch.cur].ent, cands[best].ent);
         if (ok) {
             --cands[ch.cur].on;

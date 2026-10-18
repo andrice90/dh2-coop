@@ -67,9 +67,6 @@ std::string UpperBodyState(void* ent);
 // cAIHuntBrain_Animal::FreezeBrain on the entity's brain (+0x200): brain Update returns early (no senses, path,
 // body commands); animation and physics keep running.
 bool FreezeBrain(void* ent, bool freeze);
-// The flag FreezeBrain writes (hunt brain +0x79). Scripts clear it behind our back: MoveToPos runs the animal respawn
-// (GameDll7 0x14610), which also sets IdleAttack (re/notes/audit-maps-c.md). False when there is no brain.
-bool IsHuntBrainFrozen(void* ent);
 // cObjCharacterEx::CharacterBrainFreeze(int). Fastcall: this in ecx, flag in edx.
 // NPCs use cScrBrain_NPC, not cAIHuntBrain_Animal. The animal FreezeBrain is the wrong function.
 bool CharacterBrainFreeze(void* ent, bool freeze);
