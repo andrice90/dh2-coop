@@ -33,6 +33,19 @@ rate() {
       printf "%.1f(%d)", n / span, pk
     }'
 }
+# first-chance sites of one log as code@module+offset; $2 = run | shutdown, $3 = the run's status (shutdown only when ok)
+fcsites() {
+  tr -d '\r' < "$1" | awk -v want="$2" -v ok="$3" '
+    match($0, /^\[[0-9-]+ [0-9:]+\.[0-9]+/) { t = substr($0, RSTART + 12, 12); split(t, a, ":"); s = a[1] * 3600 + a[2] * 60 + a[3]; last = s }
+    /first-chance exception/ { n++; ts[n] = s; line[n] = $0 }
+    END {
+      for (i = 1; i <= n; i++) {
+        cls = (ok == "ok" && last - ts[i] <= 3) ? "shutdown" : "run"
+        if (cls != want) continue
+        if (match(line[i], /exception 0x[0-9a-f]+ at [^ ]+/)) { x = substr(line[i], RSTART + 10, RLENGTH - 10); sub(/ at /, "@", x); print x }
+      }
+    }'
+}
 sec() { awk -F: '{ print $1 * 3600 + $2 * 60 + $3 }' <<< "$1"; }
 firstts() { sed -n "s/^\[[0-9-]* \([0-9:.]*\)\].*$1.*/\1/p" "$2" | head -1; }
 cnt() { local n; n=$(norm "$2" 2>/dev/null | grep -c -- "$1"); echo "${n:-0}"; }
@@ -62,10 +75,19 @@ for d in "$@"; do
   cf=$(norm "$c1" 2>/dev/null | sed -n "s/^story: applied host fire '\([^']*\)'.*/\1/p; s/^story: host fire '\([^']*\)' (id [0-9]*) already ran here.*/\1/p" | sort -u | wc -l)
   cs=$(cnt '^story: client fire ' "$c1")
   df=$(cnt '^story: defer host fire' "$c1")
-  # first-chance exceptions of every tree (nvd3dum.dll AVs at map load are known noise)
-  fc=$(for f in "$h" $clients; do norm "$f" | sed -n 's/^first-chance exception \(0x[0-9a-f]*\) at \([^ ]*\) eip.*/\1@\2/p' | sed "s|^|$(basename "$f" -dh2coop.log):|"; done | grep -vi 'nvd3dum' | sort | uniq -c | sort -rn | awk '{ printf "%s x%s; ", $2, $1 }' | cut -c1-300)
-  [ -z "$fc" ] && fc=none
-  nv=0; for f in "$h" $clients; do nv=$((nv + $(cnt 'first-chance exception.*nvd3dum' "$f"))); done
+  # first-chance exceptions of every tree. nvd3dum.dll AVs at map load are known noise (counted, not listed). A site within
+  # 3 s of the end of a log whose run ended ok is listed apart as "at shutdown" (the run script closes the windows then).
+  fcrun=""; fcsd=""; nv=0
+  for f in "$h" $clients; do
+    b=$(basename "$f" -dh2coop.log)
+    nv=$((nv + $(fcsites "$f" run "$st" | grep -ci nvd3dum) + $(fcsites "$f" shutdown "$st" | grep -ci nvd3dum)))
+    fcrun="$fcrun$(fcsites "$f" run "$st" | grep -vi nvd3dum | sed "s|^|$b:|")"$'\n'
+    fcsd="$fcsd$(fcsites "$f" shutdown "$st" | grep -vi nvd3dum | sed "s|^|$b:|")"$'\n'
+  done
+  fcrun=$(echo "$fcrun" | grep . | sort | uniq -c | sort -rn | awk '{ printf "%s x%s; ", $2, $1 }' | cut -c1-300)
+  fcsd=$(echo "$fcsd" | grep . | sort | uniq -c | sort -rn | awk '{ printf "%s x%s; ", $2, $1 }' | cut -c1-300)
+  fc="${fcrun:-none}"
+  [ -n "$fcsd" ] && fc="$fc [at shutdown: ${fcsd%; }]"
   [ "$nv" != 0 ] && fc="$fc (+$nv nvd3dum)"
   unhs=""; for f in "$h" $clients; do n=$(cnt 'unhandled exception' "$f"); [ "$n" != 0 ] && unhs="$unhs $(basename "$f" -dh2coop.log):$n"; done
   dmp=$(ls "$d" 2>/dev/null | grep -i 'dmp' | paste -sd' ')
