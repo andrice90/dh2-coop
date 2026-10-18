@@ -1,6 +1,43 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-17 night by Grok. DLSS 5 was removed from the retail Bin. The co-op mod stayed.
+**Last updated:** 2026-10-17 late night by the lead (Claude). Earlier tonight: Grok removed DLSS 5 from the retail Bin; the co-op mod stayed.
+
+## Pivot to real testing (2026-10-17 late night)
+User: pause the wide fan-out; make install and host/join very easy; start real testing over Tailscale; implement player-count scaling; fix the compass; then a lobby overlay (one DH2 COOP shortcut → main menu → lobby with HOST / JOIN).
+
+Done in main:
+- `0178722`: `run-coop-local` waits for `coop: hosting on UDP <p> -> true` and stops on a failed bind; the host shows a notice. (The 21:53 "different mod build" reject was the user's retail game hosting on 27420; the reject path itself worked.)
+- `3732bd1`: start from the main menu (clients follow with `mod_spmap`, see MEMORY "Main menu"), menu banner, `-Map MENU`; F8 shows the tailnet IP; compass ring round at every heading (`[Display] CompassFix=1`). The two-window MAP1 check of protocol v2 passed: same build id, welcome in 1.7 s, animals mirrored; windowed minimize keeps frames running (the Flip pump only matters for fullscreen, still unverified).
+
+In progress:
+- **Lobby overlay** (lead, main): F8 / auto at the main menu, HOST / JOIN, IP, port, name, puppet model, status, player list. Single DH2 COOP shortcut.
+- **Player-count scaling** (Opus agent, `dh2coop-scale` branch `scale`, port 27520, slot S): `re/notes/player-scale.md`; deliverable `re/notes/scale.md` in that worktree.
+
+### Paused for the next phase (agents stopped 22:0x; worktrees kept, resume each with its context)
+| Job | Worktree / branch | State when paused |
+|---|---|---|
+| journal-life (animal respawn mirroring, journal dedupe M5, H1) | `dh2coop-life` / `journal-life` | nothing committed |
+| mission-flow (results screen, host-only exits, guide death `0x5fde0`, fail paths) | `dh2coop-flow` / `mission-flow` | 8 uncommitted files incl. new `flow.cpp` |
+| hunter-nearest | `dh2coop-hunter` / `hunter-nearest` | 2 commits + 1 dirty file |
+| yeti / bosses | `dh2coop-yeti` / `yeti` | 1 commit + 5 dirty files |
+| puppet-polish | `dh2coop-polish` / `puppet-polish` | 4 commits |
+| npc-arms | `dh2coop-npcarms` / `npc-arms` | 2 commits + 3 dirty |
+| weapons (dropped by the user: no more weapon alignment) | `dh2coop-weapons` / `weapons` | 1 commit + 3 dirty; do not resume |
+| replay-crash | `dh2coop-replay` / `replay-crash` | 2 commits (fix + tests) |
+| kit-fixes (installer) | `dh2coop-kit` / `kit-fixes` | 3 dirty (big `install.ps1` rewrite); DLSS parts obsolete |
+| smoke-all-maps | `dh2coop-smoke` / `smoke-pass` | 3 new scripts, uncommitted |
+
+Empty worktrees made for the next wave: `dh2coop-pilot` (`pilot-maps`), `dh2coop-beasts` (`beasts`), `dh2coop-truck` (`trucks`).
+
+Next-phase plan (from `re/notes/audit-maps-a/b/c.md` gap lists; the goal is a full multi-player story playthrough):
+- Lead (main thread): trigger `OnHit` / `BeginCutScene` replication (`kTriggerHit`, audit-b G1: blocks MAP5/7/8/9, MAP3A find task), host fire guards (audit-b G5 pending states 2-5, audit-a G6 not armed, audit-b G10 `+0x1fc=1` on swallowed client fire), O(1) `EntityById` + list pruning (review M3/L11).
+- journal-life: respawn = new life (audit-b G2, audit-c G2/G4), brain re-freeze every frame, journal serials for re-armed triggers (audit-c G8).
+- mission-flow: host-only exits with spawn point (audit-a G2, audit-c G7), guide death commit (audit-b G9), need-ammo on any player (audit-c G6), client mission status after death (audit-c G13).
+- hunter-nearest: spawner volumes for puppets (audit-b G8), `NpcFollowNearest` test (audit-b G7).
+- pilot-maps: `cObjPilot` vt `0x109d48` in tracker/combat/puppets (audit-c G1), heli lag.
+- beasts: water crocodiles `0xffa50` (audit-a G7, audit-b G6), tranq hits `0x1a680` (audit-b G3), claim callback on clients (audit-a G9), cobra bites nearest.
+- trucks: MAP5 `car1` and MAP4A trucks (audit-b G4, audit-a G10), after `kTriggerHit`.
+- yeti, npc-arms (death/PlayAnim beats only, audit-c G9; no more arm cosmetics), puppet-polish (`SetCanBeAttacked` for puppets, audit-a G8), replay-crash, smoke: finish and report.
 
 ## Launchers (2026-10-17 night)
 `host.bat` and `join.bat` still only start `Main7.exe +mod data`. Desktop resolution and the wide FOV are the mod's `[Display]` block. The retail Bin has the 9:38 PM `dh2coop.asi` and `dh2coop.ini` with `[Display]` (`PlayerName=panjypoo` kept).
