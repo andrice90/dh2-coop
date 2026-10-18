@@ -11,6 +11,7 @@
 #   .\run-coop-local.ps1 -Players 3 -LateJoin 20 -Seconds 60 -Map MAP3B
 #   .\run-coop-local.ps1 -AddClient 3 -Map HUNTMAP4
 #   .\run-coop-local.ps1 -Map MAP3B -Combat
+#   .\run-coop-local.ps1 -Map MENU          (everyone at the main menu; the host's first map load is followed)
 # -Port       UDP port written into every copied ini; clients join 127.0.0.1:<Port>. Default 27420. Give each
 #             worktree its own port when sessions from several checkouts run on this PC at the same time.
 # -Combat     Forces [Puppets] Physics=1 AttackTarget=1 in every copied ini (host animals attack the nearest
@@ -54,7 +55,8 @@ $ini = Join-Path $root 'mod\dh2coop.ini'
 $cfg = Join-Path $root 'tools-src\console.windowed.cfg'
 $captureScript = Join-Path $root 'tools-src\capture-window.ps1'
 $shotDir = Join-Path $root 're\notes\coop-local'
-$launch = "+mod data -nointro -developper -cheats -spmap $Map"
+# -Map MENU starts every instance at the main menu (no -spmap), the way the friends' kit launches.
+$launch = if ($Map -ieq 'MENU') { "+mod data -nointro -developper -cheats" } else { "+mod data -nointro -developper -cheats -spmap $Map" }
 $windowTimeoutSec = 90
 
 if ($Players -lt 2 -or $Players -gt 4) { throw '-Players must be from 2 to 4' }

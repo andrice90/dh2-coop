@@ -275,7 +275,12 @@ void OnMapStartCommit(const net::GameEvent& ev) {
     g_followed_ms = GetTickCount();
     // spmap also closes the main and in-game menus; menumap is how the game itself enters the menu map.
     // A new serial for the map we are on is the host replaying it.
-    const std::string cmd = (IsMenuMap(want) ? "menumap " : "spmap ") + want;
+    // From the main menu, spmap is fatal: it queues closemainmenu and loads the map first, and the deferred close then
+    // unloads the menu's GUI models after their world is gone (cBoneStatic::UnlinkFromParent AV, 2026-10-17 22:30).
+    // mod_spmap is the game's own menu loader (GameDll MOD_LoadLevel 0x36b0): it closes the menus at once, sets the
+    // profile's map, then queues spmap.
+    const char* verb = IsMenuMap(want) ? "menumap " : (IsMenuMap(g_map) ? "mod_spmap " : "spmap ");
+    const std::string cmd = verb + want;
     const int r = console::Exec(cmd.c_str());
     spdlog::info("events: following host to '{}' (serial {}, here '{}'): {} -> {}", want, ev.subjectId, g_map, cmd, r);
 }
@@ -350,7 +355,8 @@ void OnSyncDoneCommit(const net::GameEvent& ev) {
 void PumpClientSync() {
     if (NetIsHost() || !NetIsOnline() || g_map.empty()) return;
     const uint32_t now = GetTickCount();
-    if (!g_synced_local && LocalPlayer().valid &&
+    // At the main menu there is no hunter: ask anyway, so a friend who joins from the menu learns the host's map.
+    if (!g_synced_local && (LocalPlayer().valid || IsMenuMap(g_map)) &&
         (g_sync_sent_serial != g_map_serial || now - g_sync_sent_ms > 10000)) {
         g_sync_sent_serial = g_map_serial;
         g_sync_sent_ms = now;
@@ -366,6 +372,10 @@ void PumpClientSync() {
         }
     }
     if (!g_catchup || !g_synced_local) return;
+    if (IsMenuMap(g_map)) {  // nobody to move at the menu
+        g_catchup = false;
+        return;
+    }
     const uint32_t since = now - g_catchup_done_ms;
     if (since < 1000 || (story::CatchupBusy() && since < 15000)) return;
     const float dist = DistanceToHost();

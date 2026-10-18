@@ -102,6 +102,11 @@ void draw_overlay(const dh2::coop::SessionView& view) {
     else
         ImGui::Text("local id %u", static_cast<unsigned>(view.localId));
     ImGui::Text("port %u", static_cast<unsigned>(view.port));
+    if (!view.tailnetIp.empty())
+        ImGui::Text("tailnet %s", view.tailnetIp.c_str());
+    else
+        ImGui::TextUnformatted("tailnet -  (Tailscale not connected)");
+    if (!view.otherIps.empty()) ImGui::Text("lan %s", view.otherIps.c_str());
 
     if (view.hunterFound) {
         ImGui::Text("hunter %.1f %.1f %.1f  yaw %.1f", static_cast<double>(view.hunterPos[0]),

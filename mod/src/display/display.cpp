@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <string>
 
 namespace {
@@ -46,6 +47,7 @@ bool g_enabled = true;
 bool g_windowed = true;
 bool g_hor_plus = true;
 bool g_lock_hud = true;
+bool g_compass_fix = true;  // [Display] CompassFix
 int g_width = 0;
 int g_height = 0;
 
@@ -530,54 +532,66 @@ void map_points(const HudPlace& p, float* pts, int n) {
     }
 }
 
-// The N/E/S/W dial is the triangle fan at GameDll 0xc6530. Its local X and Y are scaled
-// differently, so the ring is round with North forward and a horizontal oval with East forward.
-// The health wedge is three copies of the same quad (0xc7a70, 0xc7c70, 0xc7e70), one per
-// color. Leave all three out or yellow and red turn with the dial the way green used to.
-void circularize_dial(void* ret, float* pts) {
-    if (!caller_is_game(ret)) return;
-    HMODULE game = GetModuleHandleA("GameDll7.dll");
-    const auto rva = static_cast<uintptr_t>(static_cast<uint8_t*>(ret) - reinterpret_cast<uint8_t*>(game));
-    if (rva < 0xc6530 || rva >= 0xc6be0) return;
-    float minpx = pts[0], maxpx = pts[0], minpy = pts[1], maxpy = pts[1];
-    for (int i = 1; i < 3; ++i) {
-        minpx = std::min(minpx, pts[i * 2]);
-        maxpx = std::max(maxpx, pts[i * 2]);
-        minpy = std::min(minpy, pts[i * 2 + 1]);
-        maxpy = std::max(maxpy, pts[i * 2 + 1]);
-    }
-    const float midx = (pts[0] + pts[2] + pts[4]) / 3.f;
-    const float midy = (pts[1] + pts[3] + pts[5]) / 3.f;
-    if (midy < 900.f || midx > 900.f || (maxpx - minpx) > 280.f || (maxpy - minpy) > 280.f) return;
+// The N/E/S/W dial turns in GameDll 0xc6be0 (stdcall(rect, uv, tex, color, unused, centered, virtual)). It takes the
+// quad's corners from pixels into camera space (cRender::Transform2dTo3dCameraSpace), rotates them there, and
+// projects them back (Transform3dTo2dCameraSpace). Those use tan(fovX/2) at cRender+0x4a4 and tan(fovY/2) at +0x4a8
+// (ortho extents +0x4ac / +0x4b0), so the round trip is a true rotation only when tanX/tanY equals width/height.
+// The camera keeps the 4:3 values on a wider buffer: the dial was round with North forward and a horizontal oval
+// (width/height / (4/3) wide) with East forward. During that one call the vertical value is set to match the
+// buffer's shape, then restored. Nothing else in the call reads it.
+// DrawTriangle2D itself also goes through those tangents (2D vertices are placed in camera space and drawn with the
+// real projection), so hk_RenderTri puts the real values back around each triangle the dial draws.
+safetyhook::InlineHook* g_rot_sprite = nullptr;
+void** g_engine_render = nullptr;  // EngineDll7 ?render@@3PAVcRender@@A, the cRender GameDll draws through
+struct DialTangents {
+    uint8_t* render = nullptr;  // non-null while the dial call runs with patched tangents
+    float real_y = 0.f, real_oy = 0.f, dial_y = 0.f, dial_oy = 0.f;
+} g_dial;
 
-    static float cx = 0.f, fix = 1.f;
-    static float acc_minx = 0, acc_maxx = 0, acc_miny = 0, acc_maxy = 0;
-    static int count = 0;
-    if (count == 0) {
-        acc_minx = minpx;
-        acc_maxx = maxpx;
-        acc_miny = minpy;
-        acc_maxy = maxpy;
-    } else {
-        acc_minx = std::min(acc_minx, minpx);
-        acc_maxx = std::max(acc_maxx, maxpx);
-        acc_miny = std::min(acc_miny, minpy);
-        acc_maxy = std::max(acc_maxy, maxpy);
-    }
-    if (fix != 1.f) {
-        for (int i = 0; i < 3; ++i) pts[i * 2] = cx + (pts[i * 2] - cx) * fix;
-    }
-    if (++count >= 40) {
-        const float w = acc_maxx - acc_minx;
-        const float h = acc_maxy - acc_miny;
-        if (w > 12.f && h > 12.f) {
-            cx = (acc_minx + acc_maxx) * 0.5f;
-            const float ratio = h / w;
-            fix = (ratio > 0.92f && ratio < 1.08f) ? 1.f : std::clamp(ratio, 0.55f, 1.8f);
+void __stdcall hk_RotatedSprite(float* rect, void* uv, int tex, unsigned color, int unused, int centered, int virt) {
+    void* render_obj = nullptr;
+    if (g_engine_render) dh2::core::safe_read(g_engine_render, render_obj);
+    auto* render = static_cast<uint8_t*>(render_obj);
+    float l = 0, t = 0, r = 0, b = 0, tx = 0, ty = 0, ox = 0, oy = 0;
+    const bool fix = g_compass_fix && g_lock_hud && render && dh2::core::safe_read(render + 0x1a8, l) &&
+                     dh2::core::safe_read(render + 0x1ac, t) && dh2::core::safe_read(render + 0x1b0, r) &&
+                     dh2::core::safe_read(render + 0x1b4, b) && dh2::core::safe_read(render + 0x4a4, tx) &&
+                     dh2::core::safe_read(render + 0x4a8, ty) && dh2::core::safe_read(render + 0x4ac, ox) &&
+                     dh2::core::safe_read(render + 0x4b0, oy) && r - l > 2.f && b - t > 2.f;
+    if (fix) {
+        const float hw = (b - t) / (r - l);
+        g_dial = {render, ty, oy, tx * hw, ox * hw};
+        *reinterpret_cast<float*>(render + 0x4a8) = g_dial.dial_y;
+        *reinterpret_cast<float*>(render + 0x4b0) = g_dial.dial_oy;
+        static bool logged = false;
+        if (!logged) {
+            logged = true;
+            spdlog::info("display: compass dial turns in screen space (tanY {:.3f} -> {:.3f} for {:.0f}x{:.0f})", ty,
+                         tx * hw, r - l, b - t);
         }
-        count = 0;
+    }
+    g_rot_sprite->unsafe_stdcall<void>(rect, uv, tex, color, unused, centered, virt);
+    if (fix) {
+        g_dial.render = nullptr;
+        *reinterpret_cast<float*>(render + 0x4a8) = ty;
+        *reinterpret_cast<float*>(render + 0x4b0) = oy;
     }
 }
+
+// Around a triangle the dial draws: the real tangents for DrawTriangle2D, then the dial's again.
+struct RealTangentsScope {
+    uint8_t* render = g_dial.render;
+    RealTangentsScope() {
+        if (!render) return;
+        *reinterpret_cast<float*>(render + 0x4a8) = g_dial.real_y;
+        *reinterpret_cast<float*>(render + 0x4b0) = g_dial.real_oy;
+    }
+    ~RealTangentsScope() {
+        if (!render) return;
+        *reinterpret_cast<float*>(render + 0x4a8) = g_dial.dial_y;
+        *reinterpret_cast<float*>(render + 0x4b0) = g_dial.dial_oy;
+    }
+};
 
 void __fastcall hk_RenderTri(void* self, void*, float* a, float* b, float* c, float* u0, float* u1, float* u2, int mode,
                             unsigned color) {
@@ -588,7 +602,6 @@ void __fastcall hk_RenderTri(void* self, void*, float* a, float* b, float* c, fl
         const HudPlace p = hud_place(self);
         if (p.ok) {
             float pts[6] = {pa[0], pa[1], pb[0], pb[1], pc[0], pc[1]};
-            circularize_dial(_ReturnAddress(), pts);
             map_points(p, pts, 3);
             pa[0] = pts[0];
             pa[1] = pts[1];
@@ -605,6 +618,7 @@ void __fastcall hk_RenderTri(void* self, void*, float* a, float* b, float* c, fl
             }
         }
     }
+    RealTangentsScope real;
     g_rtri->unsafe_thiscall<void>(self, ua, ub, uc, u0, u1, u2, mode, color);
 }
 
@@ -693,6 +707,7 @@ void choose_resolution() {
     g_windowed = GetPrivateProfileIntA("Display", "Windowed", 1, ini.c_str()) != 0;
     g_hor_plus = GetPrivateProfileIntA("Display", "HorPlus", 1, ini.c_str()) != 0;
     g_lock_hud = GetPrivateProfileIntA("Display", "LockHud", 1, ini.c_str()) != 0;
+    g_compass_fix = GetPrivateProfileIntA("Display", "CompassFix", 1, ini.c_str()) != 0;
     g_width = static_cast<int>(GetPrivateProfileIntA("Display", "Width", 0, ini.c_str()));
     g_height = static_cast<int>(GetPrivateProfileIntA("Display", "Height", 0, ini.c_str()));
     g_elem_min_h = static_cast<int>(GetPrivateProfileIntA("Display", "HudScaleMinHeight", 1080, ini.c_str()));
@@ -714,8 +729,22 @@ public:
         choose_resolution();
     }
 
+    void OnGameDllLoaded(HMODULE game) override {
+        if (!g_enabled || !game) return;
+        static const uint8_t kPrologue[5] = {0x55, 0x8b, 0xec, 0x6a, 0xff};
+        void* fn = reinterpret_cast<uint8_t*>(game) + 0xc6be0;
+        uint8_t got[5] = {};
+        if (!dh2::core::safe_copy(fn, got, sizeof got) || std::memcmp(got, kPrologue, sizeof got) != 0) {
+            spdlog::error("display: compass dial at GameDll7+0xc6be0 has unexpected bytes; not hooked");
+            return;
+        }
+        g_rot_sprite = dh2::core::install_hook("HUD rotated sprite (compass dial, GameDll 0xc6be0)", fn,
+                                               reinterpret_cast<void*>(&hk_RotatedSprite));
+    }
+
     void OnEngineReady(HMODULE engine) override {
         if (!g_enabled || !engine) return;
+        g_engine_render = dh2::core::find_export_as<void**>(engine, "?render@@3PAVcRender@@A");
         g_create_render = dh2::core::install_hook(
             "cRenderInterface::CreateRender",
             dh2::core::find_export(engine, "?CreateRender@cRenderInterface@@QAEHPAUHWND__@@@Z"),

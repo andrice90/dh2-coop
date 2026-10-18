@@ -47,6 +47,8 @@ struct SessionView {
     RemoteView remotes[4];
     int remoteCount = 0;
     std::string notice;  // shown on screen even with the overlay hidden (e.g. why the host refused this game)
+    std::string tailnetIp;  // this PC's Tailscale IPv4 ("" = Tailscale not up)
+    std::string otherIps;   // up to two other IPv4s of this PC
 };
 SessionView Snapshot();
 

@@ -1,6 +1,9 @@
 #include "coop/coop.h"
 
 #include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iphlpapi.h>
 
 #include <algorithm>
 #include <chrono>
@@ -85,6 +88,64 @@ uint32_t hash_own_asi() {
 void show_notice(std::string text, uint32_t ms) {
     g_notice = std::move(text);
     g_notice_until = now_ms() + ms;
+}
+
+// This PC's addresses for the F8 panel and the host's menu line. Friends play over Tailscale: its adapter is named
+// "Tailscale" and hands out 100.64.0.0/10 addresses. Adapters that are down, loopback and link-local are skipped.
+// Refreshed every few seconds on the game thread (Tailscale may connect after the game starts).
+struct LocalAddrs {
+    std::string tailnet;  // first IPv4 of the Tailscale adapter ("" = Tailscale not up)
+    std::string others;   // up to two other IPv4s (LAN, other VPNs)
+};
+LocalAddrs g_addrs;
+uint32_t g_addrs_ms = 0;
+
+LocalAddrs scan_local_addresses() {
+    LocalAddrs out;
+    ULONG size = 16 * 1024;
+    std::vector<unsigned char> buf;
+    ULONG r = ERROR_BUFFER_OVERFLOW;
+    for (int tries = 0; tries < 3 && r == ERROR_BUFFER_OVERFLOW; ++tries) {
+        buf.resize(size);
+        r = GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER,
+                                 nullptr, reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buf.data()), &size);
+    }
+    if (r != NO_ERROR) return out;
+    int others = 0;
+    for (auto* a = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buf.data()); a; a = a->Next) {
+        if (a->OperStatus != IfOperStatusUp || a->IfType == IF_TYPE_SOFTWARE_LOOPBACK) continue;
+        const bool tailscale_name = (a->FriendlyName && wcsstr(a->FriendlyName, L"Tailscale")) ||
+                                    (a->Description && wcsstr(a->Description, L"Tailscale"));
+        for (auto* u = a->FirstUnicastAddress; u; u = u->Next) {
+            const auto* in = reinterpret_cast<const sockaddr_in*>(u->Address.lpSockaddr);
+            if (!in || in->sin_family != AF_INET) continue;
+            const uint32_t ip = ntohl(in->sin_addr.s_addr);
+            const uint32_t b0 = ip >> 24, b1 = (ip >> 16) & 0xff;
+            if (ip == 0 || b0 == 127 || (b0 == 169 && b1 == 254)) continue;
+            char text[INET_ADDRSTRLEN] = {};
+            if (!inet_ntop(AF_INET, &in->sin_addr, text, sizeof text)) continue;
+            const bool cgnat = b0 == 100 && (b1 & 0xc0) == 64;
+            if (out.tailnet.empty() && (tailscale_name || cgnat)) {
+                out.tailnet = text;
+            } else if (others < 2) {
+                out.others += (others++ ? ", " : "") + std::string(text);
+            }
+        }
+    }
+    return out;
+}
+
+void refresh_local_addresses() {
+    const uint32_t now = now_ms();
+    if (g_addrs_ms != 0 && now - g_addrs_ms < 10000) return;
+    const bool first = g_addrs_ms == 0;
+    g_addrs_ms = now ? now : 1;
+    LocalAddrs a = scan_local_addresses();
+    if (first || a.tailnet != g_addrs.tailnet) {
+        spdlog::info("coop: tailnet address {} (other addresses: {})", a.tailnet.empty() ? "none" : a.tailnet,
+                     a.others.empty() ? "none" : a.others);
+    }
+    g_addrs = std::move(a);
 }
 
 // "host[:port]" -> host, port (default kept when absent or invalid).
@@ -290,17 +351,18 @@ void __cdecl cmd_tp(const char* arg) {
     for (char& c : a) {
         if (c == ':' || c == ',') c = ' ';
     }
-    float x = 0.f, y = 0.f, z = 0.f;
+    float x = 0.f, y = 0.f, z = 0.f, yaw = 0.f;
     LocalPlayerSample lp;
-    if (std::sscanf(a.c_str(), "%f %f %f", &x, &y, &z) != 3 || !SampleLocalNow(lp) || !lp.entity) {
-        spdlog::warn("coop_tp: usage coop_tp <x>:<y>:<z>");
+    const int n = std::sscanf(a.c_str(), "%f %f %f %f", &x, &y, &z, &yaw);
+    if (n < 3 || !SampleLocalNow(lp) || !lp.entity) {
+        spdlog::warn("coop_tp: usage coop_tp <x>:<y>:<z>[:<yaw degrees>]");
         return;
     }
     net::PlayerState at{};
     at.pos[0] = x;
     at.pos[1] = y - 0.25f;  // place_near lifts by 0.25
     at.pos[2] = z;
-    at.yaw = lp.viewValid ? lp.viewYaw : lp.angle.y;
+    at.yaw = n >= 4 ? yaw : (lp.viewValid ? lp.viewYaw : lp.angle.y);
     const entity::Vec3 pos = place_near(lp.entity, at);
     spdlog::info("coop_tp: hunter to ({:.1f},{:.1f},{:.1f})", pos.x, pos.y, pos.z);
 }
@@ -426,6 +488,7 @@ public:
         if (frames_ < 600 || (frames_ % 600) == 0) AssertBackground(nullptr);
 
         RetryAutoJoin(dt);
+        refresh_local_addresses();
         ApplyPending();
         g_frame_thread = GetCurrentThreadId();
         g_last_frame_ms = now_ms();
@@ -858,7 +921,25 @@ SessionView Snapshot() {
         auto it = rtt.find(id);
         rv.rttMs = it != rtt.end() ? it->second : (rtt.empty() ? 0 : rtt.begin()->second);
     }
-    if (!g_notice.empty() && static_cast<int32_t>(g_notice_until - now_ms()) > 0) v.notice = g_notice;
+    v.tailnetIp = g_addrs.tailnet;
+    v.otherIps = g_addrs.others;
+    if (!g_notice.empty() && static_cast<int32_t>(g_notice_until - now_ms()) > 0) {
+        v.notice = g_notice;
+    } else if (events::CurrentMap() == "MENUMAP") {
+        // The kit starts everyone at the main menu: say what happens next.
+        const size_t friends = g_remotes.size();
+        if (g_session.IsHost()) {
+            const std::string join_with = !g_addrs.tailnet.empty() ? g_addrs.tailnet : g_addrs.others;
+            v.notice = fmt::format("Co-op: hosting on UDP {}, {} friend{} connected.{}{}\nStart a new game or load a "
+                                   "save: everyone follows you.",
+                                   g_settings.port, friends, friends == 1 ? "" : "s",
+                                   join_with.empty() ? "" : "\nFriends join with: ", join_with);
+        } else if (g_session.IsConnected()) {
+            v.notice = "Co-op: connected to the host.\nStay in this menu: you follow the host into its game.";
+        } else if (g_settings.auto_role == "join") {
+            v.notice = fmt::format("Co-op: looking for the host at {} (retrying)...", g_settings.auto_join_addr);
+        }
+    }
     return v;
 }
 
