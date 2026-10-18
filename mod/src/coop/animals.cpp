@@ -516,6 +516,8 @@ struct Mirror {
     uint32_t revive_ms = 0;     // when the last revive was applied: older snapshots may still say dead
     bool corpse_parked_logged = false;
     int relive_undone = 0;      // local script MoveToPos revivals of a corpse the host had not revived (logged 3x)
+    uint32_t fade_park_ms = 0;  // when this corpse was first seen parked by its own fade while the host's is not
+    int corpse_restored = 0;    // corpses put back at the host's after a local fade (logged 3x)
     // Hits (client): what the animal's own OnHit saw since the last AnimalHit.
     float hit_kind = kHitUnknown;
     int tranq_pending = 0;      // darts not reported yet (a dart does no damage, so no health drop shows it)
@@ -1201,6 +1203,7 @@ public:
         m.unsent_dmg = 0.f;
         m.refreeze_logged = 0;
         m.corpse_parked_logged = false;
+        m.fade_park_ms = 0;
         m.local_death_logged = false;
         m.revive_ms = now_ms();
         void* ent = FindAnimal(id);
@@ -1727,6 +1730,24 @@ private:
                              host_parked ? "parked again" : "dead again at the host's corpse", ok);
             return;
         }
+        if (here_parked && !host_parked) {
+            // This copy's own corpse fade parked it (cScrAnimal::Update 0x1f3c0, health 0: countdowns +0x6f4, +0x450, then
+            // vt +0x234), but the host's corpse is still there (MAP7: a tranquilized BTIGER stays; the client's sat at
+            // -10000 for good). Wolves fade on both within a second of each other, so give the host a moment to follow;
+            // then put the corpse back at the host's. The parked copy no longer updates (+0x4b0 = 0): it cannot park again.
+            if (m.fade_park_ms == 0) {
+                m.fade_park_ms = t;
+            } else if (t - m.fade_park_ms >= 3000 && m.have_rel) {
+                entity::Vec3 pos{s.pos[0], s.pos[1], s.pos[2]};
+                PlaceEntity(ent, pos, s.yaw, m.rel);
+                m.fade_park_ms = 0;
+                if (m.corpse_restored++ < 3)
+                    spdlog::info("animals: mirror id={} corpse faded away here but not on the host: put back at "
+                                 "({:.1f},{:.1f},{:.1f})", id, pos.x, pos.y, pos.z);
+            }
+            return;
+        }
+        m.fade_park_ms = 0;
         if (host_parked && !here_parked) {
             const bool ok = CallPark(ent);
             if (!m.corpse_parked_logged) {
