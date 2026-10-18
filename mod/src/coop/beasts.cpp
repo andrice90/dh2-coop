@@ -615,31 +615,6 @@ void __cdecl cmd_tranq(const char* arg) {
                  Read<int>(ent, kTranqState, 0), Read<float>(ent, kEntHealth, 0.f), entity::BodyStateName(ent));
 }
 
-// coop_tasks: the mission's task list (mission +0x1f8: count *(+4)+1, task pointers at *(+0x10)); task id +0x64,
-// state +0x68 (done = 6, or 5 with +0x5c set), and the words after it, where the kill counts live. Test evidence for
-// "did this kill count", host and client alike.
-void __cdecl cmd_tasks() {
-    void* mission = Mission();
-    if (!mission) {
-        spdlog::info("beasts: coop_tasks: no mission");
-        return;
-    }
-    char* list = static_cast<char*>(mission) + 0x1f8;
-    const int count = Read<int>(list, 4, -1) + 1;
-    void** tasks = Read<void**>(list, 0x10, nullptr);
-    spdlog::info("beasts: coop_tasks status={} last action={} value={} tasks={}", Read<int>(mission, 0x254, -1),
-                 Read<int>(mission, 0x1dc, -1), Read<int>(mission, 0x1e0, -1), count);
-    for (int i = 0; tasks && i < count && i < 32; ++i) {
-        void* t = nullptr;
-        if (!core::safe_read(tasks + i, t) || !t) continue;
-        int words[8] = {};
-        core::safe_copy(static_cast<char*>(t) + 0x6c, words, sizeof words);
-        spdlog::info("beasts:   task[{}] id={} state={} +5c={} +6c..: {} {} {} {} {} {} {} {}", i, Read<int>(t, 0x64, -1),
-                     Read<int>(t, 0x68, -1), Read<int>(t, 0x5c, -1), words[0], words[1], words[2], words[3], words[4],
-                     words[5], words[6], words[7]);
-    }
-}
-
 class BeastsModule : public dh2::Module {
 public:
     const char* Name() const override { return "beasts"; }
@@ -684,7 +659,6 @@ public:
     void OnFrame(float) override {
         if (!g_cmd && console_cmds::Ready()) {
             g_cmd = console_cmds::AddCommandStr("coop_tranq", &cmd_tranq);
-            console_cmds::AddCommand0("coop_tasks", &cmd_tasks);
         }
     }
 };
