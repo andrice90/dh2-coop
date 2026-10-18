@@ -71,6 +71,9 @@ constexpr uintptr_t kRvaRules = 0x1657f0;             // cMODApp*
 constexpr uintptr_t kRulesSpawn = 0xbc;               // char[]: spawn point of the next map (an exit's 2nd token)
 constexpr size_t kSpawnMax = 24;
 constexpr uintptr_t kRvaProfile0 = 0x165888;          // cHunterProfile[8] (stride 0x4070); the game uses [0]
+constexpr uintptr_t kProfileMapIndex = 0x23d8;        // uint8: mission table index, SetMapIsComplete adds 1 (story)
+constexpr uintptr_t kRvaHuntMode = 0x186c98;          // int: 0 story, else a hunt/bonus mission (SetMapIsComplete's branch)
+constexpr uintptr_t kRvaFurthest = 0x186eb0;          // int: furthest mission index reached (progress)
 constexpr uintptr_t kRvaMission = 0x1869e8;           // cMission*
 constexpr uintptr_t kMissionStatus = 0x254;           // 1 running, 2 success, 3 failed
 constexpr uintptr_t kMissionHunter = 0x258;
@@ -254,13 +257,15 @@ bool guarded_set_mission(void* rules, const char* map) {
 
 // As the menus do before every spmap (mod_spmap 0x36b0, mod_newlevel 0xc0080): rules +0x3c = map, and the profile's
 // mission index points at that map in the mission table (names are lower case there).
+std::string ProfileState();
+
 bool SetProfileMap(const std::string& map_lower, const char* why) {
     void* rules = Rules();
     if (!rules || !g_set_mission_map) return false;
     const std::string before = ProfileMap();
     if (before == map_lower) return true;
     const bool ok = guarded_set_mission(rules, map_lower.c_str());
-    spdlog::info("flow: profile mission map '{}' -> '{}' ({}) ok={}", before, ProfileMap(), why, ok);
+    spdlog::info("flow: profile mission map '{}' -> '{}' ({}) ok={} {}", before, ProfileMap(), why, ok, ProfileState());
     return ok;
 }
 
@@ -271,6 +276,19 @@ void WriteSpawn(const std::string& spawn) {
         std::memcpy(static_cast<char*>(rules) + kRulesSpawn, spawn.c_str(), spawn.size() + 1);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
     }
+}
+
+// "index=3 hunt_mode=0 furthest=3": where SetMapIsComplete will move the profile (log evidence for a wrong next map).
+std::string ProfileState() {
+    uint8_t index = 255;
+    int hunt_mode = -1, furthest = -1;
+    if (g_game) {
+        core::safe_read(Rva(kRvaProfile0 + kProfileMapIndex), index);
+        core::safe_read(Rva(kRvaHuntMode), hunt_mode);
+        core::safe_read(Rva(kRvaFurthest), furthest);
+    }
+    return "index=" + std::to_string(index) + " hunt_mode=" + std::to_string(hunt_mode) +
+           " furthest=" + std::to_string(furthest);
 }
 
 std::string ReadSpawn() {
@@ -397,7 +415,7 @@ void __cdecl hk_NewLevel() {
         std::string key = next;
         if (!spawn.empty() && key.size() + 1 + spawn.size() <= net::kMaxGameEventKeyChars) key += "|" + spawn;
         events::Send(events::kLevelNext, 0, kContinue, 0.f, key, 0);
-        spdlog::info("flow: host continues to '{}' (spawn '{}'); clients follow", next, spawn);
+        spdlog::info("flow: host continues to '{}' (spawn '{}', {}); clients follow", next, spawn, ProfileState());
         guarded_void(g_newlevel_hook);
         return;
     }
@@ -753,10 +771,23 @@ void __cdecl cmd_flow() {
     void* mission = Mission();
     int status = -1;
     if (mission) core::safe_read(static_cast<char*>(mission) + kMissionStatus, status);
-    spdlog::info("flow: state map='{}' profile map='{}' spawn='{}' mission status={} end_code={} host_choice={} "
+    if (g_game) {
+        // The mission table (GameDll+0x1653b8, 28 entries of 0x14 bytes: byte 0, name at +1, movie type at +0xb).
+        std::string table;
+        for (int i = 0; i < 28; ++i) {
+            const char* e = static_cast<const char*>(Rva(0x1653b8)) + i * 0x14;
+            uint8_t first = 0, type = 0;
+            core::safe_read(e, first);
+            core::safe_read(e + 0xb, type);
+            table += std::to_string(i) + ":" + core::safe_cstr(e + 1, 10) + "/" + std::to_string(type) + "/" +
+                     std::to_string(first) + " ";
+        }
+        spdlog::info("flow: mission table {}", table);
+    }
+    spdlog::info("flow: state map='{}' profile map='{}' {} spawn='{}' mission status={} end_code={} host_choice={} "
                  "waiting={} following='{}' exit_done={} banner='{}'",
-                 events::CurrentMap(), ProfileMap(), ReadSpawn(), status, g_end_code, ChoiceName(g_host_choice),
-                 g_waiting, g_follow_map, g_exit_done, Banner());
+                 events::CurrentMap(), ProfileMap(), ProfileState(), ReadSpawn(), status, g_end_code,
+                 ChoiceName(g_host_choice), g_waiting, g_follow_map, g_exit_done, Banner());
 }
 
 class FlowModule : public dh2::Module {
