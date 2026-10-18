@@ -108,12 +108,22 @@ LinkPartFn g_link_part = nullptr;
 BrainParamFn g_brain_param = nullptr;
 
 bool g_tranq_clients = true;    // [Animals] TranqFromClients
-bool g_overdose_clients = true; // [Animals] TranqOverdoseFromClients: a client's second dart can fail the mission
+bool g_overdose_clients = false; // [Animals] TranqOverdoseFromClients: another player's second dart can fail the mission
 bool g_cobra_clients = true;    // [Animals] CobraHitsFromClients
 bool g_clip_check = true;       // [Animals] ClipCheck
 bool g_cmd = false;
 void* g_test_bullet = nullptr;  // coop_tranq: one unspawned mod_obj_tranq_bullet per map (never added to the manager)
 std::map<uint16_t, uint32_t> g_last_dart_ms;
+std::map<uint16_t, uint8_t> g_tranq_by;  // host: animal id -> player whose dart tranquilized it
+
+// Host: a dart from `shooter` on an animal that is already tranquilized and protected. The game's overdose rule
+// (mission failed) applies to the player who darted it; another player's dart is ignored unless
+// TranqOverdoseFromClients=1 (user decision 2026-10-18).
+bool OverdoseIgnored(int id, uint8_t shooter) {
+    if (g_overdose_clients || id < 0) return false;
+    auto it = g_tranq_by.find(static_cast<uint16_t>(id));
+    return it != g_tranq_by.end() && it->second != shooter;
+}
 std::map<uint16_t, uint32_t> g_last_cobra_ms;
 std::set<std::string> g_logged;  // one line per model/state/clip finding
 
@@ -257,9 +267,9 @@ void HostDart(void* ent, uint8_t shooter) {
     const float hurt = Read<float>(ent, kTranqHurt, 0.f);
     const float time = Read<float>(ent, kTranqTime, 0.f);
     if (state == 2 && prot == 1) {
-        if (!g_overdose_clients) {
-            spdlog::info("beasts: dart from player {} on tranquilized protected id={}: overdose ignored "
-                         "([Animals] TranqOverdoseFromClients=0)", shooter, id);
+        if (OverdoseIgnored(id, shooter)) {
+            spdlog::info("beasts: dart from player {} on protected id={} tranquilized by player {}: ignored "
+                         "([Animals] TranqOverdoseFromClients=0)", shooter, id, g_tranq_by[static_cast<uint16_t>(id)]);
             return;
         }
         Write<int>(ent, kKillAction, 1);
@@ -272,6 +282,7 @@ void HostDart(void* ent, uint8_t shooter) {
     }
     Write<int>(ent, kKillAction, 1);
     Write<int>(ent, kTranqState, 2);
+    if (state != 2) g_tranq_by[static_cast<uint16_t>(id)] = shooter;
     bool slept = false;
     if (hurt > 0.f) {
         hp -= hurt;
@@ -306,7 +317,14 @@ void HostOwnDart(void* self, void* bullet, const float* pos, const float* dir) {
     const int state = Read<int>(self, kTranqState, 0);
     const float hp = Read<float>(self, kEntHealth, 0.f);
     const int bone = Read<int>(self, kHitBone, -1);
+    const int id = IdOf(self);
+    if (state == 2 && Read<int>(self, kProtected, 0) == 1 && OverdoseIgnored(id, NetLocalId())) {
+        spdlog::info("beasts: host dart on protected id={} tranquilized by player {}: ignored", id,
+                     g_tranq_by[static_cast<uint16_t>(id)]);
+        return;
+    }
     const bool ok = CallOnHit(g_onhit_hook, self, bullet, pos, dir);
+    if (state != 2 && Read<int>(self, kTranqState, 0) == 2 && id >= 0) g_tranq_by[static_cast<uint16_t>(id)] = NetLocalId();
     spdlog::info("beasts: host dart id={} bone={} tranq {}->{} sleeps in {:.1f} s action={} protected={} hp {:.1f}->{:.1f} "
                  "ok={}",
                  IdOf(self), bone, state, Read<int>(self, kTranqState, 0), Read<float>(self, kTranqTime, 0.f),
@@ -623,7 +641,7 @@ public:
     void OnInit() override {
         const std::string ini = ini_path();
         g_tranq_clients = GetPrivateProfileIntA("Animals", "TranqFromClients", 1, ini.c_str()) != 0;
-        g_overdose_clients = GetPrivateProfileIntA("Animals", "TranqOverdoseFromClients", 1, ini.c_str()) != 0;
+        g_overdose_clients = GetPrivateProfileIntA("Animals", "TranqOverdoseFromClients", 0, ini.c_str()) != 0;
         g_cobra_clients = GetPrivateProfileIntA("Animals", "CobraHitsFromClients", 1, ini.c_str()) != 0;
         g_clip_check = GetPrivateProfileIntA("Animals", "ClipCheck", 1, ini.c_str()) != 0;
         events::SetHandler(events::kTranqHit, &OnTranqRequest, nullptr);
@@ -651,6 +669,7 @@ public:
 
     void OnMapLoaded(const char*) override {
         g_last_dart_ms.clear();
+        g_tranq_by.clear();
         g_last_cobra_ms.clear();
     }
 

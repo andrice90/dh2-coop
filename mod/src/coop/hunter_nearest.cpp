@@ -391,7 +391,7 @@ public:
 
     void OnInit() override {
         const std::string ini = (core::self_dir() / "dh2coop.ini").string();
-        g_enabled = GetPrivateProfileIntA("Story", "HunterNearest", 0, ini.c_str()) != 0;
+        g_enabled = GetPrivateProfileIntA("Story", "HunterNearest", 1, ini.c_str()) != 0;
         g_dist = GetPrivateProfileIntA("Story", "HunterNearestDistance", 1, ini.c_str()) != 0;
         g_tasks = GetPrivateProfileIntA("Story", "HunterNearestTasks", 1, ini.c_str()) != 0;
         g_senses = GetPrivateProfileIntA("Story", "HunterNearestSenses", 1, ini.c_str()) != 0;

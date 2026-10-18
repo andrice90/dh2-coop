@@ -236,8 +236,9 @@ public:
 
     void OnInit() override {
         const std::string ini = (core::self_dir() / "dh2coop.ini").string();
-        const int def = GetPrivateProfileIntA("Story", "HunterNearest", 0, ini.c_str());
-        g_enabled = GetPrivateProfileIntA("Story", "NpcFollowNearest", def, ini.c_str()) != 0;
+        // Off by default: a companion keeps following the host until its queued follow command ends
+        // (re/notes/hunter-nearest.md), so switching it to a client does not work yet.
+        g_enabled = GetPrivateProfileIntA("Story", "NpcFollowNearest", 0, ini.c_str()) != 0;
     }
 
     void OnGameDllLoaded(HMODULE game) override {
