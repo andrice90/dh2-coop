@@ -714,6 +714,13 @@ bool FreezeBrain(void* ent, bool freeze) {
     return guarded_freeze(brain, freeze ? 1 : 0);
 }
 
+bool IsHuntBrainFrozen(void* ent) {
+    char* brain = nullptr;
+    uint8_t flag = 0;
+    return ent && core::safe_read(static_cast<char*>(ent) + 0x200, brain) && brain &&
+           core::safe_read(brain + 0x79, flag) && flag != 0;
+}
+
 using CharFreezeFn = void(__fastcall*)(void* self, int freeze);
 CharFreezeFn g_char_freeze = nullptr;
 

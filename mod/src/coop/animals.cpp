@@ -1658,6 +1658,14 @@ private:
                 const bool ok = entity::CharacterBrainFreeze(ent, true);
                 if (m.refreeze_logs++ < 5) spdlog::info("animals: mirror id={} brain was unfrozen; frozen again ok={}", id, ok);
             }
+            // Same for an animal's hunt brain: a script MoveToPos runs the respawn (GameDll7 0x14610), which clears
+            // +0x79 (MAP12C BeginCutScene / the cutscene's Skip move the yeti). A running local brain starts attack
+            // tasks and sync attacks of its own.
+            if (!m.is_npc && !cobra && m.frozen && !entity::IsHuntBrainFrozen(ent)) {
+                const bool ok = entity::FreezeBrain(ent, true);
+                if (m.refreeze_logs++ < 5)
+                    spdlog::info("animals: mirror id={} hunt brain was unfrozen by the game; frozen again ok={}", id, ok);
+            }
             if (!m.frozen) {
                 const bool ok = m.is_npc ? entity::CharacterBrainFreeze(ent, true) : entity::FreezeBrain(ent, true);
                 if (!m.freeze_logged) {

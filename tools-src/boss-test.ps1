@@ -15,6 +15,7 @@ param(
     [int]$StartWait = 12,
     [int]$PhaseSec = 40,
     [string]$Prefix = 'yeti',
+    [string[]]$FinalHostCmds = @(),  # host console lines after the last phase (e.g. 'coop_kill 24:5000'), then 20 s
     [switch]$NoGod,
     [switch]$Keep
 )
@@ -61,6 +62,22 @@ for ($ph = 0; $ph -lt $Phases.Count; $ph++) {
             } elseif ($alive[$t]) {
                 $alive[$t] = $false
                 "$t EXITED during phase $ph step $i ($(Get-Date -Format HH:mm:ss))"
+            }
+        }
+    }
+}
+if ($FinalHostCmds.Count -gt 0) {
+    "final host commands at $(Get-Date -Format HH:mm:ss)"
+    foreach ($c in $FinalHostCmds) { Send-Cmd 'game' $c }
+    for ($i = 1; $i -le 2; $i++) {
+        Start-Sleep -Seconds 10
+        foreach ($t in 'game', 'game2') {
+            $p = Get-Game $t
+            if ($p) {
+                & (Join-Path $PSScriptRoot 'capture-window.ps1') -ProcessId $p.Id -Out "re\notes\coop-local\$Prefix-$stamp-end-$i-$t.png" -NoFocus -Print 2>&1 | Out-Null
+            } elseif ($alive[$t]) {
+                $alive[$t] = $false
+                "$t EXITED after the final commands ($(Get-Date -Format HH:mm:ss))"
             }
         }
     }
