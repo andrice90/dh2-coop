@@ -5,6 +5,8 @@
 ## Launchers (2026-10-17 night)
 `host.bat` and `join.bat` still only start `Main7.exe +mod data`. Desktop resolution and the wide FOV are the mod's `[Display]` block, which the morning ASI in the retail Bin did not contain. That Bin now has `mod\build\dh2coop.asi` (9:38 PM) and `dh2coop.ini` with `[Display]` (`PlayerName=panjypoo` kept). `tools-src\kit\host_dlss5.bat` is the same host launch after checking for ReShade's `dxgi.dll`, the feeder, and dgVoodoo2 2.83.2 `D3D8.dll`. Those wrapper files are in the retail Bin (`OutputAPI = d3d11_fl11_0`, `VRAM = 1024`). Desktop shortcut: `DH2 HOST DLSS`.
 
+Neural profile written 2026-10-17 into the retail `host64\ReShade.ini` (not the repo): structure 2, local tone 1.6, global tone 1.5, style Natural, color strength 0.55, UI correction on, two stack passes. `dlss5-feed.cfg` work scale stays 100% with FSR 1 sharpening at 0.60. Intensity was already 2. Paper white stays 2.5375, which this build treats as 203-nit SDR. A relaunch is required; Apply from an already-open overlay writes the old sliders back.
+
 ## Helicopter arena (scoped only, 2026-10-17)
 Not built. `re/notes/heli-arena.md`: copied MAPARENA, host-moved helicopter orbiting the nearest player, bombs via `kPlayerHurt`, full-auto gun is a new `autogun_1st` that reuses the handgun 3 viewmodel. Story insert waits until `-spmap` playtests pass.
 
