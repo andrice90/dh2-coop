@@ -28,6 +28,11 @@ Merged by the lead 09:4x:
 - Routed review M1/M2 (NPC mirror death / thaw with the animal FreezeBrain) to `life`.
 - `79d0545`: `EntityById` is a direct slot lookup (id == manager index), scan as fallback (review M3 lookup half; list pruning not done). MAP3B two-window smoke OK.
 
+### Lead fixes during the test wave (2026-10-18 afternoon)
+- `eccc1ef`: local test sessions bind to 127.0.0.1 (`[Coop] BindAddress`, written by `run-coop-local.ps1`; net-test too): no more Windows Firewall prompts per game copy (user request). Agents were told to cherry-pick it.
+- `01a3da7`: **rifle scope split in two** (user screenshots, from the 4:3 HUD remap / icon shrink): no remap while `cHUDZoom::Draw` runs. **User-verified "scope fixed!"** on MAP11C. Agents' windows show the old split scope until they rebase.
+- `game-input.ps1` gained `WHEEL:n` and `C`.
+
 ### Resumed 14:1x (2026-10-18; user: prefer Sonnet/Haiku agents, Opus sparingly)
 Leftover WIP committed in each worktree at resume: life `4210c34`, bosses `88d35d1`, smoke `52637f5`, flow note `23179a7`, vehicles note `6303854`, research-C (partial but has ranked list + routing) `f83cfdb` in main.
 Merged into main (lead):
