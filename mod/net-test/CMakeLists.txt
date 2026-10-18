@@ -57,6 +57,8 @@ target_link_libraries(enet_lib PUBLIC ws2_32 winmm)
 target_compile_options(enet_lib PRIVATE /w)
 
 file(GLOB NET_SRC CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../src/net/*.cpp)
+# Pure join code functions (no engine calls) are checked here too.
+list(APPEND NET_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../src/coop/joincode.cpp)
 
 add_library(dh2net STATIC ${NET_SRC})
 target_include_directories(dh2net PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../src)

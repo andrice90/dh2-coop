@@ -1,0 +1,1 @@
+{ "installed": true, "winget": true, "pingOk": true, "status": { "BackendState": "Running", "HaveNodeKey": true, "Self": { "TailscaleIPs": ["100.90.80.70", "fd7a:115c:a1e0::1"] }, "CurrentTailnet": { "Name": "host-friends.example" } } }

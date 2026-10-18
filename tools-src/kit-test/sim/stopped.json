@@ -1,0 +1,1 @@
+{ "installed": true, "winget": true, "pingOk": false, "status": { "BackendState": "Stopped", "HaveNodeKey": true, "Self": { "TailscaleIPs": ["100.90.80.70"] }, "CurrentTailnet": { "Name": "someone-else.example" } } }
