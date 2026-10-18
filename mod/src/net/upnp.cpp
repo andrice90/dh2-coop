@@ -880,6 +880,13 @@ std::unique_ptr<Igd> OpenRouter(RouterInfo& info, std::string& why) {
     return nullptr;
 }
 
+// The next hop of the default route ("" = none): a routing-table lookup only, nothing is sent.
+static std::string DefaultGatewayIpv4() {
+    MIB_IPFORWARDROW row{};
+    if (GetBestRoute(_byteswap_ulong(0x01010101u), 0, &row) != NO_ERROR || row.dwForwardNextHop == 0) return {};
+    return FormatIpv4(_byteswap_ulong(row.dwForwardNextHop));
+}
+
 std::string LocalAddressToward(const std::string& gatewayIp) {
     uint32_t gw = 0;
     const bool haveGw = ParseIpv4(gatewayIp, gw);
@@ -1033,6 +1040,8 @@ private:
     }
 
     // The router found last time answers again in a few milliseconds; the search (SSDP through Windows) takes ~9 s.
+    // Only while it is still this PC's default gateway and its control URL points at that same address: after a
+    // network change another device could sit at the old control address, so then search again.
     std::unique_ptr<Igd> Open(RouterInfo& info, std::string& why) {
         Opener opener;
         {
@@ -1041,7 +1050,13 @@ private:
         }
         if (opener) return opener(info, why);
         Url control;
-        if (!cachedInfo_.controlUrl.empty() && ParseUrl(cachedInfo_.controlUrl, control)) {
+        if (!cachedInfo_.controlUrl.empty() &&
+            (!ParseUrl(cachedInfo_.controlUrl, control) || control.host != cachedInfo_.gatewayHost ||
+             DefaultGatewayIpv4() != cachedInfo_.gatewayHost)) {
+            spdlog::info("upnp: the default gateway changed since the last search; searching again");
+            cachedInfo_ = RouterInfo{};
+        }
+        if (!cachedInfo_.controlUrl.empty()) {
             auto igd = MakeSoapIgd(control, cachedInfo_.serviceType, 2000);
             std::string ip;
             if (igd->ExternalIp(ip) == 0 && !ip.empty()) {
