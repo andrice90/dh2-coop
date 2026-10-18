@@ -14,7 +14,7 @@ You are one of several Claude agents working in parallel on the DH2 co-op mod (`
 - Use **your** checkout's `run-coop-local.ps1` with **your** `-Port` (given in the brief). It refuses to start if a game from your checkout is already running and ignores other checkouts.
 - Build with `.\mod\build.ps1` in your checkout (it only refuses when your own `game\Bin\Main7.exe` runs).
 - Drive games through the command file `<tree>\Bin\dh2coop.cmd` (one console line per write; wait ~1.2 s between writes). Do **not** send keyboard or mouse input: games ignore input unless their window is in front (`[Coop] InputOnlyWhenFocused=1`), and many windows are open. If a test truly needs input, add a `coop_*` console command in your worktree instead, or report the need to the lead.
-- Screenshots: `tools-src\capture-window.ps1 -ProcessId <pid> -Out <path> -NoFocus`. Save under `re\notes\coop-local\` (gitignored) with a prefix naming your job.
+- Screenshots: `tools-src\capture-window.ps1 -ProcessId <pid> -Out <path> -NoFocus -PrintWindow` (without `-PrintWindow` it copies the screen, and other agents' windows at the same spot end up in the shot). Save under `re\notes\coop-local\` (gitignored) with a prefix naming your job.
 - Logs: `<tree>\Bin\dh2coop.log` (`.1/.2` older runs) and `<tree>\Bin\debug.log` (`debug.1/.2.log`). A new launch rotates them: copy what you need first. Read logs with shared access (the game keeps them open).
 - When a run ends, close only your own games: `CloseMainWindow()`, wait 5 s, then `Stop-Process -Force` for survivors. Do not pipe a long-running script into `Select-Object -First`: that stops the script before its cleanup.
 - Keep at most one co-op session (2–4 windows) of yours running at a time.

@@ -47,6 +47,7 @@ The lead (main thread) owns `coop.cpp`, `protocol.*`, `session.*`, docs, merges,
 ## Testing conventions
 - Build `.\mod\build.ps1`, two windows `.\run-coop-local.ps1 -Map <MAP> -Port <yours>` (`game` = host, `game2` = client, created by the script). `-Players 3/4`, `-LateJoin <s>`, `-Seconds <s>`, `-Capture` exist; `-Lobby` starts at the main menu.
 - Drive with one console line per write into `<tree>\Bin\dh2coop.cmd`, ~1.2 s apart. `coop_trigger X` arms, or fires an armed trigger, and **skips `OnHit` / `BeginCutScene` even on the host**; use `coop_tp x:y:z` into the volume for real flows. Positions in BSP are cm (÷100).
+- MAP1 tutorial hint pages are modal and pause that process until RETURN (`coop_key enter`); after teleporting into `cScrTask03` expect page 3 after the cutscene, then page 2.
 - Real keyboard/mouse input only reaches the window in front; do not send it. Add a `coop_*` command when a test needs an action.
 - `game\Bin\dh2coop.log` / `game2\Bin\dh2coop.log`, `debug.log`; each launch rotates (`.1/.2`).
 - Close only your own games by full path. At most one co-op session of yours at a time.

@@ -64,6 +64,7 @@ hunter does not fall after a `coop_tp`). Box y values printed by `coop_triggers`
 height: use the hunter's real `pos=` from the log (+3 m) as the `coop_tp` y.
 
 ## Open observations (not fixed)
+- **Resolved 2026-10-18 (`re/notes/map1-cs2.md`): not a hang.** `cScrTask04`'s OnActivate opens modal hint page 3 about 1.5 s into cutscene 2 and pauses the host's world until RETURN; main now holds hint pages until a cutscene ends (`[Story] HoldHintsInCutscene`). Original observation:
 - **MAP1 cs02 (cScrTask03) hangs on the host in every build, base included**: `AITaskNPC_PlayAnim cs02` on Hugh never
   ends (Hugh stays `Idle`, trigger state 5 for 100 s+, also with Hugh settled at his path end 70 s). The client's
   cutscene ends by itself (~27 s, frozen NPC). RETURN skips it (host skip is forwarded). Not caused by this branch
