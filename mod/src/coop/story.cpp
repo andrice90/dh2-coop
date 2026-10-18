@@ -1348,6 +1348,73 @@ void __cdecl cmd_hit(const char* name) {
     if (!guarded_hit(ent, act)) spdlog::error("story: coop_hit '{}' faulted", name);
 }
 
+// ---- hint pages never open in the middle of a cutscene ----
+// cModGameMenu::OpenMenuPage (GameDll7 0xbf1b0, cdecl(page), the script native) stores the page and pushes the modal
+// "gamemenu", which stops the world until RETURN. MAP1: cScrTask04's box holds cScrTask03's, and 03's cutscene 2 ends
+// task 1 (REACHED_POSITION), which arms 04 1.5 s into it: 04's OnActivate opens page 3 over the cutscene. The host's
+// world stood still (Hugh's PlayAnim cs02 "never ended": 100 s+ in the triggers test), and RETURN closed the page and,
+// being the skip key too, skipped the cutscene for everyone. Solo plays the same way (re/notes/map1-cs2.md). Clients
+// already hold the OnHit / fire that opens such a page until their camera is free; the host holds the page itself.
+constexpr uintptr_t kRvaOpenMenuPage = 0xbf1b0;
+constexpr uintptr_t kRvaMenuOpen = 0x186cf4;  // int, 1 while the game menu / a hint page is up
+safetyhook::InlineHook* g_menu_hook = nullptr;
+bool g_hold_hints = true;           // [Story] HoldHintsInCutscene
+uint32_t g_hold_hints_max_ms = 90000;  // [Story] HoldHintsMaxSec
+struct HeldPage {
+    int page = 0;
+    uint32_t since = 0;
+};
+std::vector<HeldPage> g_held_pages;
+
+// A trigger's BeginCutScene / cutscene is up here (state 4/5), or the render camera is on its rail.
+bool CutsceneRunning() {
+    if (PlayerInCutscene()) return true;
+    for (int id = 0; id < 1024; ++id) {
+        void* ent = EntityById(id);
+        if (!IsTriggerEvent(ent)) continue;
+        const int state = TrigInt(ent, kTrigState);
+        if (state == 4 || state == 5) return true;
+    }
+    return false;
+}
+
+bool guarded_open_page(int page) {
+    __try {
+        g_menu_hook->unsafe_ccall<void>(page);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+void __cdecl hk_OpenMenuPage(int page) {
+    if (g_hold_hints && NetIsOnline() && CutsceneRunning()) {
+        for (const HeldPage& h : g_held_pages) {
+            if (h.page == page) return;
+        }
+        g_held_pages.push_back({page, GetTickCount()});
+        spdlog::info("story: [{}] hint page {} held until the cutscene is over (caller {})", Role(), page,
+                     core::describe_address(_ReturnAddress()));
+        return;
+    }
+    g_menu_hook->unsafe_ccall<void>(page);
+}
+
+// One held page at a time, once the cutscene is over and no menu is up (a second push of the modal would stack).
+void PumpHeldHints() {
+    if (g_held_pages.empty() || !g_menu_hook || !g_game_base) return;
+    int open = 0;
+    if (core::safe_read(reinterpret_cast<char*>(g_game_base) + kRvaMenuOpen, open) && open != 0) return;
+    const uint32_t now = GetTickCount();
+    const bool timed_out = now - g_held_pages.front().since >= g_hold_hints_max_ms;
+    if (!timed_out && CutsceneRunning()) return;
+    const HeldPage held = g_held_pages.front();
+    g_held_pages.erase(g_held_pages.begin());
+    const bool ok = guarded_open_page(held.page);
+    spdlog::info("story: hint page {} opened after {:.1f} s{} ok={}", held.page, (now - held.since) / 1000.f,
+                 timed_out ? " (time limit)" : "", ok);
+}
+
 bool g_cmd_tasks = false;
 
 }  // namespace
@@ -1398,6 +1465,7 @@ public:
         g_play_keep.clear();
         g_skip_watch.clear();
         g_cut_watch.clear();
+        g_held_pages.clear();
         g_requested.clear();
         for (auto* m : {&g_arm_serial, &g_hit_serial, &g_fire_serial, &g_applied_arm, &g_applied_hit, &g_applied_fire,
                         &g_fire_wait}) {
@@ -1418,6 +1486,7 @@ public:
         PumpStuckCutscenes();
         PumpDeferred();
         PumpGather();
+        PumpHeldHints();
     }
 
     void OnInit() override {
@@ -1432,6 +1501,9 @@ public:
             1000u * static_cast<uint32_t>(GetPrivateProfileIntA("Story", "StuckCutsceneSec", 20, ini.c_str()));
         g_stuck_max_ms =
             1000u * static_cast<uint32_t>(GetPrivateProfileIntA("Story", "StuckCutsceneMaxSec", 90, ini.c_str()));
+        g_hold_hints = GetPrivateProfileIntA("Story", "HoldHintsInCutscene", 1, ini.c_str()) != 0;
+        g_hold_hints_max_ms =
+            1000u * static_cast<uint32_t>(GetPrivateProfileIntA("Story", "HoldHintsMaxSec", 90, ini.c_str()));
         spdlog::info("story: SyncTriggerEvents={} SyncOnHit={} PuppetUpdateTrigger={} FireRequestForceSec={}",
                      g_sync_events, g_sync_onhit, g_puppet_update, g_force_fire_ms / 1000);
         events::SetHandler(events::kTriggerEvent, &OnEventRequest, &OnEventCommit);
@@ -1499,6 +1571,11 @@ public:
         g_skip_input_hook = core::install_hook("skip_cutscene key callback (0x6b600)",
                                                CheckedGameRva(game, kRvaSkipInput, "skip key"),
                                                reinterpret_cast<void*>(&hk_SkipInput));
+        if (g_hold_hints) {
+            g_menu_hook = core::install_hook("cModGameMenu::OpenMenuPage (0xbf1b0)",
+                                             CheckedGameRva(game, kRvaOpenMenuPage, "OpenMenuPage"),
+                                             reinterpret_cast<void*>(&hk_OpenMenuPage));
+        }
         spdlog::info("story: skip path scr={} record={} mgr={}", reinterpret_cast<void*>(g_get_scr),
                      reinterpret_cast<void*>(g_get_record), reinterpret_cast<void*>(g_class_mgr));
     }
