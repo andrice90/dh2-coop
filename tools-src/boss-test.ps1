@@ -17,6 +17,7 @@ param(
     [int]$PhaseSec = 40,
     [string]$Prefix = 'yeti',
     [string[]]$FinalHostCmds = @(),  # host console lines after the last phase (e.g. 'coop_kill 24:5000'), then 20 s
+    [string[]]$FinalClientCmds = @(),  # client console lines after the host ones (e.g. a client kill)
     [switch]$NoGod,
     [switch]$Keep
 )
@@ -69,9 +70,10 @@ for ($ph = 0; $ph -lt $Phases.Count; $ph++) {
         }
     }
 }
-if ($FinalHostCmds.Count -gt 0) {
+if ($FinalHostCmds.Count -gt 0 -or $FinalClientCmds.Count -gt 0) {
     "final host commands at $(Get-Date -Format HH:mm:ss)"
     foreach ($c in $FinalHostCmds) { Send-Cmd 'game' $c }
+    foreach ($c in $FinalClientCmds) { Send-Cmd 'game2' $c }
     for ($i = 1; $i -le 2; $i++) {
         Start-Sleep -Seconds 10
         foreach ($t in 'game', 'game2') {
@@ -92,12 +94,12 @@ foreach ($t in 'game', 'game2') {
         if (Test-Path $src) { Copy-Item $src (Join-Path $shots "$Prefix-$stamp-$t-$f") -Force }
     }
 }
-$pat = 'sync attack|plays the host|unlinked|combat:|faulted|stops body|thaw|exception|mission message|applied host fire|died|death'
+$pat = 'bosses:|mission|sync attack|plays the host|unlinked|combat:|faulted|stops body|thaw|exception|mission message|applied host fire|died|death'
 "--- host"
-Read-Shared (Join-Path $root 'game\Bin\dh2coop.log') | Where-Object { $_ -match $pat } | Select-Object -Last 40 |
+Read-Shared (Join-Path $root 'game\Bin\dh2coop.log') | Where-Object { $_ -match $pat } | Select-Object -Last 60 |
     ForEach-Object { $_.Substring([Math]::Min(12, $_.Length)) }
 "--- client"
-Read-Shared (Join-Path $root 'game2\Bin\dh2coop.log') | Where-Object { $_ -match $pat } | Select-Object -Last 40 |
+Read-Shared (Join-Path $root 'game2\Bin\dh2coop.log') | Where-Object { $_ -match $pat } | Select-Object -Last 60 |
     ForEach-Object { $_.Substring([Math]::Min(12, $_.Length)) }
 foreach ($t in 'game', 'game2') {
     $dbg = Read-Shared (Join-Path $root "$t\Bin\debug.log")

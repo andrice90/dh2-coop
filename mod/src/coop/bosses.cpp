@@ -435,7 +435,13 @@ struct Rock {
     uint8_t player = 0xFF;
     uint32_t t0 = 0;
     bool client_copy = false;
+    float best_d = 1e9f;     // host: closest horizontal distance to the target so far (for the drop log)
+    float best_dy = 0.f;
+    float prev[3] = {};      // host: rock position at the previous pump
+    bool have_prev = false;
+    uint32_t last_ms = 0;
 };
+int g_drop_logs = 0;
 std::vector<Rock> g_rocks;
 int g_throw_logs = 0;
 int g_collision_logs = 0;
@@ -513,8 +519,29 @@ void __cdecl hk_RockCollision(void* rock, void* other) {
 }
 
 // Host: a rock thrown at a puppet. The puppet's body does not collide with characters' bodies (PlaySA collision
-// words), so a hit is decided here: an armed rock inside the puppet's 1.9 m x 0.7 m capsule runs the engine's own
+// words), so a hit is decided here: an armed rock inside the puppet's 1.9 m x 0.8 m capsule runs the engine's own
 // hit (the callback above), which reaches the puppet's OnHurt and goes to that player (combat.cpp kPlayerHurt).
+// The pump runs once per frame and a rock moves ~20 m/s: at 10-20 fps (two windows) it steps 1-2 m, wider than the
+// capsule, and the rock was destroyed by the ground before a sample fell inside (2026-10-18: 3 of 4 rocks missed at
+// 0.9-1.0 m). So the path from the previous sample to where the rock will be at the next one (velocity x the last
+// frame time) is tested in 0.25 m steps, while the rock still exists.
+constexpr float kCapsuleRadius = 0.8f;
+constexpr float kCapsuleBelow = 0.3f;
+constexpr float kCapsuleHeight = 2.0f;
+
+bool PathHitsCapsule(const float a[3], const float b[3], const float pp[3]) {
+    const float len = std::sqrt((b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1]) +
+                                (b[2] - a[2]) * (b[2] - a[2]));
+    const int steps = std::max(1, std::min(64, static_cast<int>(std::ceil(len / 0.25f))));
+    for (int s = 0; s <= steps; ++s) {
+        const float f = static_cast<float>(s) / static_cast<float>(steps);
+        const float x = a[0] + (b[0] - a[0]) * f - pp[0], y = a[1] + (b[1] - a[1]) * f - pp[1],
+                    z = a[2] + (b[2] - a[2]) * f - pp[2];
+        if (x * x + z * z < kCapsuleRadius * kCapsuleRadius && y > -kCapsuleBelow && y < kCapsuleHeight) return true;
+    }
+    return false;
+}
+
 void PumpRockHits() {
     if (g_rocks.empty()) return;
     const uint32_t now = now_ms();
@@ -524,14 +551,36 @@ void PumpRockHits() {
         const bool alive = r.id >= 0 && EntityById(r.id) == r.ent &&
                            core::safe_read(static_cast<char*>(r.ent) + kRockArmed, armed);
         if (!alive || armed != 1 || now - r.t0 > 6000 || !puppets::IsLivingPuppet(r.target)) {
+            if (g_drop_logs++ < 12)
+                spdlog::info("bosses: rock id={} for player {} dropped after {} ms: alive={} armed={} puppet alive={} "
+                             "closest {:.2f} m (dy {:.2f})",
+                             r.id, r.player, now - r.t0, alive, armed, puppets::IsLivingPuppet(r.target),
+                             r.best_d < 1e8f ? r.best_d : -1.f, r.best_dy);
             g_rocks.erase(g_rocks.begin() + static_cast<std::ptrdiff_t>(i));
             continue;
         }
-        float rp[3] = {}, pp[3] = {};
+        float rp[3] = {}, pp[3] = {}, vel[3] = {};
         core::safe_copy(static_cast<char*>(r.ent) + kEntPos, rp, sizeof rp);
         core::safe_copy(static_cast<char*>(r.target) + kEntPos, pp, sizeof pp);
+        if (char* body = RigidBody(r.ent)) core::safe_copy(body + kBodyVel, vel, sizeof vel);
         const float dx = rp[0] - pp[0], dz = rp[2] - pp[2], dy = rp[1] - pp[1];
-        if (dx * dx + dz * dz < 0.7f * 0.7f && dy > -0.3f && dy < 2.0f) {
+        const float hd = std::sqrt(dx * dx + dz * dz);
+        if (hd < r.best_d) {
+            r.best_d = hd;
+            r.best_dy = dy;
+        }
+        // From the previous sample (this frame's position on the first one) to the next frame's.
+        const float step = std::max(0.05f, std::min(0.3f, static_cast<float>(now - (r.last_ms ? r.last_ms : now)) / 1000.f));
+        const float from[3] = {r.have_prev ? r.prev[0] : rp[0], r.have_prev ? r.prev[1] : rp[1],
+                               r.have_prev ? r.prev[2] : rp[2]};
+        const float to[3] = {rp[0] + vel[0] * step, rp[1] + vel[1] * step, rp[2] + vel[2] * step};
+        const bool hit = PathHitsCapsule(from, rp, pp) || PathHitsCapsule(rp, to, pp);
+        r.prev[0] = rp[0];
+        r.prev[1] = rp[1];
+        r.prev[2] = rp[2];
+        r.have_prev = true;
+        r.last_ms = now;
+        if (hit) {
             const bool ok = guarded_collision(r.ent, r.target);
             spdlog::info("bosses: rock id={} reached player {} after {} ms: hit ok={}", r.id, r.player, now - r.t0, ok);
             g_rocks.erase(g_rocks.begin() + static_cast<std::ptrdiff_t>(i));
@@ -701,6 +750,7 @@ private:
         g_npc_logs = 0;
         g_throw_logs = 0;
         g_collision_logs = 0;
+        g_drop_logs = 0;
     }
 };
 
