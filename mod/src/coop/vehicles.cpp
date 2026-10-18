@@ -383,8 +383,39 @@ struct Cfg {
     bool rider_knock = true;       // [Vehicles] RiderKnock: a lion that would tackle a rider knocks its hunter down
     bool split_riders = true;      // [Vehicles] SplitRiders: lions after someone in the truck are shared out
     uint32_t rider_knock_ms = 2500;  // [Vehicles] RiderKnockMs: how long the truck knock keeps the rider down
+    bool host_ride_share = true;   // [Vehicles] HostRideToughness: see hk_HunterHurt
 };
 Cfg g_cfg;
+
+// Host hunter's hurt entry (cScr_ModHunter vt +0x14C, GameDll 0x530c0): thiscall(hunter, attacker, damage, type, pos,
+// dir). With RiderTargets off every animal in a truck chase goes for the host, while player-count scaling adds about one
+// animal per extra player to each pack. So while the host sits in a vehicle, animal damage to the host is divided by the
+// number of players: the host has that many times its health for the ride (user request, MAP4A 2026-10-18).
+constexpr uintptr_t kRvaHunterHurt = 0x530c0;
+constexpr uintptr_t kEntKind = 0xA7;  // entity kind byte: 0x42 animal
+safetyhook::InlineHook* g_hunter_hurt_hook = nullptr;
+int g_share_logged = 0;
+
+void __fastcall hk_HunterHurt(void* self, void*, void* attacker, float dmg, int type, const float* pos, const float* dir) {
+    float use = dmg;
+    if (g_cfg.host_ride_share && !g_cfg.rider_targets && NetIsHost() && NetIsOnline() && self &&
+        self == LocalPlayer().entity && dmg > 0.f) {
+        int16_t parent = -1;
+        uint8_t kind = 0;
+        core::safe_read(static_cast<char*>(self) + kEntParent, parent);
+        if (attacker) core::safe_read(static_cast<char*>(attacker) + kEntKind, kind);
+        int16_t aid = -1;
+        if (attacker) core::safe_read(static_cast<char*>(attacker) + 0x04, aid);
+        const int players = ConnectedPlayers();
+        if (parent >= 0 && kind == 0x42 && players > 1) {
+            use = dmg / static_cast<float>(players);
+            if (g_share_logged++ < 20)
+                spdlog::info("vehicles: host in vehicle {} takes {:.1f} of {:.1f} from animal id {} ({} players)", parent,
+                             use, dmg, aid, players);
+        }
+    }
+    g_hunter_hurt_hook->unsafe_thiscall<void>(self, attacker, use, type, pos, dir);
+}
 
 int16_t parent_of(void* ent) {
     int16_t p = -1;
@@ -979,6 +1010,7 @@ public:
         g_cfg.rider_targets = key("RiderTargets", false);
         g_cfg.rider_knock = key("RiderKnock", true);
         g_cfg.split_riders = key("SplitRiders", true);
+        g_cfg.host_ride_share = key("HostRideToughness", true);
         g_upright = key("Upright", false);
         g_cfg.rider_knock_ms = static_cast<uint32_t>(GetPrivateProfileIntA("Vehicles", "RiderKnockMs", 2500, ini.c_str()));
         events::SetHandler(events::kVehicleSeat, nullptr, &OnSeatCommit);
@@ -1033,6 +1065,13 @@ public:
             spdlog::error("vehicles: TryPlaySA at CommonDll7+{:#x} has unexpected bytes; riders not protected",
                           kRvaTryPlaySA);
         if (!g_trysa_hook) g_cfg.rider_targets = false;  // never a rider on the list without the guard
+        void* hh = reinterpret_cast<char*>(game) + kRvaHunterHurt;
+        if (core::safe_copy(hh, got, sizeof got) && std::memcmp(got, kPrologue, sizeof got) == 0)
+            g_hunter_hurt_hook = core::install_hook("hunter OnHurt (host ride toughness, GameDll 0x530c0)", hh,
+                                                    reinterpret_cast<void*>(&hk_HunterHurt));
+        else
+            spdlog::error("vehicles: hunter OnHurt at GameDll7+{:#x} has unexpected bytes ({:02x} {:02x}); no ride toughness",
+                          kRvaHunterHurt, got[0], got[1]);
         spdlog::info("vehicles: freeze={} setpos={} setrot={} getin={} getout={} getincar={} driveto={} trysa={}",
                      g_freeze != nullptr, g_set_pos != nullptr, g_set_rot != nullptr, g_get_in != nullptr,
                      g_get_out != nullptr, g_get_in_car != nullptr, g_driveto_hook != nullptr, g_trysa_hook != nullptr);
