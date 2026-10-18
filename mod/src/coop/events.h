@@ -43,6 +43,10 @@ constexpr uint16_t kPropHit = 16;        // request and commit. subject = cObjTa
                                          // Not sent with Send: a broken bottle or stump stays broken.
 constexpr uint16_t kHostNotice = 17;     // commit (Send, not journaled). key = a short on-screen line from the host
                                          // ("Host restarts MAP3B"); the map change itself is the usual kMapStart.
+constexpr uint16_t kTranqHit = 22;       // request (beasts.cpp). subject = animal entity id: a client's tranquilizer dart
+                                         // hit the hit-bone list of its mirror. The host runs cScrAnimal::OnHit's tranq
+                                         // branch (sleep timer, kill credit, overdose fail); the sleep is the usual
+                                         // kAnimalDied. Darts do no health damage, so AnimalHit never carried them.
 constexpr uint16_t kScaleMax = 40;       // commit (scale.cpp). subject = animal id, f0 = its new max health (+0x4C0),
                                          // key = "<factor> #<serial>". Player-count scaling of a boss / lone large animal.
 
