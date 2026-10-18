@@ -2,18 +2,18 @@
 # DirectInput reads; window messages (PostMessage/SendKeys) do not reach it.
 # Usage: .\tools-src\game-input.ps1 -ProcessId 1234 -Keys 'RETURN','W:2000','WAIT:500','DOWN'
 #   NAME        tap (60 ms hold)      NAME:ms   hold for ms      WAIT:ms   pause
-#   MOUSE:dx,dy relative mouse move (turn / look)    LMB / RMB[:ms] mouse button click
+#   MOUSE:dx,dy relative mouse move (turn / look)    LMB / RMB[:ms] mouse button click    WHEEL:n wheel notches
 # Names: RETURN ESCAPE SPACE UP DOWN LEFT RIGHT W A S D E R F Q SHIFT CTRL TAB 1-4 GRAVE
 param(
     [Parameter(Mandatory)][int]$ProcessId,
     [Parameter(Mandatory)][string[]]$Keys
 )
 $ErrorActionPreference = 'Stop'
-if (-not ('Dh2InputV4' -as [type])) {
+if (-not ('Dh2InputV5' -as [type])) {
     Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public static class Dh2InputV4 {
+public static class Dh2InputV5 {
     // Full union so Marshal.SizeOf(INPUT) is right on both x86 (28) and x64 (40) PowerShell.
     [StructLayout(LayoutKind.Sequential)]
     struct MOUSEINPUT { public int dx; public int dy; public uint data; public uint dwFlags; public uint time; public IntPtr extra; }
@@ -57,6 +57,13 @@ public static class Dh2InputV4 {
         i[0].u.mi.dwFlags = flags;
         return SendInput(1, i, Marshal.SizeOf(typeof(INPUT)));
     }
+    public static uint MouseWheel(int notches) {
+        var i = new INPUT[1];
+        i[0].type = 0;  // INPUT_MOUSE
+        i[0].u.mi.data = unchecked((uint)(notches * 120));  // WHEEL_DELTA per notch, positive = away from the user
+        i[0].u.mi.dwFlags = 0x0800u;  // MOUSEEVENTF_WHEEL
+        return SendInput(1, i, Marshal.SizeOf(typeof(INPUT)));
+    }
     public static uint MouseMove(int dx, int dy) {
         var i = new INPUT[1];
         i[0].type = 0;  // INPUT_MOUSE
@@ -73,20 +80,20 @@ $codes = @{
     RETURN = @(0x1C, $false); ESCAPE = @(0x01, $false); SPACE = @(0x39, $false); TAB = @(0x0F, $false)
     UP = @(0x48, $true); DOWN = @(0x50, $true); LEFT = @(0x4B, $true); RIGHT = @(0x4D, $true)
     W = @(0x11, $false); A = @(0x1E, $false); S = @(0x1F, $false); D = @(0x20, $false)
-    E = @(0x12, $false); R = @(0x13, $false); F = @(0x21, $false); Q = @(0x10, $false)
+    E = @(0x12, $false); R = @(0x13, $false); F = @(0x21, $false); Q = @(0x10, $false); C = @(0x2E, $false)
     SHIFT = @(0x2A, $false); CTRL = @(0x1D, $false); GRAVE = @(0x29, $false); F9 = @(0x43, $false)
     '1' = @(0x02, $false); '2' = @(0x03, $false); '3' = @(0x04, $false); '4' = @(0x05, $false)
 }
 $h = (Get-Process -Id $ProcessId).MainWindowHandle
-if ([Dh2InputV4]::GetForegroundWindow() -ne $h) {
-    [Dh2InputV4]::Focus($h)
+if ([Dh2InputV5]::GetForegroundWindow() -ne $h) {
+    [Dh2InputV5]::Focus($h)
     Start-Sleep -Milliseconds 400
 }
 # SendInput goes to whatever window is in front. Windows often refuses SetForegroundWindow while the user works in
 # another app; the keys then landed in that app (2026-10-17: "wwww...sss" typed into the user's chat). Never send
 # unless the game is in front, and check again before every key.
 function Assert-GameInFront([string]$what) {
-    if ([Dh2InputV4]::GetForegroundWindow() -ne $h) {
+    if ([Dh2InputV5]::GetForegroundWindow() -ne $h) {
         throw "game-input: pid $ProcessId is not the foreground window; not sending $what (click the game window, or retry)"
     }
 }
@@ -98,29 +105,35 @@ foreach ($k in $Keys) {
     if ($name -eq 'LMB' -or $name -eq 'RMB') {
         # LMB / RMB[:ms] - mouse button click (hold ms, default 60)
         $down, $up = if ($name -eq 'LMB') { 0x0002, 0x0004 } else { 0x0008, 0x0010 }
-        [void][Dh2InputV4]::MouseButton([uint32]$down)
+        [void][Dh2InputV5]::MouseButton([uint32]$down)
         Start-Sleep -Milliseconds $(if ($ms) { [int]$ms } else { 60 })
-        [void][Dh2InputV4]::MouseButton([uint32]$up)
+        [void][Dh2InputV5]::MouseButton([uint32]$up)
         Start-Sleep -Milliseconds 80
+        continue
+    }
+    if ($name -eq 'WHEEL') {
+        # WHEEL:n - n mouse-wheel notches (negative = toward the user)
+        [void][Dh2InputV5]::MouseWheel([int]$ms)
+        Start-Sleep -Milliseconds 120
         continue
     }
     if ($name -eq 'MOUSE') {
         # MOUSE:dx,dy - relative move, sent in 10 steps 15 ms apart (DirectInput reads relative deltas)
         $dx, $dy = $ms.Split(',') | ForEach-Object { [int]$_ }
-        for ($s = 0; $s -lt 10; $s++) { [void][Dh2InputV4]::MouseMove([int]($dx / 10), [int]($dy / 10)); Start-Sleep -Milliseconds 15 }
+        for ($s = 0; $s -lt 10; $s++) { [void][Dh2InputV5]::MouseMove([int]($dx / 10), [int]($dy / 10)); Start-Sleep -Milliseconds 15 }
         Start-Sleep -Milliseconds 80
         continue
     }
     $c = $codes[$name.ToUpper()]
     if (-not $c) { throw "unknown key '$name'" }
     $hold = if ($ms) { [int]$ms } else { 60 }
-    [void][Dh2InputV4]::Key([uint16]$c[0], $c[1], $false)
+    [void][Dh2InputV5]::Key([uint16]$c[0], $c[1], $false)
     # A long hold ends early (key released) if the user brings another window to the front meanwhile.
     for ($left = $hold; $left -gt 0; $left -= 50) {
         Start-Sleep -Milliseconds ([Math]::Min(50, $left))
-        if ([Dh2InputV4]::GetForegroundWindow() -ne $h) { break }
+        if ([Dh2InputV5]::GetForegroundWindow() -ne $h) { break }
     }
-    [void][Dh2InputV4]::Key([uint16]$c[0], $c[1], $true)
+    [void][Dh2InputV5]::Key([uint16]$c[0], $c[1], $true)
     Start-Sleep -Milliseconds 80
 }
-"sent $($Keys -join ' ') to pid $ProcessId (foreground ok=$([Dh2InputV4]::GetForegroundWindow() -eq $h))"
+"sent $($Keys -join ' ') to pid $ProcessId (foreground ok=$([Dh2InputV5]::GetForegroundWindow() -eq $h))"

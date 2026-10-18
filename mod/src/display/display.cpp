@@ -48,6 +48,7 @@ bool g_windowed = true;
 bool g_hor_plus = true;
 bool g_lock_hud = true;
 bool g_compass_fix = true;  // [Display] CompassFix
+int g_raw_hud = 0;          // > 0 while a HUD element that lays itself out in back-buffer pixels draws (scope)
 int g_width = 0;
 int g_height = 0;
 
@@ -414,7 +415,7 @@ HudPlace hud_place(void* render) {
     p.off_y = (p.h - kVirtualH * p.fit) * 0.5f + top;
     g_view_h = p.h;
     p.icon = gameplay_icon_scale();
-    p.ok = g_lock_hud;
+    p.ok = g_lock_hud && g_raw_hud == 0;
     return p;
 }
 
@@ -542,6 +543,19 @@ void map_points(const HudPlace& p, float* pts, int n) {
 // DrawTriangle2D itself also goes through those tangents (2D vertices are placed in camera space and drawn with the
 // real projection), so hk_RenderTri puts the real values back around each triangle the dial draws.
 safetyhook::InlineHook* g_rot_sprite = nullptr;
+// The rifle scope is cHUDZoom::Draw (GameDll 0xdb810, fastcall(this)). It already lays itself out for any buffer
+// from the cRender viewport (+0x1a8..+0x1b4): black bars of (width - height) / 2 on both sides and the lens as four
+// quarter sprites in the centered height x height square (the first through cRender::DrawSprite, the other three
+// through the HUD drawer slots +0x18 / +0x1c / +0x20). Remapping those pieces like 640x480 icons shrank each quarter
+// toward its own anchor and split the scope in two (user screenshot 2026-10-18). Nothing is remapped while it runs.
+safetyhook::InlineHook* g_zoom_draw = nullptr;
+
+void __fastcall hk_ZoomDraw(void* self, void*) {
+    ++g_raw_hud;
+    g_zoom_draw->unsafe_fastcall<void>(self);
+    --g_raw_hud;
+}
+
 void** g_engine_render = nullptr;  // EngineDll7 ?render@@3PAVcRender@@A, the cRender GameDll draws through
 struct DialTangents {
     uint8_t* render = nullptr;  // non-null while the dial call runs with patched tangents
@@ -732,14 +746,23 @@ public:
     void OnGameDllLoaded(HMODULE game) override {
         if (!g_enabled || !game) return;
         static const uint8_t kPrologue[5] = {0x55, 0x8b, 0xec, 0x6a, 0xff};
-        void* fn = reinterpret_cast<uint8_t*>(game) + 0xc6be0;
-        uint8_t got[5] = {};
-        if (!dh2::core::safe_copy(fn, got, sizeof got) || std::memcmp(got, kPrologue, sizeof got) != 0) {
-            spdlog::error("display: compass dial at GameDll7+0xc6be0 has unexpected bytes; not hooked");
-            return;
+        auto checked = [&](uintptr_t rva, const char* what) -> void* {
+            void* fn = reinterpret_cast<uint8_t*>(game) + rva;
+            uint8_t got[5] = {};
+            if (!dh2::core::safe_copy(fn, got, sizeof got) || std::memcmp(got, kPrologue, sizeof got) != 0) {
+                spdlog::error("display: {} at GameDll7+{:#x} has unexpected bytes; not hooked", what, rva);
+                return nullptr;
+            }
+            return fn;
+        };
+        if (void* fn = checked(0xc6be0, "compass dial"))
+            g_rot_sprite = dh2::core::install_hook("HUD rotated sprite (compass dial, GameDll 0xc6be0)", fn,
+                                                   reinterpret_cast<void*>(&hk_RotatedSprite));
+        if (g_lock_hud) {
+            if (void* fn = checked(0xdb810, "cHUDZoom::Draw"))
+                g_zoom_draw = dh2::core::install_hook("cHUDZoom::Draw (scope, GameDll 0xdb810)", fn,
+                                                      reinterpret_cast<void*>(&hk_ZoomDraw));
         }
-        g_rot_sprite = dh2::core::install_hook("HUD rotated sprite (compass dial, GameDll 0xc6be0)", fn,
-                                               reinterpret_cast<void*>(&hk_RotatedSprite));
     }
 
     void OnEngineReady(HMODULE engine) override {
