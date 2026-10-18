@@ -23,11 +23,13 @@ constexpr uint16_t kMapStart = 4;     // commit. key = map name (e.g. HUNTMAP4, 
                                       // Clients follow with spmap/menumap; a same-name commit is a replay.
 constexpr uint16_t kTriggerEvent = 5; // request and commit. subject = cObjTriggerEvent entity id, key = its name.
                                       // Arms a trigger (script trigger_N.Activate(), GameDll 0x68eb0).
+                                      // i0 (commit) = the host's arm serial of that trigger (1, 2, ... per map).
 constexpr uint16_t kTriggerFire = 6;  // request and commit. Same subject/key. The armed trigger fired: a player entered
                                       // it and its script OnActivate() ran (GameDll 0x68130). The main story branch.
-constexpr uint16_t kPropAnim = 7;     // commit. subject = world prop entity id, key = anim name.
+                                      // i0 (commit) = the host's fire serial of that trigger.
+constexpr uint16_t kPropAnim = 7;     // commit. subject = world prop entity id, key = anim name, i0 = serial per prop.
                                       // Script SetAnim on a prop (MAP2A fallbridge "broken"). Not hunters, puppets, or mirrored actors.
-constexpr uint16_t kPlaySA = 8;       // commit. subject = character entity id, key = "anim|partner".
+constexpr uint16_t kPlaySA = 8;       // commit. subject = character entity id, key = "anim|partner", i0 = serial.
                                       // cObjCharacterEx::PlaySA. MAP2A's bridge mesh is the partner of Hugh's "cs02".
 constexpr uint16_t kSyncRequest = 9;  // request. key = the client's map, subject = its map serial. Sent once the client's
                                       // map is loaded and its hunter exists. The host answers that client only: its
@@ -46,6 +48,11 @@ constexpr uint16_t kPropHit = 16;        // request and commit. subject = cObjTa
                                          // Not sent with Send: a broken bottle or stump stays broken.
 constexpr uint16_t kHostNotice = 17;     // commit (Send, not journaled). key = a short on-screen line from the host
                                          // ("Host restarts MAP3B"); the map change itself is the usual kMapStart.
+constexpr uint16_t kTriggerHit = 18;     // request and commit (story.cpp). subject/key = cObjTriggerEvent id/name, i0
+                                         // (commit) = the host's OnHit serial. The trigger's script OnHit ran on the
+                                         // host (GameDll 0x6b140): a client's touch is a request, clients apply the
+                                         // commit and their own trigger then plays BeginCutScene and the cutscene.
+                                         // Journaled before the fire it leads to. Kind 19 is reserved for story.cpp.
 constexpr uint16_t kTranqHit = 22;       // request (beasts.cpp). subject = animal entity id: a client's tranquilizer dart
                                          // hit the hit-bone list of its mirror. The host runs cScrAnimal::OnHit's tranq
                                          // branch (sleep timer, kill credit, overdose fail); the sleep is the usual

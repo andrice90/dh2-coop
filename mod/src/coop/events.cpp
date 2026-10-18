@@ -169,10 +169,19 @@ bool guarded_claim(void* animal) {
     }
 }
 
-int FindJournal(uint16_t kind, uint16_t subject, const std::string& key) {
+// Kinds whose i0 is a per-subject serial (story.cpp): a second arm, OnHit or fire of the same trigger, or a prop anim
+// / PlaySA played again, is a new entry rather than a repeat (audit-maps-c G8, review M5: MAPISLAND cScrTask09
+// re-arms, a prop A -> B -> A, the same paired anim twice).
+bool SerialKind(uint16_t kind) {
+    return kind == kTriggerEvent || kind == kTriggerFire || kind == kTriggerHit || kind == kPropAnim || kind == kPlaySA;
+}
+
+int FindJournal(uint16_t kind, uint16_t subject, const std::string& key, uint32_t i0 = 0) {
     for (size_t i = 0; i < g_journal.size(); ++i) {
         const net::GameEvent& ev = g_journal[i];
-        if (ev.kind == kind && ev.subjectId == subject && ev.key == key) return static_cast<int>(i);
+        if (ev.kind == kind && ev.subjectId == subject && ev.key == key && (!SerialKind(kind) || ev.i0 == i0)) {
+            return static_cast<int>(i);
+        }
     }
     return -1;
 }
@@ -348,14 +357,16 @@ void OnSyncRequest(const net::GameEvent& ev) {
                      g_map);
         return;
     }
-    // A replayed fire carries its age (seconds) in f0, which fires do not use otherwise: the client skips the
-    // cutscenes of old fires and keeps the ones the host is watching right now.
+    // A replayed fire or OnHit carries its age (seconds) in f0, which they do not use otherwise: the client skips the
+    // cutscenes of old ones and keeps the ones the host is watching right now.
     const uint32_t now = GetTickCount();
     uint32_t sent = 0;
     for (size_t i = 0; i < g_journal.size(); ++i) {
         net::GameEvent c = g_journal[i];
         if (c.kind == kMapStart) continue;
-        if (c.kind == kTriggerFire && i < g_journal_ms.size()) c.f0 = static_cast<float>(now - g_journal_ms[i]) / 1000.f;
+        if ((c.kind == kTriggerFire || c.kind == kTriggerHit) && i < g_journal_ms.size()) {
+            c.f0 = static_cast<float>(now - g_journal_ms[i]) / 1000.f;
+        }
         if (SendGameEventTo(who, c)) ++sent;
     }
     net::GameEvent done;
@@ -559,7 +570,7 @@ void Commit(uint16_t kind, uint16_t subject, uint32_t i0, float f0, std::string_
         for (uint8_t id : g_synced) any = SendGameEventTo(id, ev) || any;
         return any;
     };
-    const int existing = FindJournal(kind, subject, trimmed);
+    const int existing = FindJournal(kind, subject, trimmed, i0);
     if (existing >= 0) {
         // Everyone synced already has it. A client asking again (its own trigger fired after ours) gets it back
         // alone: re-broadcasting each repeat flooded the other clients (MAP12C 2026-10-17 10:14, ~100/s).
