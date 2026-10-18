@@ -5,7 +5,7 @@
 ## Launchers (2026-10-17 night)
 `host.bat` and `join.bat` still only start `Main7.exe +mod data`. Desktop resolution and the wide FOV are the mod's `[Display]` block. The retail Bin has the 9:38 PM `dh2coop.asi` and `dh2coop.ini` with `[Display]` (`PlayerName=panjypoo` kept).
 
-DLSS 5 was removed from that Bin: ReShade (`dxgi.dll`, ini, preset, shaders), the feeder and `host64`, both NVIDIA NGX DLLs, dgVoodoo `D3D8.dll` / `D3D9.dll` / `dgVoodoo.conf`, `host_dlss5.bat`, and the `DH2 HOST DLSS` shortcut. `dinput8.dll`, `host.bat`, and `join.bat` stayed. The kit source still contains `tools-src\kit\host_dlss5.bat`; running install would copy it again.
+DLSS 5 was removed from that Bin: ReShade (`dxgi.dll`, ini, preset, shaders), the feeder and `host64`, both NVIDIA NGX DLLs, dgVoodoo `D3D8.dll` / `D3D9.dll` / `dgVoodoo.conf`, `host_dlss5.bat`, and the `DH2 HOST DLSS` shortcut. `dinput8.dll`, `host.bat`, and `join.bat` stayed. `tools-src\kit\host_dlss5.bat` is deleted, and the kit installer no longer copies it or creates that shortcut. Uninstall still deletes a leftover copy and shortcut.
 
 ## Helicopter arena (scoped only, 2026-10-17)
 Not built. `re/notes/heli-arena.md`: copied MAPARENA, host-moved helicopter orbiting the nearest player, bombs via `kPlayerHurt`, full-auto gun is a new `autogun_1st` that reuses the handgun 3 viewmodel. Story insert waits until `-spmap` playtests pass.

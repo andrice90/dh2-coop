@@ -15,9 +15,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $kit = $PSScriptRoot
-$modFiles = @('dinput8.dll', 'dh2coop.asi', 'dh2coop.ini', 'host.bat', 'join.bat', 'host_dlss5.bat')
+$modFiles = @('dinput8.dll', 'dh2coop.asi', 'dh2coop.ini', 'host.bat', 'join.bat')
 $tail = 'Activision Value\Magic Wand\DNGH2\Bin'
-$shortcuts = @('DH2 HOST', 'DH2 JOIN', 'DH2 HOST DLSS')
+$shortcuts = @('DH2 HOST', 'DH2 JOIN')
 
 function Find-GameBins {
     $found = New-Object System.Collections.Generic.List[string]
@@ -130,7 +130,7 @@ if ($Uninstall) {
     if (Same-File $loader (Join-Path $kit 'dinput8.dll')) { Remove-Item -LiteralPath $loader -Force }
     $bak = Join-Path $bin 'dinput8.dll.dh2coop-backup'
     if (Test-Path -LiteralPath $bak) { Move-Item -LiteralPath $bak -Destination $loader -Force }
-    foreach ($name in $shortcuts) { Remove-Item -LiteralPath (Join-Path $desk "$name.lnk") -Force -ErrorAction SilentlyContinue }
+    foreach ($name in ($shortcuts + 'DH2 HOST DLSS')) { Remove-Item -LiteralPath (Join-Path $desk "$name.lnk") -Force -ErrorAction SilentlyContinue }
     Write-Host 'Removed the co-op mod and the desktop shortcuts.'
     return
 }
@@ -165,7 +165,6 @@ $exe = Join-Path $bin 'Main7.exe'
 New-Item -ItemType Directory -Force $desk | Out-Null
 New-Shortcut (Join-Path $desk 'DH2 HOST.lnk') (Join-Path $bin 'host.bat') $bin $exe 'Host a Dangerous Hunts 2 co-op game'
 New-Shortcut (Join-Path $desk 'DH2 JOIN.lnk') (Join-Path $bin 'join.bat') $bin $exe 'Join a Dangerous Hunts 2 co-op game'
-New-Shortcut (Join-Path $desk 'DH2 HOST DLSS.lnk') (Join-Path $bin 'host_dlss5.bat') $bin $exe 'Host a co-op game with the desktop resolution, wide FOV, and DLSS 5'
 
 Write-Host ''
 Write-Host "Installed for player '$PlayerName' in $bin"
