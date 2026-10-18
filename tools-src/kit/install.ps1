@@ -105,15 +105,16 @@ function Same-File([string]$a, [string]$b) {
     return (Get-FileHash -LiteralPath $a).Hash -eq (Get-FileHash -LiteralPath $b).Hash
 }
 
-function Set-IniPlayerName([string]$path, [string]$name) {
+# One key=value line of dh2coop.ini ([^\r\n]: the file's CRLF line ends stay as they are).
+function Set-IniValue([string]$path, [string]$key, [string]$value) {
     $text = [IO.File]::ReadAllText($path)
-    $text = [regex]::Replace($text, '(?m)^PlayerName=.*$', "PlayerName=$name")
+    $text = [regex]::Replace($text, "(?m)^$key=[^\r\n]*", { param($m) "$key=$value" })
     [IO.File]::WriteAllText($path, $text, (New-Object System.Text.ASCIIEncoding))
 }
 
-function Get-IniPlayerName([string]$path) {
+function Get-IniValue([string]$path, [string]$key) {
     if (-not (Test-Path -LiteralPath $path)) { return '' }
-    $m = [regex]::Match([IO.File]::ReadAllText($path), '(?m)^PlayerName=(.*)$')
+    $m = [regex]::Match([IO.File]::ReadAllText($path), "(?m)^$key=([^\r\n]*)")
     if ($m.Success) { return $m.Groups[1].Value.Trim() }
     return ''
 }
@@ -213,7 +214,8 @@ try {
     if ($DryRun) { Write-Host '(dry run: the firewall step is printed, not run)' -ForegroundColor DarkYellow }
 
     # The question comes first, in the window the person is already looking at.
-    if (-not $PlayerName) { $PlayerName = Get-IniPlayerName $iniPath }
+    $oldPassword = Get-IniValue $iniPath 'Password'
+    if (-not $PlayerName) { $PlayerName = Get-IniValue $iniPath 'PlayerName' }
     if (-not $PlayerName -or $PlayerName -eq 'Hunter') {
         $typed = ''
         if (-not $Yes) { $typed = Read-Host "Your player name (Enter = $env:USERNAME)" }
@@ -254,7 +256,8 @@ try {
         Copy-Item -LiteralPath $loader -Destination $loaderBak
     }
     foreach ($f in $modFiles) { Copy-Item -LiteralPath (Join-Path $kit $f) -Destination (Join-Path $bin $f) -Force }
-    Set-IniPlayerName $iniPath $PlayerName
+    Set-IniValue $iniPath 'PlayerName' $PlayerName
+    if ($oldPassword) { Set-IniValue $iniPath 'Password' $oldPassword }  # a host's password survives an update
     $exe = Join-Path $bin 'Main7.exe'
     New-Item -ItemType Directory -Force $desk | Out-Null
     foreach ($name in $oldShortcuts) { Remove-Item -LiteralPath (Join-Path $desk "$name.lnk") -Force -ErrorAction SilentlyContinue }

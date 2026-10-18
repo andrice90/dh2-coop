@@ -44,6 +44,13 @@ if ($names -eq 'dh2coop.asi,dh2coop.ini,dinput8.dll,host.bat,join.bat,Main7.exe,
     (Test-Path (Join-Path $desk 'DH2 COOP.lnk')) -and (Get-Content (Join-Path $bin 'dh2coop.ini') -Raw) -match '(?m)^PlayerName=Andri Test') {
     Write-Host 'pass  install copied the files, the uninstaller, the shortcut and the player name'
 } else { Write-Host "FAIL  install left: $names"; $fail++ }
+$iniFile = Join-Path $bin 'dh2coop.ini'
+[IO.File]::WriteAllText($iniFile, ([IO.File]::ReadAllText($iniFile) -replace '(?m)^Password=[^\r\n]*', 'Password=pw 123'))
+[void](Run-Install @())
+$iniText = [IO.File]::ReadAllText($iniFile)
+if ($iniText -match '(?m)^Password=pw 123\r$' -and $iniText -match '(?m)^PlayerName=Andri Test\r$' -and $iniText -notmatch '[^\r]\n') {
+    Write-Host 'pass  an update keeps the player name and the password, CRLF intact'
+} else { Write-Host 'FAIL  update: password / name / line ends'; $fail++ }
 Check 'install.ps1 -FindOnly runs' ([pscustomobject]@{ Out = (& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $kit 'install.ps1') -FindOnly 2>&1 | Out-String); Code = $LASTEXITCODE }) @()
 
 # install.ps1 -Uninstall
