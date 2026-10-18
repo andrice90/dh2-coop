@@ -8,25 +8,36 @@ INSTALL (everyone)
 1. Unzip the whole kit anywhere (for example your Downloads folder).
 2. Double-click install.bat. It finds the game (...\Activision Value\Magic Wand\DNGH2\Bin, on any
    local drive), asks for your player name once, copies the mod in, and puts one shortcut on your
-   desktop: DH2 COOP. If the game is under Program Files, Windows asks for permission.
+   desktop: DH2 COOP. Windows asks for permission once: the installer adds Tailscale (the network
+   the game uses) and one firewall rule (Tailscale addresses only).
+   It also asks for the join code from your host. The host just presses Enter.
    Game somewhere else?  powershell -ExecutionPolicy Bypass -File install.ps1 -GameDir "<your Bin folder>"
 3. Updating to a newer kit: run install.bat from the new kit (your player name is kept; the old
    DH2 HOST / DH2 JOIN shortcuts are removed).
-4. Uninstall: install.bat -Uninstall  (removes the mod files and the shortcut; a dinput8.dll from
-   another mod is put back).
+4. Uninstall: install.bat -Uninstall  (removes the mod files, the shortcut and the firewall rule;
+   a dinput8.dll from another mod is put back; Tailscale stays installed).
 
-NETWORK (Tailscale)
-- Everyone installs Tailscale and joins the same tailnet (the host can share their machine with friends).
-- The host's tailnet IP (100.x.y.z) is shown in the lobby window, with a Copy button.
-- The host must let Main7.exe receive UDP port 27420. Windows Firewall asks the first time you
-  host: tick "Private" (and "Public" if your Tailscale adapter is marked public) and press Allow.
+NETWORK (Tailscale, free)
+Host, once:
+1. Run install.bat, press Enter at the join code question. It installs Tailscale and opens your
+   browser: sign in (a free Tailscale account).
+2. The installer prints two things for the Tailscale admin pages and opens them (the first is
+   already on your clipboard): paste the policy text over the policy file and Save; then
+   Settings > Keys > Generate auth key: Reusable on, Ephemeral on, Tags tag:dh2friend, expiry 90
+   days. The policy replaces the default allow-everything policy: if you have your own rules,
+   merge by hand. The lobby button "Tailscale setup help" shows these steps again.
+3. Start DH2 COOP, paste the key into "Friend key" in the HOST section, press Save.
+Host, every time: DH2 COOP, HOST, "Copy join code", send the code to your friends.
+Friend: run install.bat and paste the code when asked. Tailscale installs and joins the host's
+network by itself: no account, no browser. Then DH2 COOP, JOIN (the host's address is filled in).
 
 PLAY
 1. Everyone: DH2 COOP on the desktop. The game opens at its main menu with the co-op lobby window.
    Type your name and pick the character the others will see you as.
 2. Host: press HOST. The lobby shows "Lobby open" and the address friends use.
-3. Friends: type the host's tailnet IP (and port, normally 27420) and press JOIN. The status line
-   says "Connected", or what went wrong. Everyone in the lobby sees the player list.
+3. Friends: the host's address and port are already in the JOIN box (from the join code; you can
+   also paste a code there, or type the host's IP). Press JOIN. The status line says "Connected",
+   or what went wrong. Everyone in the lobby sees the player list.
 4. Host: press F8 to close the lobby, then start a New Game or Load a save from the game's menu.
    Friends stay in their main menu: they follow the host into the game automatically.
 5. F8 opens and closes the lobby window at any time (it shows the players and their ping).
@@ -59,6 +70,10 @@ NOT YET / KNOWN PROBLEMS
   Quit and start again instead.
 - Guide and companion characters follow / wait for the HOST only.
 - Pause menus are per player (the host pausing freezes animals for everyone).
+
+IF JOIN DOES NOT CONNECT
+The host must have pressed HOST and have Tailscale running; the friend needs Tailscale running too
+(tray icon). Run install.bat again after a Windows or Tailscale reinstall.
 
 IF SOMETHING BREAKS
 Send the log files from both players. They are in the game's Bin folder, or, when the game is installed
