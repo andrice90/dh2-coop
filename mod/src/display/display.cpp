@@ -48,6 +48,7 @@ bool g_windowed = true;
 bool g_hor_plus = true;
 bool g_lock_hud = true;
 bool g_compass_fix = true;  // [Display] CompassFix
+const char* g_dpi_result = "not tried";  // MakeDpiAware (DllMain), logged by choose_resolution
 int g_raw_hud = 0;          // > 0 while a HUD element that lays itself out in back-buffer pixels draws (scope)
 int g_width = 0;
 int g_height = 0;
@@ -732,6 +733,10 @@ void choose_resolution() {
     spdlog::info("display: Enabled={} {}x{} Windowed={} HorPlus={} LockHud={} HudScale={}% from height {}",
                  g_enabled ? 1 : 0, g_width, g_height, g_windowed ? 1 : 0, g_hor_plus ? 1 : 0, g_lock_hud ? 1 : 0,
                  pct, g_elem_min_h);
+    RECT work{};
+    SystemParametersInfoA(SPI_GETWORKAREA, 0, &work, 0);
+    spdlog::info("display: DPI {}; screen {}x{}, work area {}x{}", g_dpi_result, GetSystemMetrics(SM_CXSCREEN),
+                 GetSystemMetrics(SM_CYSCREEN), work.right - work.left, work.bottom - work.top);
 }
 
 class DisplayModule : public dh2::Module {
@@ -850,5 +855,26 @@ DH2_MODULE(DisplayModule)
 namespace dh2::display {
 
 float EffectiveHorizontalFov(float stored_degrees) { return expand_fov(stored_degrees, g_aspect); }
+
+void MakeDpiAware() {
+    const std::string ini = (dh2::core::self_dir() / "dh2coop.ini").string();
+    if (GetPrivateProfileIntA("Display", "DpiAware", 1, ini.c_str()) == 0) {
+        g_dpi_result = "off ([Display] DpiAware=0)";
+        return;
+    }
+    // System aware, not per-monitor: the game does not handle WM_DPICHANGED.
+    HMODULE user32 = GetModuleHandleA("user32.dll");
+    using SetCtxFn = BOOL(WINAPI*)(HANDLE);
+    using SetAwareFn = BOOL(WINAPI*)();
+    auto set_ctx = user32 ? reinterpret_cast<SetCtxFn>(GetProcAddress(user32, "SetProcessDpiAwarenessContext")) : nullptr;
+    auto set_aware = user32 ? reinterpret_cast<SetAwareFn>(GetProcAddress(user32, "SetProcessDPIAware")) : nullptr;
+    if (set_ctx && set_ctx(reinterpret_cast<HANDLE>(static_cast<intptr_t>(-2)))) {  // DPI_AWARENESS_CONTEXT_SYSTEM_AWARE
+        g_dpi_result = "system aware (SetProcessDpiAwarenessContext)";
+    } else if (set_aware && set_aware()) {
+        g_dpi_result = "system aware (SetProcessDPIAware)";
+    } else {
+        g_dpi_result = "not changed (already set, or the call failed)";
+    }
+}
 
 }  // namespace dh2::display

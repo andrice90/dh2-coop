@@ -35,4 +35,11 @@ void AddPresentCallback(PresentCallback fn);
 using ResetCallback = void (*)(void* device, void* present_params, int phase);
 void AddResetCallback(ResetCallback fn);
 
+// A second IDirect3D8::CreateDevice: the game builds a new device for a resolution / window-mode change instead of
+// Reset (2026-10-18, CreateDevice #2 and #3 from the options menu). phase 0 runs before the new device is made:
+// release everything tied to the old one (it was already released by the game; anything still holding it keeps
+// it alive). phase 1 runs after, with the new device (null when creation failed). Not called for the first device.
+using DeviceChangeCallback = void (*)(void* new_device, int phase);
+void AddDeviceChangeCallback(DeviceChangeCallback fn);
+
 }  // namespace dh2::d3d8

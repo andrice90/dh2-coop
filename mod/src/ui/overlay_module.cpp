@@ -57,6 +57,8 @@ struct OverlayState {
     bool f8_down = false;
     bool f7_down = false;
     bool logged_begin_fail = false;
+    bool logged_size = false;
+    IDirect3DDevice8* dx8_device = nullptr;  // the device ImGui_ImplDX8 is bound to (null = not bound)
     LARGE_INTEGER qpc_freq{};
     LARGE_INTEGER qpc_last{};
 };
@@ -662,23 +664,46 @@ void draw_markers(const dh2::coop::SessionView& view, ImVec2 disp) {
     }
 }
 
+// The ImGui context lives for the whole process; the DX8 backend is bound to one device and is set up again when
+// the game makes a new device (options menu resolution / window mode change, on_device_change).
 bool ensure_imgui(IDirect3DDevice8* dev) {
-    if (g_ov.inited) return true;
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
-    io.IniFilename = nullptr;
-    io.LogFilename = nullptr;
-    io.ConfigFlags |= ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoMouseCursorChange;
-    ImGui::StyleColorsDark();
+    if (!g_ov.inited) {
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGuiIO& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.LogFilename = nullptr;
+        io.ConfigFlags |= ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoMouseCursorChange;
+        ImGui::StyleColorsDark();
+        g_ov.inited = true;
+    }
+    if (g_ov.dx8_device == dev) return true;
+    if (g_ov.dx8_device) {
+        // A device the change callback did not announce (a new device at a new address): drop the old binding.
+        ImGui_ImplDX8_Shutdown();
+        g_ov.dx8_device = nullptr;
+    }
     if (!ImGui_ImplDX8_Init(dev)) {
         spdlog::error("overlay: ImGui_ImplDX8_Init failed");
-        ImGui::DestroyContext();
         return false;
     }
-    g_ov.inited = true;
-    spdlog::info("overlay: imgui dx8 initialized");
+    g_ov.dx8_device = dev;
+    g_ov.logged_size = false;
+    spdlog::info("overlay: imgui dx8 initialized on device {:#x}", reinterpret_cast<uintptr_t>(dev));
     return true;
+}
+
+// The game is about to make a new device (it already released the old one): release the backend's textures,
+// buffers and its reference, so the old device can really go away. The next Present binds the new device.
+void on_device_change(void* new_device, int phase) {
+    if (phase != 0) {
+        spdlog::info("overlay: new D3D8 device {:#x}", reinterpret_cast<uintptr_t>(new_device));
+        return;
+    }
+    if (!g_ov.inited || !ImGui::GetCurrentContext() || !g_ov.dx8_device) return;
+    ImGui_ImplDX8_Shutdown();
+    g_ov.dx8_device = nullptr;
+    spdlog::info("overlay: device replaced, imgui dx8 released");
 }
 
 void on_present(void* device, const RECT* src, const RECT* dst, HWND window, const void* dirty) {
@@ -740,9 +765,8 @@ void on_present(void* device, const RECT* src, const RECT* dst, HWND window, con
         io.MouseDrawCursor = false;
     }
 
-    static bool logged_size = false;
-    if (!logged_size) {
-        logged_size = true;
+    if (!g_ov.logged_size) {
+        g_ov.logged_size = true;
         spdlog::info("overlay: display {:.0f}x{:.0f}", static_cast<double>(io.DisplaySize.x),
                      static_cast<double>(io.DisplaySize.y));
     }
@@ -797,7 +821,7 @@ void on_present(void* device, const RECT* src, const RECT* dst, HWND window, con
 void on_reset(void* device, void* present_params, int phase) {
     (void)device;
     (void)present_params;
-    if (!g_ov.inited || !ImGui::GetCurrentContext()) return;
+    if (!g_ov.inited || !ImGui::GetCurrentContext() || !g_ov.dx8_device) return;
     if (phase == 0) {
         ImGui_ImplDX8_InvalidateDeviceObjects();
         spdlog::info("overlay: reset phase 0, device objects invalidated");
@@ -822,6 +846,7 @@ public:
                      g_ov.marker_test ? 1 : 0);
         dh2::d3d8::AddPresentCallback(&on_present);
         dh2::d3d8::AddResetCallback(&on_reset);
+        dh2::d3d8::AddDeviceChangeCallback(&on_device_change);
     }
 
     // OnShutdown runs on the ASI init thread, not the device thread. The present

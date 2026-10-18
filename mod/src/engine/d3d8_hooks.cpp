@@ -65,6 +65,24 @@ std::atomic<bool> g_foreign_present_logged{false};
 std::mutex g_cb_mu;
 std::vector<PresentCallback> g_present_cbs;
 std::vector<ResetCallback> g_reset_cbs;
+std::vector<DeviceChangeCallback> g_device_cbs;
+
+void notify_device_change(void* dev, int phase) {
+    std::vector<DeviceChangeCallback> cbs;
+    {
+        std::lock_guard lock(g_cb_mu);
+        cbs = g_device_cbs;
+    }
+    for (DeviceChangeCallback cb : cbs) {
+        try {
+            if (cb) cb(dev, phase);
+        } catch (const std::exception& ex) {
+            spdlog::error("Device change callback (phase {}) threw: {}", phase, ex.what());
+        } catch (...) {
+            spdlog::error("Device change callback (phase {}) threw", phase);
+        }
+    }
+}
 
 uintptr_t A(const void* p) { return reinterpret_cast<uintptr_t>(p); }
 
@@ -186,10 +204,17 @@ HRESULT __stdcall hk_CreateDevice(void* self, UINT adapter, UINT type, HWND focu
             spdlog::info("D3D8   main (window) thread t{}; CreateDevice called on t{}", owner, GetCurrentThreadId());
         }
     }
+    const bool replacing = g_device.load() != nullptr;
+    if (replacing) notify_device_change(nullptr, 0);
     HRESULT hr = g_create_device->unsafe_stdcall<HRESULT>(self, adapter, type, focus, flags, pp, out);
     spdlog::info("D3D8   -> hr={:#010x} device={:#x} params out: {}", static_cast<std::uint32_t>(hr),
                  out ? A(*out) : 0, fmt_params(pp));
-    if (SUCCEEDED(hr) && out && *out) hook_device(*out, "CreateDevice");
+    void* dev = (SUCCEEDED(hr) && out) ? *out : nullptr;
+    if (dev) {
+        hook_device(dev, "CreateDevice");  // first device only; later ones share the hooked vtable code
+        g_device.store(dev);
+    }
+    if (replacing) notify_device_change(dev, 1);
     return hr;
 }
 
@@ -266,6 +291,12 @@ void AddResetCallback(ResetCallback fn) {
     if (!fn) return;
     std::lock_guard lock(g_cb_mu);
     g_reset_cbs.push_back(fn);
+}
+
+void AddDeviceChangeCallback(DeviceChangeCallback fn) {
+    if (!fn) return;
+    std::lock_guard lock(g_cb_mu);
+    g_device_cbs.push_back(fn);
 }
 
 }  // namespace dh2::d3d8
