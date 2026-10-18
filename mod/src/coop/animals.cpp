@@ -26,6 +26,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include "coop/beasts.h"
 #include "coop/coop.h"
 #include "coop/player_tracker.h"
 #include "coop/puppets.h"
@@ -1658,7 +1659,8 @@ private:
                 if (!sample.state.empty() && entity::BodyStateName(ent) != sample.state)
                     entity::SetBodyState(ent, sample.state.c_str(), true);
                 if (m.applied_state != sample.state) {
-                    if (const char* clip = NpcLegClip(sample.state)) entity::SetAnim(ent, clip);
+                    // beasts.cpp: girl/fiancée/ranger packs lack some guide clips (a missing one stops the legs).
+                    if (const char* clip = beasts::NpcLegClipFor(ent, NpcLegClip(sample.state))) entity::SetAnim(ent, clip);
                     m.applied_state = sample.state;
                 }
                 // The handgun's own body script SetAnims clips like handgun3/normaltoalert onto its legs
@@ -1681,6 +1683,9 @@ private:
                 // VM fault (MAP4A client, EngineDll7+0x29a8bf, 2026-10-18). Three tries per state name, then leave it.
                 int& fails = m.state_fails[sample.state];
                 if (fails >= 3) continue;
+                // beasts.cpp: a part still linked to another body (a tackle's sync ring) raises on every clip that body
+                // cannot take. Do not start such a state.
+                if (!beasts::MirrorStateOk(ent, sample.state)) continue;
                 int r = entity::SetBodyState(ent, sample.state.c_str(), false);
                 // From some states the machine refuses a direct jump (the lioness copy after a tackle stood frozen in
                 // one pose, sliding along with the host's lioness). A reset first is how the NPC mirror enters states.

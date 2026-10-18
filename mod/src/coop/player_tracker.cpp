@@ -57,6 +57,10 @@ constexpr uintptr_t kVtHunterRva = 0x106ff0;  // cScr_ModHunter
 constexpr uintptr_t kVtPilotRva = 0x109d48;
 constexpr uintptr_t kVtAnimalRva = 0xff470;   // cScrAnimal
 constexpr uintptr_t kVtCobraRva = 0x10e920;   // cObjCobra (mission cobras). Not cObjSnake +0x10e470.
+// cObjCrocodile (obj_crocodile, ANIMAL_WATERCROCODILE): the cScrAnimal ctor plus this vtable and a water-trail FX
+// (ctor GameDll 0x1d720). OnHit, death (+0x154) and the brain slot are cScrAnimal's; its MoveToPos (+0x158 0x17270)
+// calls cScrAnimal's 0x14610 first (re/notes/beasts.md). ANIMAL_CROCODILE is a plain obj_animal.
+constexpr uintptr_t kVtCrocodileRva = 0xffa50;
 
 // SetLoadSaveObjManager(cObjManager*) (EngineDll7 export, RVA 0xbf6a0) stores Main7's live manager in an
 // unexported global (RVA 0x5826ec). Its body has `A3 <imm32>` (mov [global], eax) at +0x1A; we verify that
@@ -326,6 +330,7 @@ private:
         const uintptr_t vtPilot = game + kVtPilotRva;
         const uintptr_t vtAnimal = game + kVtAnimalRva;
         const uintptr_t vtCobra = game + kVtCobraRva;
+        const uintptr_t vtCroc = game + kVtCrocodileRva;
         std::map<uintptr_t, int> hist;
         std::vector<void*> animals;
         std::vector<void*> npcs;
@@ -345,7 +350,7 @@ private:
             }
             children.push_back(ent);
             if (diff_hunter_) DiffEntityAngle(i, ent, vt);
-            if (vt == vtAnimal || vt == vtCobra) animals.push_back(ent);
+            if (vt == vtAnimal || vt == vtCobra || vt == vtCroc) animals.push_back(ent);
             char* model = nullptr;
             if (core::safe_read(reinterpret_cast<char*>(ent) + kEntModelName, model) && model) {
                 std::string path = core::safe_cstr(model, 160);

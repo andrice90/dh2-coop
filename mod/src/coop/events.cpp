@@ -23,6 +23,7 @@
 #include "coop/player_tracker.h"
 #include "core/exports.h"
 #include "core/hook.h"
+#include "core/log.h"
 #include "core/module.h"
 #include "core/safe_mem.h"
 #include "engine/console.h"
@@ -69,6 +70,8 @@ using HunterEndFn = void(__thiscall*)(void* hunter, int arg);
 SetMapIsCompleteFn g_set_map_complete = nullptr;
 HunterEndFn g_hunter_end = nullptr;
 bool g_in_apply = false;
+bool g_client_claim_script = true;  // [Animals] ClientClaimScript: a client runs the claim callback of a host claim
+std::set<uint16_t> g_claim_ran;     // client: animals whose claim callback ran here (this map)
 bool g_pending_end = false;
 net::GameEvent g_pending_ev;
 uint32_t g_check_swallowed = 0;
@@ -250,11 +253,22 @@ void OnClaimRequest(const net::GameEvent& ev) {
 }
 
 void OnClaimCommit(const net::GameEvent& ev) {
-    // The host ran the claim script. Here only the prompt goes away; the client's own script must not end the map.
-    if (void* animal = animals::Find(ev.subjectId)) {
+    // The host ran the claim script; how the mission ends arrives as kMissionEnd. The script's other effects are per
+    // process (MAP2C cScrTask05: leave the boar respawn loop, cave_meat.Activate(), StartTask 5/6, stealth off;
+    // audit-a G9), so this client runs the same callback once: the original 0x1cd40 (clears +0x404, runs the level
+    // script's callback when one is set). Not under g_in_apply: CheckMissionStatus and mission messages the callback
+    // reaches stay swallowed here.
+    void* animal = animals::Find(ev.subjectId);
+    bool ran = false, ok = false;
+    if (animal) {
+        if (g_client_claim_script && g_claim_hook && g_claim_ran.insert(ev.subjectId).second) {
+            ok = guarded_claim(animal);
+            ran = true;
+        }
         *reinterpret_cast<int*>(static_cast<char*>(animal) + kAnimalClaimable) = 0;
     }
-    spdlog::info("events: trophy id={} claimed by player {}", ev.subjectId, ev.actorId);
+    spdlog::info("events: trophy id={} claimed by player {}{}", ev.subjectId, ev.actorId,
+                 ran ? (ok ? "; claim script ran here" : "; claim script faulted here") : "");
 }
 
 // ---- kMapStart ----
@@ -455,6 +469,7 @@ void ResetMap() {
     g_synced_local = false;
     g_sync_sent_serial = 0;
     g_recheck_ms = 0;
+    g_claim_ran.clear();
 }
 
 // ---- hooks ----
@@ -517,6 +532,8 @@ public:
         SetHandler(kMapStart, nullptr, &OnMapStartCommit);
         SetHandler(kSyncRequest, &OnSyncRequest, nullptr);
         SetHandler(kSyncDone, nullptr, &OnSyncDoneCommit);
+        g_client_claim_script =
+            GetPrivateProfileIntA("Animals", "ClientClaimScript", 1, (core::self_dir() / "dh2coop.ini").string().c_str()) != 0;
         spdlog::info("events: registry AnimalDied={} MissionEnd={} TrophyClaim={} MapStart={}", kAnimalDied,
                      kMissionEnd, kTrophyClaim, kMapStart);
     }
