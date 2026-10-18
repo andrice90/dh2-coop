@@ -377,7 +377,9 @@ struct Cfg {
     bool board_with_host = true;   // [Vehicles] BoardWithHost: client, seat our hunter when the host rides
     bool seat_sync = true;         // [Vehicles] SeatSync: host NPC seats (the driver) mirrored on clients
     bool board_request = true;     // [Vehicles] BoardRequest: a client's own boarding makes the host board
-    bool rider_targets = true;     // [Vehicles] RiderTargets: riders stay on the attack-target list (MAP4A run 2026-10-18: on)
+    bool rider_targets = false;    // [Vehicles] RiderTargets: riders stay on the attack-target list. Off: a lion going
+                                   // for a rider cannot start its tackle on a puppet and keeps ramming the truck (user saw
+                                   // the truck pushed off course, MAP4A 2026-10-18 16:05)
     bool rider_knock = true;       // [Vehicles] RiderKnock: a lion that would tackle a rider knocks its hunter down
     bool split_riders = true;      // [Vehicles] SplitRiders: lions after someone in the truck are shared out
     uint32_t rider_knock_ms = 2500;  // [Vehicles] RiderKnockMs: how long the truck knock keeps the rider down
@@ -974,7 +976,7 @@ public:
         g_cfg.board_with_host = key("BoardWithHost", true);
         g_cfg.seat_sync = key("SeatSync", true);
         g_cfg.board_request = key("BoardRequest", true);
-        g_cfg.rider_targets = key("RiderTargets", true);
+        g_cfg.rider_targets = key("RiderTargets", false);
         g_cfg.rider_knock = key("RiderKnock", true);
         g_cfg.split_riders = key("SplitRiders", true);
         g_upright = key("Upright", false);
