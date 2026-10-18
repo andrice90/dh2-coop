@@ -26,6 +26,28 @@ Merged by the lead 09:4x:
 - `13cf306`, `a5558d9` (branch `replay-crash`): **same-map replay crash fixed**. A replay (results-screen retry, F5, `spmap` of the loaded map) now runs Main7's map-change cleanup (`0xf8f0`) before the loader (`0x101d0`), so it is a full load (`[Coop] FullReloadOnReplay=1`). `e38f9dc`: the `cSndDrvDS::WaveRelease` hook also skips a release on an empty slot. Verified `replay-coop-test.ps1` MAP1 → MAP1 → MAP1 → MAP2A → MAP1 on two windows: RESULT ok, no crash. Handled first-chance AVs in `display.cpp` `gameplay_icon_scale` (guarded `safe_copy` on the loading thread) are harmless.
 - `038afc0`..`a1e9212` (branch `puppet-polish`): `coop_fake*` test sender, no first-chance AV on weapon unlink on story maps (scripted state machine hidden from `SetSyncWith(nullptr)`), a leaving player's puppet is parked (hidden, frozen, y = -10000) and reused by the next joiner with the **same model** (lead change: also on a model swap, collision restored if parked while riding). Verified MAP2A: model swap, leave, rejoin, swap again: bodies reused, no exceptions.
 - Routed review M1/M2 (NPC mirror death / thaw with the animal FreezeBrain) to `life`.
+- `79d0545`: `EntityById` is a direct slot lookup (id == manager index), scan as fallback (review M3 lookup half; list pruning not done). MAP3B two-window smoke OK.
+
+### Resume the wave (session limit hit ~09:55, 2026-10-18)
+All 12 agents were told at ~09:55 to stop, commit (unverified code as `WIP:` commits), and write their notes. **Agents do not survive the session**: a new session starts fresh agents from these files. Per agent, check `git -C "D:\scary hunt\<worktree>" log --oneline main..HEAD`, `git -C ... status --short`, and its note:
+| Agent | Where to look |
+|---|---|
+| research-A/B/C | `re/notes/playthrough-a.md`, `-b.md`, `-c.md` in the main checkout (uncommitted; commit them). Maps marked "NOT YET AUDITED" still need the pass. Use their "Routing" sections to brief the fix agents. |
+| triggers | `dh2coop-trig` / `triggers`, `re/notes/triggers.md`. First deliverable was a `coop_tasks` dump other agents cherry-pick. |
+| life | `dh2coop-life` / `journal-life`, `re/notes/life.md` (also got review M1/M2 from `npc-arms` `d5fe70e`). |
+| beasts | `dh2coop-beasts` / `beasts`, `re/notes/beasts.md`. |
+| flow | `dh2coop-flow` / `mission-flow` (old WIP saved as branch `mission-flow-wip`), `re/notes/flow.md`. |
+| vehicles | `dh2coop-truck` / `trucks`, `re/notes/vehicles.md`. |
+| pilot | `dh2coop-pilot` / `pilot-maps`, `re/notes/pilot.md`. |
+| hunter | `dh2coop-hunter` / `hunter-nearest` (rebase onto main may be mid-way: check `git status`), `re/notes/hunter-nearest.md`. |
+| bosses | `dh2coop-yeti` / `yeti` (same rebase caveat), `re/notes/yeti-bosses.md`. |
+| smoke | `dh2coop-smoke` / `smoke-pass`, `re/notes/smoke-all-maps.md` (rows done so far). |
+
+Next session, in order: (1) read the three playthrough notes and the smoke table; (2) review each branch, cherry-pick verified commits into main (resolve `events.cpp` / `animals.cpp` overlaps; bump `kProtocolVersion` once for the merged kinds 18–37 and msg ids 12–15); (3) restart fix agents on the open items with the same roster/ports/slots (`re/jobs/_wave-playthrough.md`); (4) integration run on main, then refresh `dist\dh2coop-kit.zip`.
+
+Still waiting for the user (unchanged): MAP4A riders as lion targets (handed to `vehicles`), client lioness frozen pose (`life`), scale defaults ReuseKilled / reserve health (`life` decides and documents). Real two-PC test of the kit is still open.
+
+**Windows Firewall prompts (user, 09:55):** every new `Main7.exe` path (each worktree's `game*`) asks once for network access when it opens its UDP socket. Local tests connect over 127.0.0.1, which the firewall does not filter, so Cancel is harmless for test copies. To stop the prompts, see the one-time admin command in the lead's last message (program rules for every existing `D:\scary hunt\dh2coop*\game*\Bin\Main7.exe`). Possible code fix (not done): bind the test host to 127.0.0.1 when `run-coop-local` launches it (a `[Coop] BindAddress` key), so test copies never listen on the LAN.
 
 ## Pivot to real testing (2026-10-17 late night)
 User: pause the wide fan-out; make install and host/join very easy; start real testing over Tailscale; implement player-count scaling; fix the compass; then a lobby overlay (one DH2 COOP shortcut → main menu → lobby with HOST / JOIN).
