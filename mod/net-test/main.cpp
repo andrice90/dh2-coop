@@ -983,7 +983,7 @@ void TestJoinCode(Tally& t) {
 
     // The password stays out of anything meant to be printed.
     const std::string desc = jc::Describe(full);
-    t.Check(desc.find("s3cret") == std::string::npos && desc.find("password (6 chars)") != std::string::npos &&
+    t.Check(desc.find("s3cret") == std::string::npos && desc.find("password set") != std::string::npos &&
                 jc::Describe(noPass).find("no password") != std::string::npos,
             "join code: Describe hides the password");
     t.Check(desc.rfind("203.x.x.7:27420,", 0) == 0 && jc::Describe({"192.168.5.200", 1, "", "N"}).rfind("192.168.5.200:1,", 0) == 0 &&

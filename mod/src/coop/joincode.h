@@ -44,7 +44,7 @@ bool LooksLikeCode(std::string_view text);
 std::string RedactSecrets(std::string_view text);
 
 // For logs and screens: never the password.
-std::string Describe(const Fields& fields);    // "203.x.x.7:27420, host 'Name', password (6 chars)" / "no password"
+std::string Describe(const Fields& fields);    // "203.x.x.7:27420, host 'Name', password set" / "no password"
                                                // (a public address masked; LAN / tailnet addresses whole)
 std::string MaskedCode(const Fields& fields);  // "DH2-…(hidden)"
 

@@ -293,7 +293,7 @@ std::string Describe(const Fields& f) {
         if (!lan && !IsTailnetIp(ip)) ip = std::to_string(o[0]) + ".x.x." + std::to_string(o[3]);
     }
     std::string s = ip + ":" + std::to_string(f.port) + ", host '" + f.name + "', ";
-    s += f.pass.empty() ? "no password" : "password (" + std::to_string(f.pass.size()) + " chars)";
+    s += f.pass.empty() ? "no password" : "password set";
     return s;
 }
 
