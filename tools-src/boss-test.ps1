@@ -14,6 +14,7 @@ param(
     [string[]]$Triggers = @(),
     [string[]]$Phases = @('stay|stay'),
     [int]$StartWait = 12,
+    [int]$LateJoin = 0,       # seconds the client waits after the host (run-coop-local -LateJoin)
     [int]$PhaseSec = 40,
     [string]$Prefix = 'yeti',
     [string[]]$FinalHostCmds = @(),  # host console lines after the last phase (e.g. 'coop_kill 24:5000'), then 20 s
@@ -46,7 +47,9 @@ function Move-Player([string]$tree, [string]$where) {
     Send-Cmd $tree "coop_tp $where"
 }
 $stamp = Get-Date -Format 'HHmmss'
-& (Join-Path $root 'run-coop-local.ps1') -Players 2 -Map $Map -Port $Port | Out-Null
+$rcl = @{ Players = 2; Map = $Map; Port = $Port }
+if ($LateJoin -gt 0) { $rcl.LateJoin = $LateJoin }
+& (Join-Path $root 'run-coop-local.ps1') @rcl | Out-Null
 Start-Sleep -Seconds $StartWait
 if (-not $NoGod) { Send-Cmd 'game' 'godMode 1'; Send-Cmd 'game2' 'godMode 1' }
 foreach ($t in $Triggers) { Send-Cmd 'game' "coop_trigger $t"; Send-Cmd 'game' "coop_trigger $t" }
