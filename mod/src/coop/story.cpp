@@ -109,6 +109,20 @@ uint32_t g_force_fire_ms = 45000;                    // [Story] FireRequestForce
 bool g_sync_onhit = true;                            // [Story] SyncOnHit
 bool g_puppet_update = true;                         // [Story] PuppetUpdateTrigger
 
+// Client cutscene watchdog. A cutscene that waits on NPC tasks (MAP8 cutscene 2: MoveToPos / LookToEntity on the
+// tribesmen) never ends here, where NPC brains are frozen mirrors: the client sat in it 2.4 min until RETURN while
+// the host's took 34 s (MAP8, 2026-10-18). Started by an applied host OnHit; skipped through the trigger's own skip.
+// Two rules: the cutscene still runs StuckCutsceneSec after the host's fire arrived (the host's was real: its fire
+// came 5 s+ after our start), or it runs StuckCutsceneMaxSec at all (the longest script waits sum to ~35 s).
+struct CutWatch {
+    uint32_t start = 0;
+    uint32_t fire_at = 0;
+    bool seen = false;
+};
+std::unordered_map<int16_t, CutWatch> g_cut_watch;
+uint32_t g_stuck_after_fire_ms = 20000;   // [Story] StuckCutsceneSec
+uint32_t g_stuck_max_ms = 90000;          // [Story] StuckCutsceneMaxSec
+
 // ---- cutscene skip ----
 // GameDll7 0x6b350 is the trigger's skip (the skip_cutscene key ends up here): fastcall(cObjTriggerEvent*). It sets
 // +0x1f0, hides the skip HUD, and calls cScrTriggerEvent::SkipCutScene (0x6a940), which takes the script the
@@ -588,6 +602,7 @@ void ApplyHitCommit(const net::GameEvent& ev) {
     g_in_apply = false;
     spdlog::info("story: applied host OnHit '{}' (id {}) #{} ok={} state {} -> {}", ev.key, id, ev.i0, ok, state,
                  TrigInt(ent, kTrigState));
+    if (ok && TrigPtr(ent, kTrigFnBeginCut)) g_cut_watch[id] = CutWatch{GetTickCount(), 0, false};
 }
 
 void ApplyFireCommit(const net::GameEvent& ev) {
@@ -710,7 +725,35 @@ void OnFireCommit(const net::GameEvent& ev) {
     // Late join: the host fired this a while ago, so its cutscene is long over there. Watch before deferring:
     // the cutscene holding the deferral may be this trigger's own (a map-start fire that ran before the join).
     if (events::CatchingUp() && ev.f0 > kCatchupSkipAge) WatchSkip(ev.subjectId, "old fire during catch-up");
+    const auto w = g_cut_watch.find(static_cast<int16_t>(ev.subjectId));
+    if (w != g_cut_watch.end() && w->second.fire_at == 0) w->second.fire_at = GetTickCount();
     Submit(ev);
+}
+
+// Client frame: see CutWatch.
+void PumpStuckCutscenes() {
+    if (g_cut_watch.empty() || NetIsHost() || !NetIsOnline()) return;
+    const uint32_t now = GetTickCount();
+    for (auto it = g_cut_watch.begin(); it != g_cut_watch.end();) {
+        CutWatch& w = it->second;
+        void* ent = EntityById(it->first);
+        const int state = ent ? TrigInt(ent, kTrigState) : 0;
+        if (state == 4 || state == 5) {
+            w.seen = true;
+            const bool host_over =
+                w.fire_at != 0 && w.fire_at - w.start >= 5000 && now - w.fire_at >= g_stuck_after_fire_ms;
+            if (host_over || now - w.start >= g_stuck_max_ms) {
+                WatchSkip(static_cast<uint16_t>(it->first),
+                          host_over ? "its cutscene still runs after the host's fire" : "its cutscene runs over the time limit");
+                it = g_cut_watch.erase(it);
+                continue;
+            }
+        } else if (!ent || w.seen || now - w.start > 5000) {
+            it = g_cut_watch.erase(it);  // over, or never started one here
+            continue;
+        }
+        ++it;
+    }
 }
 
 // A cutscene gathers everyone (user, 2026-10-17): whoever set it off, everyone plays it, and when a client's
@@ -1354,6 +1397,7 @@ public:
         g_playsa_last.clear();
         g_play_keep.clear();
         g_skip_watch.clear();
+        g_cut_watch.clear();
         g_requested.clear();
         for (auto* m : {&g_arm_serial, &g_hit_serial, &g_fire_serial, &g_applied_arm, &g_applied_hit, &g_applied_fire,
                         &g_fire_wait}) {
@@ -1371,6 +1415,7 @@ public:
             console_cmds::AddCommandStr("coop_hit", &cmd_hit);
         }
         PumpSkips();
+        PumpStuckCutscenes();
         PumpDeferred();
         PumpGather();
     }
@@ -1383,6 +1428,10 @@ public:
         g_puppet_update = GetPrivateProfileIntA("Story", "PuppetUpdateTrigger", 1, ini.c_str()) != 0;
         g_force_fire_ms = 1000u * static_cast<uint32_t>(GetPrivateProfileIntA("Story", "FireRequestForceSec", 45,
                                                                                ini.c_str()));
+        g_stuck_after_fire_ms =
+            1000u * static_cast<uint32_t>(GetPrivateProfileIntA("Story", "StuckCutsceneSec", 20, ini.c_str()));
+        g_stuck_max_ms =
+            1000u * static_cast<uint32_t>(GetPrivateProfileIntA("Story", "StuckCutsceneMaxSec", 90, ini.c_str()));
         spdlog::info("story: SyncTriggerEvents={} SyncOnHit={} PuppetUpdateTrigger={} FireRequestForceSec={}",
                      g_sync_events, g_sync_onhit, g_puppet_update, g_force_fire_ms / 1000);
         events::SetHandler(events::kTriggerEvent, &OnEventRequest, &OnEventCommit);
