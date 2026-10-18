@@ -1,6 +1,6 @@
 # Vehicle / ride tests for the MAP4A and MAP5 trucks (vehicles agent, re/notes/vehicles.md).
 # Starts host + client from this checkout, runs one scenario through the dh2coop.cmd command files, captures
-# both windows every -Every seconds under re\notes\coop-local\truck-<scenario>-<n>-<tree>.png, prints the
+# both windows every -Every seconds under re\notes\coop-local\vehicles-<scenario>-<n>-<tree>.png, prints the
 # vehicles / story / combat lines, then closes this checkout's games (by full path).
 # Scenarios:
 #   map5-host     MAP5: host walks into cScrTask06 (cutscene 3, boarding); client stays at the camp.
@@ -17,6 +17,10 @@ param(
     [int]$Port = 27650,
     [int]$LateJoin = 25,
     [string[]]$Cmd = @(),
+    [string[]]$Set = @(),    # ini overrides for run-coop-local, e.g. 'Vehicles.RiderTargets=1'
+    [string]$Tag = '',          # appended to the scenario in the screenshot names (vehicles-<scenario><tag>-<n>-<tree>.png)
+    [switch]$HostOnly,        # close the client window right after the start (is a solo ride different?)
+    [switch]$NoGod,         # default: godMode 1 on both windows right after the start (an unattended host dies)
     [switch]$Keep
 )
 $ErrorActionPreference = 'Stop'
@@ -58,10 +62,13 @@ function Read-Log([string]$tree) {
 $map = if ($Scenario -like 'map5*') { 'MAP5' } else { 'MAP4A' }
 $runArgs = @{ Players = 2; Map = $map; Port = $Port }
 if ($Scenario -eq 'map4a-late') { $runArgs.LateJoin = $LateJoin }
+if ($Set.Count) { $runArgs.Set = $Set }
 $script:t0 = Get-Date
 & (Join-Path $root 'run-coop-local.ps1') @runArgs | Out-Null
 $script:t0 = Get-Date
 "started $map ($Scenario)"
+if ($HostOnly) { $g2 = Get-Game 'game2'; if ($g2) { Stop-Process -Id $g2.Id -Force } }
+if (-not $NoGod) { Send-Cmd 'game' 'godMode 1'; if (-not $HostOnly) { Send-Cmd 'game2' 'godMode 1' } }
 
 # MAP5 cScrTask06 volume (BSP 60592 111 13580 cm). Both start at the camp spawn.
 $task06 = 'coop_tp 605.9:2:135.8'
@@ -104,7 +111,7 @@ while (((Get-Date) - $start).TotalSeconds -lt $Watch) {
         foreach ($t in 'game', 'game2') {
             $g = Get-Game $t
             if ($g) {
-                & (Join-Path $PSScriptRoot 'capture-window.ps1') -ProcessId $g.Id -Out (Join-Path $shots "truck-$Scenario-$n-$t.png") -NoFocus -PrintWindow 2>&1 | Out-Null
+                & (Join-Path $PSScriptRoot 'capture-window.ps1') -ProcessId $g.Id -Out (Join-Path $shots "vehicles-$Scenario$Tag-$n-$t.png") -NoFocus -PrintWindow 2>&1 | Out-Null
             } else { "  $t is not running at shot $n" }
         }
         $nextShot = $nextShot.AddSeconds($Every)

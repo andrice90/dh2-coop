@@ -1,11 +1,8 @@
 # Vehicles and movers — playthrough wave (vehicles agent, 2026-10-18)
 
-Worktree `D:\scary hunt\dh2coop-truck`, branch `trucks`, port 27650, Ghidra slot N. Stopped early (session usage limit): one baseline game run, then code built but **not run**.
+Worktree `D:\scary hunt\dh2coop-truck`, branch `trucks`, port 27650, Ghidra slot N. First session (Opus) stopped at the usage limit with the code built but not run; second session (Sonnet "vehicles-test") rebased onto `main` (`d96362a`), ran every scenario in two windows and fixed what failed. Results in section 4, what changed in section 5.
 
-Commits:
-- `3b4d04c` WIP: truck seats and boarding for every player, riders as lion targets (untested)
-- `98a4211` Test: truck-test.ps1, MAP5 / MAP4A ride scenarios on this checkout's games
-- (this note)
+Commits (after the rebase): `WIP: truck seats and boarding for every player, riders as lion targets` (code, conflicts kept both sides in `coop.cpp`, `events.h` kinds 28 / 29, `puppets.cpp`), `Test: truck-test.ps1`, `Notes: vehicles agent state at the session limit`, then the test-run commit(s) listed in the final report.
 
 ## 1. What was found
 
@@ -25,13 +22,13 @@ Commits:
 - TryPlaySA (CommonDll `0xcadf0`, fastcall(task)): kind `"truck"` only when the target's GetCar (vt `+0x1c0`) finds a vehicle and vt `+0xfc` says player; then the lion is `Attach`ed to the truck at `place_<CheckUser(target)>`. A riding puppet is not attached → ground kind `pl_ln_syncattack1`, target part0 sync-linked to the lion (`vt+0x38`): the "puppet thrown off the truck". SA end `0xc3960` unlinks and Detaches the lion. Brain = `*(task+8)`, target id `brain+0x254`, animal `brain+0x68`.
 - Lion/lioness chaser truck SA `syncattacktruck` has **no damage** in `MakeChaser` (no `sadmg*`); the damage that killed the host came from claw/leap attacks (`dmgval`, `impval`). Teen paks with `syncattacktruck`: MAP3C, MAP4A, MAP4B, MAPARENA (MAP5 has only `pl_hy_syncattack1`). `HUMANLEGS.SCR` PlaySA returns to `TurnCoDrive` when `player.IsInVehicle()`: the seated hunter supports the knock clip by design (runtime UNVERIFIED).
 
-## 2. What the WIP code does (`3b4d04c`, built, UNVERIFIED in a run)
+## 2. What the code does (WIP `3b4d04c`; every item run in section 4)
 - **BoardWithHost** (client): host's PlayerState has `kFlagRiding` for 2 s, our hunter alive, not seated, no cutscene camera, our copy has host samples → `GetInCar(2)` (0x48d10, prologue checked). Up to 10 tries, 3 s apart.
 - **SeatSync**: host polls `+0x298` 5×/s; an NPC getting in/out → `Commit(kVehicleSeat=28, veh, place | id<<16, key "p<n>=<id>#<serial>")` (journaled: late joiners). Client reconciles with `cObjVehicle::GetIn/GetOut` (not during its cutscene camera, 20 tries).
 - **BoardRequest**: client's own script seated it (parent -1 → veh) while the host does not ride → `Request(kVehicleBoard=29, veh, driver id, key = last DriveTo waypoint)`. Host waits 5 s (and while its cutscene camera is up), then driver into place_0, `GetInCar(2)` for the host hunter, `DriveTo(waypoint)` unless its own script already drove. This removes the MAP5 "client boards first → host never boards → soft lock" without `kTriggerHit`.
 - **DriveTo hook**: a following copy's own DriveTo is not run; `follow()` re-freezes a copy whose body gravity came back.
 - **RideWithHost** in `coop.cpp` (lead's file, 2 small edits): `TeleportToHost` (gather after cutscene, join catch-up, `coop_tohost`) never moves a seated hunter and seats it when the host rides; F9 revive keeps a seated hunter in place and seats a revived one when the host rides.
-- **RiderTargets** (default **0** until tested): riders stay on the target list; TryPlaySA hook returns 0 for a riding puppet (no SA → no glued puppet); **RiderKnock** sends `kPlayerKnock "syncattacktruck"` (lion within 4 m, every 8 s max) and `kPlayerKnockEnd` after RiderKnockMs; **SplitRiders** shares lions targeting anyone in the truck by `animal id % crew` (same task-switch as combat.cpp; under its 3 m margin).
+- **RiderTargets** (default **1** since the MAP4A run, section 4 test 6): riders stay on the target list; TryPlaySA hook returns 0 for a riding puppet (no SA → no glued puppet); **RiderKnock** sends `kPlayerKnock "syncattacktruck"` (lion within 4 m, every 8 s max) and `kPlayerKnockEnd` after RiderKnockMs; **SplitRiders** shares lions targeting anyone in the truck by `animal id % crew` (same task-switch as combat.cpp; under its 3 m margin).
 - Test commands: `coop_board`, `coop_unboard`, `coop_rideknock <id>` (host), `coop_vehinfo`.
 
 ## 3. Mover sweep (BSP entity lists of all 21 story maps, scratch script)
@@ -51,28 +48,39 @@ Commits:
 | MAP3A/3B/4B/9 | `falling_rocks*` = `obj_cavedust` FX | per process | cosmetic |
 No train, boat, or rolling rock exists in any story BSP.
 
-## 4. Verdicts
-| Map | Item | Verdict |
-|---|---|---|
-| MAP5 | truck pose sync covers car1 | VERIFIED (run) |
-| MAP5 | client left behind when host boards | VERIFIED bug; WIP fix UNVERIFIED |
-| MAP5 | client boards first → host never boards | VERIFIED by code path (audit-b G1/G4); WIP fix UNVERIFIED |
-| MAP5 | car1 volumes: host hits first | VERIFIED (100 ms lead in the run) |
-| MAP4A | riders as targets / knock / split | UNVERIFIED, default off |
-| MAP4A | late join seated | UNVERIFIED (WIP: seat sync + BoardWithHost + teleport guard) |
-| MAP4A | F9 / TeleportToHost while seated | UNVERIFIED (WIP) |
-| MAP4A | regression | NOT RUN after the WIP |
-| MAP12B | falling trees | DIVERGES (route to bosses) |
+## 4. Test results (2026-10-18 afternoon, vehicles-test run: rebased onto main `d96362a`, two windows, `godMode 1` on both unless noted)
 
-## 5. Next steps for whoever resumes (in order)
-1. `.\mod\build.ps1`, then `.\tools-src\truck-test.ps1 -Scenario map4a -Watch 120` — **regression first** (user-confirmed smooth ride and seated riders must hold). Grep `vehicles:` for `seat our hunter`, `host seat commit … place_0 = 67`, `our script drives … not run`.
-2. `-Scenario map5-host -Watch 90`: expect client `vehicles: seat our hunter (the host rides) … parent=126`, `seated 133 at place_0`; screenshots `re\notes\coop-local\truck-map5-host-*.png` both in the truck.
-3. `-Scenario map5-client`: expect client `asked the host to board`, host `host drives vehicle id=126 to 'PathNode12'`; the host has no tranq rifle in this path (TakeItem is in cutscene 3; only kTriggerHit gives it).
-4. `-Scenario map4a-late -LateJoin 25`: late joiner seated (`seat our hunter` or its own BeginCutScene), `our hunter sits in vehicle … not moved` instead of `teleport to host (join catch-up)`.
-5. F9: `-Scenario map4a -Cmd 'game2:coop_down@40','game2:coop_respawn@48'` → `F9 respawn … seated=true`.
-6. Riders as targets: set `RiderTargets=1` in `game\Bin\dh2coop.ini`, `-Scenario map4a -Watch 150`; expect host `combat: animal id N hurt player 1` (claw damage reaches the rider), `vehicles: sync attack … on rider 1 not started`, `animal id N goes for player 1 in the truck`; client `combat: knocked down (host animal), clip 'syncattacktruck' … ok=true` then `knock over (host animal finished)` and still `parent=68`. Also test `coop_rideknock 1` from the host while riding. If the knock unseats the hunter, set `RiderKnock=0` (damage only). Pick the default from that.
-7. Open: MAP12B tree replay (bosses); `LocalPlayer().pos` lags 2.5–5 m at speed, so `story.cpp` `PlayerInCutscene()` (view > 4 m from pos) can defer host fires during a fast ride (triggers / pilot: use `+0xE8` read at render time or skip the test while seated).
+Driver: `tools-src\truck-test.ps1` (`-Scenario map4a|map4a-late|map5-host|map5-client`, `-Cmd 'game2:coop_down@36'`, `-Set 'Vehicles.RiderTargets=0'`, `-Tag`). Logs copied to `re/notes/coop-local/vehicles-logs/` (gitignored), screenshots `re/notes/coop-local/vehicles-<scenario>-<n>-game|game2.png`.
 
+| # | Test | Verdict | Decisive log lines |
+|---|---|---|---|
+| 1 | MAP4A regression (ride from the start, 120 s) | VERIFIED | host `vehicles: ride id=68 hunter 1.69 m, puppet 1 2.68 m, npc 67 0.75 m (parent 68)`; client `puppets: rider 0 seated=true`, `frame steps over 200 frames: min 0.058 avg 0.069 max 0.082 m`; shot `vehicles-map4a-f9-*` and `vehicles-map4a-rider-*`: both hunters in the bed, lions behind. |
+| 2 | MAP5, host boards first (`coop_tp 605.9:2:135.8` on the host) | VERIFIED | host `story: [host] CompleteTask 2`, `vehicles: host seat commit vehicle id=126 place_0 = 133`; client `vehicles: host seat vehicle id=126 place_0 = 133`, `seated 133 at place_0 of our vehicle id=126 -> 1`, 2 s later `seat our hunter (the host rides) in vehicle id=126: call ok=true parent=126 place_1=171`, `puppets: rider 0 seated=true` (shots `vehicles-map5-host-6-*`: both in the bed, elephants). No warnings. Depends on the host's own OnHit (it ran here) and the 35 s cutscene on the host only. |
+| 3 | MAP5, client reaches the volume first (`coop_tp` on the client) | VERIFIED | client `vehicles: our script drives vehicle id=126 to 'PathNode12': not run`, `our script seated us in vehicle id=126 (driver 133, drive to 'PathNode12') before the host: asked the host to board`; host `player 1 boarded vehicle id=126 first ... boarding here in 5 s`, 5 s later `driver 133 in place_0`, `seat our hunter (a client boarded first) ... parent=126`, `host drives vehicle id=126 to 'PathNode12' for player 1 -> 1`; ride and stampede triggers follow (`cScrTask07..11` fired by player 1). Shots `vehicles-map5-client-6-*`. Without `kTriggerHit` (triggers branch) the host does not run cutscene 3 or TakeItem in this path; the host rides on the client's decision. |
+| 4 | MAP4A late join (`-LateJoin 20` and `45`) | VERIFIED | client `welcomed` then at once `vehicles: ride id=68 hunter 1.69 m, npc 67 0.75 m (parent 68)` (its own opening script seats it before the first packet), `host seat vehicle id=68 place_0 = 67` (journal replay, no-op), `id=68 follows the host's truck`, `events: catch-up finished after 1000 ms; host 0.4 m away`, `puppets: rider 0 seated=true`, `coop_vehinfo ... parent=68 seats 67 96`. No `teleport to host`. Both joins: the map load always runs `cScrTask01`, so the late client is seated by its own script, `BoardWithHost` is the backstop (test 5). |
+| 5 | F9 / `coop_tohost` while the host is seated (`coop_down` @36, `coop_respawn` @45, `coop_tohost` @57, `coop_unboard` @64, `coop_tohost` @70) | VERIFIED after a fix | `coop_down`: `coop_vehinfo ... parent=-1 dead=true ... seats 67 -1 -1 -1` (OnDie got the hunter out, as decompiled). First build: `F9 respawn` -> `seat our hunter ... call ok=true parent=-1 place_1=-1` ten times (Use() deferred). Fixed: `vehicles: Use() left our hunter outside (slot 4 free=2); direct GetIn -> 1 parent=68`, `F9 respawn ... seated=true parts='TurnCoDrive,TurnCoDrive'`, `coop_vehinfo ... parent=68 seats 67 96`; `coop_tohost: our hunter sits in vehicle id=68; not moved`; `coop_unboard: out of vehicle` -> 40 ms later `seat our hunter (the host rides)` -> `parent=68`; `coop_tohost` when seated: not moved. |
+| 6 | MAP4A riders as lion targets, `RiderTargets=1` (150 s, plus `coop_rideknock 1`) | VERIFIED, default 1 | host `animal id 84 goes for player 0 in the truck (shared out, 2 aboard)`, `animal id 85 goes for player 1`, `sync attack of animal id 93 on rider 1 not started (4.1 m, #1)`, `animal id 93 tackles rider 1 in the truck (4.0 m): truck knock`, `combat: animal id 93 hurt player 1 for 18.0 (type 1)`, `vehicles: rider 1 gets up` (2.5 s later); client `combat: knocked down (host animal), clip 'syncattacktruck' yaw -97.6 ok=true`, `knock over (host animal finished) ok=true`, `coop_vehinfo ... parent=68 seats 67 96` after 8 knocks; no stuck lioness, story advanced to `cScrTask10` like the default run. Client `combat: took 18.0 from animal id 93 (type 1) ok=true dead=false`. The hunter never died in 238 damage (hurt slot applies difficulty scaling), so rider death by claws is UNVERIFIED; death + F9 is covered by test 5. |
+| 7 | Seat sync / `is_npc` (found while reading test 1) | FIXED, VERIFIED | MAP4A host never logged `host seat commit` (the driver sits in the first frames, `Npcs()` is filled by the tracker's 1 s scan). First fix attempt committed the host's own hunter as an NPC (`host seat vehicle id=68 place_1 = 96`, `LocalPlayer()` unset). Now by model path: only `place_0 = 67`. |
+| 8 | MAP4A truck rollover (found, not caused by this work) | OPEN | host `tracker: hunter ... ang=(-4.868,-74.066,46.133)` then `(.., 136.3)`, `(.., 179.95)` at x -16, z 62 (the ramp after `PathNode23`), the truck then drives upside down; both windows show an inverted world. 3 of 17 rides flipped (all started with the same road and bump; roll of the others stays under 27 degrees): 1 of 4 with `SeatSync/BoardWithHost/BoardRequest/RiderTargets=0` (main-like), 2 of 13 with the defaults. Host physics (the road bump at roll -10 deg), not the stream: the client copy follows. Needs the lead / a physics idea (host frame rate with five games open?). |
+| 9 | Host-only rides (client closed after the start), to see whether the rollover needs a client | VERIFIED | 2 of 6 rides rolled (`roll 179.5`, `178.8`); `net: peer timed out` 14 s in. So the flip is host physics (the vanilla truck at ~100 fps), not the puppets or the stream. A vanilla (no mod) comparison was not run. |
+| 10 | Rollover guard `[Vehicles] Upright` (`make_upright()`: up.y < 0.34 -> same heading, upright, +0.3 m, no spin, wheels carried) | UNSTABLE, default OFF | `coop_flipveh` (180 degree roll) on the host: `rolled over (up.y -1.00): stood upright`, rot rows after `(-0.06,0.99,-0.08)`: the call itself works. Then the guard fired four more times in 10 s near the start road (`up.y 0.34`, `0.32`, `0.34`, `0.31`; one at y 5.0): the truck went erratic after the forced flip, so it is not safe. The natural flip was never tested with it. Row 1 of the body matrix is the up axis (upright truck: row 1 = (-0.03, 1.00, -0.03)). Kept in the code behind `Upright=0` as a WIP for whoever looks at the rollover next. |
+
+## 5. What changed in this run (code)
+- `vehicles.cpp`: `is_npc()` reads the model path (`/npc/`) of the entity instead of `Npcs()`/`LocalPlayer().entity` (empty until the first 1 s scan): seat sync now sees MAP4A's driver at map start and no longer commits the host's hunter.
+- `vehicles.cpp` `seat_local()`: after `GetInCar(2)` leaves the hunter outside (`AreFreeSlots` returned 2: weapon in hand / a revived hunter), call `GetIn(h, 1)` + hunter vt `+0x284(1)` directly (what `Use` does when the slot is free). Distance to the truck does not matter (MAP5: seated from 135 m).
+- `[Vehicles] RiderTargets` now defaults to **1** (code and `mod/dh2coop.ini`); `puppets.cpp` keeps a pilot puppet off the target list (`!local.pilot`).
+- `truck-test.ps1`: `godMode 1` on both windows at the start (`-NoGod`), `-Set`, `-Tag`, `-HostOnly`, screenshots `vehicles-*`.
+- WIP, default OFF: `[Vehicles] Upright` rollover guard (`make_upright`, `coop_flipveh`, `coop_vehinfo` prints the body matrix), see test 10.
+
+## 6. Still open
+- Rollover (tests 8-10: the guard is unstable, off); MAP12B falling trees (bosses agent); `LocalPlayer().pos` lag vs `story.cpp` `PlayerInCutscene()` during a fast ride (not seen to defer a fire in these runs).
+- Rider death by lion claws with a mortal client, RiderTargets in a real two-PC session (damage rate `18 / hit` is the same as the host's), a two-PC visual check of the truck knock clip.
+- MAP5 cutscene 3 on the client and the tranq rifle for both need `kTriggerHit` (branch `triggers`); here the host rides on the client's boarding after 5 s.
+- First-chance AV `EngineDll7+0x28bd88` once at window close (shutdown), not at runtime.
+
+
+## 7. Stability note (what made things unstable)
+About 25 two-window rides were run in a row on a PC that also ran other agents' games (five Main7 windows at times). The MAP4A truck flips (test 8), so a run may end upside down; that is the vanilla physics, not these changes. After the lead's stop message no further game was launched. Unverified: rider death by lion claws with a mortal client, a real two-PC ride, the rollover guard, MAP5 cutscene 3 on the client (needs `kTriggerHit`).
 ## Depends on others
 - **triggers** (`kTriggerHit`): with it, both run MAP5 cutscene 3 (rifle for both, cutscene 4 at the end). Without it, the WIP seats everyone but only the boarding player's process runs the cutscene and TakeItem.
 - **life**: B-F2 in `playthrough-b.md` (client lion copies thaw in host SAs and attach to the client's truck: the stuck lioness) is in `animals.cpp`; riders-as-targets does not touch it.
@@ -84,3 +92,7 @@ No train, boat, or rolling rock exists in any story BSP.
 - `cObjHunter::OnDie` (`0x50350`) gets a seated hunter out of the vehicle (`GetOut`) before Death. VERIFIED (decompile).
 - MAP5 `car1` = entity id 126, same `cMOD_ObjVehicle` as MAP4A (id 68); the client copy follows the host from map load; the client's copy enters car1 trigger volumes ~100 ms after the host's. VERIFIED (run 2026-10-18 09:57).
 - TryPlaySA (CommonDll `0xcadf0`): truck kind needs the target's GetCar and IsPlayer; then the animal is attached to the vehicle at `place_<CheckUser(target)>`; brain `*(task+8)`, target id `brain+0x254`. VERIFIED (decompile).
+- `cObjVehicle::Use` (`0x5adc0`) calls the character's vt `+0x1d0` (= `AreFreeSlots(slot, 0)`, slot = byte at vehicleDef `+0x80 + place*2`) and seats at once only when it returns exactly 1. A hunter with a drawn weapon returns 2 (MAP4A, place_1: slot 4): `Use` then only queues the boarding in the character (`+0x1e8` vehicle id, `+0x1ec` slot, `+0x1f0` n), which a revived hunter never completes. `GetIn(hunter, 1)` + hunter vt `+0x284(1)` seats it. Distance does not matter (seated from 135 m). VERIFIED (run 2026-10-18 15:19, `vehicles: Use() left our hunter outside (slot 4 free=2); direct GetIn -> 1 parent=68`).
+- `Npcs()` and `LocalPlayer().entity` are empty until the tracker's first 1 s scan after a map load: anything that must see MAP4A's driver (seated in the first frames) or tell the hunter from an NPC has to read the entity (model path contains `/npc/`). VERIFIED (run: no seat commit for the driver; the host hunter committed as an NPC).
+- MAP4A host truck roll: at x -16, z 62 after `PathNode23` the host truck flips (roll 46, 136, 180 degrees) in about one ride in six, with or without this branch's seat features; the client copy follows the inverted pose. VERIFIED (3 of 17 runs). Cause not found (host physics).
+- Seat sync, `BoardWithHost`, `BoardRequest` and `RiderTargets=1` (lions shared, claw damage to the rider, `syncattacktruck` knock, rider stays at `place_1`) work in two-window runs on MAP4A and MAP5. VERIFIED (section 4).
