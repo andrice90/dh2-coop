@@ -112,6 +112,7 @@ HIPO, SCRUBBULL. Species ids are the `ANIMAL_*` constants in `SCRIPTER.EXP` (GWO
 | MAP12C yeti, 3 players | `boss 'yeti' id=24 max 2500.0 -> 3750.0`; both clients `host max 'yeti' id=24 2500.0 -> 3750.0`. After `coop_kill 24:750`: host 3000/3750, client 3000/3750 (`mark … base=2500.0 factor=1.50 max=3750.0 hp=3000.0`). Leaves: `3750 -> 3125 hp 3000 -> 2500` then `3125 -> 2500 hp 2500 -> 2000` (ratio kept). Host boss bar at 80 % (`run5-map12c-host.png`). | VERIFIED (numbers); client bar not seen on screen (client still in the opening cutscene, see open issues) |
 | Lion family + chaser, MAP4A | `wave LION x2 [lion1,lion2] … -> pack`, `release coop_LIONESSE_0 id=93 like 'lion1' … props: MakeChaser task=AIHuntTask_AttackChasers ok=true running=true` (run9). | VERIFIED |
 | Hunt map untouched | HUNTMAP4: `(scaling off on this map)`, no reserves, animal ids 120–124 as before. | VERIFIED |
+| After the rebase onto main `049c16b` | MAP2A opening released `coop_GWOLF_0`, client respawned it. `coop_level restart` (menu hop, then `mod_spmap MAP2A`): both processes `reserves on 'MAP2A': coop_GWOLF_0=160 coop_GWOLF_1=161 coop_GWOLF_2=162` again; the reserves are made inside `StartGame`, after `cBspTree::Load` (run13). | VERIFIED |
 | Late join, no body for a running wave | MAP2B: client joined after `cScrTask01` started (`extra 0 -> release 0`); no top-up until a new trigger. | VERIFIED |
 | Other pool maps (MAP3A/B/C, MAP4B, MAP5–MAP11C, MAPARENA, MAPISLAND) | Not run. Table from scripts only. | UNVERIFIED |
 | Real bullet hits on a client's reserve | Not tested (no input allowed). Client reserve body state equals a client `MoveToPos`'d wolf (`coll=0x7/0x7`). | UNVERIFIED |
@@ -119,8 +120,9 @@ HIPO, SCRUBBULL. Species ids are the `ANIMAL_*` constants in `SCRIPTER.EXP` (GWO
 A/B for client crashes seen during these runs (`ab-main-map12c-*.log`, lead's main ASI, same steps): MAP12C P3
 crashed at `EngineDll7+0x28b337` (the known yeti fault) and P2 faulted at `EngineDll7+0x29a8bf`
 (`cVMachine::SysMain`, "trigger OnActivate faulted id=22" while applying the deferred `cScrTask01`) exactly as with
-the scale build. The MAP4A client in run 8 died with the same `0x29a8bf` VM fault two seconds after a script lion's
-sync attack knocked it down. Pre-existing, not caused by this module.
+the scale build, so the MAP12C faults are pre-existing. The MAP4A client in run 8 died with the same `0x29a8bf` VM
+fault two seconds after a script lion's sync attack knocked it down, during the client's `cScrTask01` fire flood
+(audit-maps-b 0.2); same signature, but that map was not A/B tested.
 
 ## Open issues
 
