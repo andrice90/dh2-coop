@@ -1,6 +1,6 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-17 late night by the lead (Claude). Earlier tonight: Grok removed DLSS 5 from the retail Bin; the co-op mod stayed.
+**Last updated:** 2026-10-18 00:3x by the lead (Claude). Earlier: Grok removed DLSS 5 from the retail Bin; the co-op mod stayed.
 
 ## Pivot to real testing (2026-10-17 late night)
 User: pause the wide fan-out; make install and host/join very easy; start real testing over Tailscale; implement player-count scaling; fix the compass; then a lobby overlay (one DH2 COOP shortcut → main menu → lobby with HOST / JOIN).
@@ -16,8 +16,10 @@ Done in main:
 
 **For the user (real test):** run `install.bat` from `dist\dh2coop-kit.zip` on both PCs (Tailscale on both), DH2 COOP, HOST on one, JOIN with the host's tailnet IP on the other, host closes the lobby (F8) and starts New Game or Load. Still unverified: clicking the lobby with a real mouse (all automated runs used `coop_lobby`), New Game / Load through the real menu (automated runs used `mod_spmap`), a remote PC over Tailscale.
 
-In progress:
-- **Player-count scaling** (Opus agent, `dh2coop-scale` branch `scale`, port 27520, slot S): `re/notes/player-scale.md`; deliverable `re/notes/scale.md` in that worktree.
+- `e9f1d75`: **MAP4A truck** (user watched the scale agent's runs: host truck derailed, puppets floating ahead, client crashes). One host-driven truck (protocol v4 `VehicleStates`, `vehicles.cpp`: clients freeze their copy and follow the chassis pose at ~30 Hz, wheels carried, 100 ms interpolation on the host clock; user: "smoothness is good now, sync looks good"); riders (`kFlagRiding`) seated in the local truck bed from the live seat position with collision/gravity/velocity held at zero (user: "puppet sync looks good now"); no player knock-over while riding; client lions: `MoveToPos` (0x14610) hook re-freezes the brain at once, per-frame wake check, failing body states tried 3 times then left (fixed the client script-VM crash); client trigger state-2 spin set to 1 (the ~6000-line FIRE flood).
+- `a838e7b`..`8467e8f`: **player-count scaling merged** from the scale agent (`scale.cpp`, `[Scale]`, `re/notes/scale.md`). MAP4A: reserves `coop_LION_0..2` / `coop_LIONESSE_0..2` ids 90-95 on both peers; the first wave released `coop_LIONESSE_0` for 2 players.
+- Open on MAP4A: riders are not lion targets (every lion goes for the host; an unattended host died in two test runs, mission failed); the client's lioness copy can stand in one pose after a tackle (states it cannot enter are no longer forced).
+- Scale agent decisions waiting for the user (`re/notes/scale.md`): reuse dead reserves (off), reserves copy the script animal's health (they keep species health now); **client kills report "action 0" to the mission, so kill tasks never count client kills** (proposed fix `+0x420 = 1` before the death in `animals.cpp` OnAnimalHit, untested); `Bodies` / `Reserves` must match on every peer (not enforced); its `SetTaskParam` hook overlaps the unmerged `hunter-nearest` branch.
 
 ### Paused for the next phase (agents stopped 22:0x; worktrees kept, resume each with its context)
 | Job | Worktree / branch | State when paused |
