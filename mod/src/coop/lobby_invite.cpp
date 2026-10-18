@@ -88,7 +88,7 @@ void __cdecl cmd_joinfield(const char* arg) {
     }
     const JoinInput in = ParseJoinInput(text);
     spdlog::info("coop_joinfield: {} chars -> {}", text.size(),
-                 in.kind == JoinInput::Kind::Code      ? "code: " + in.message
+                 in.kind == JoinInput::Kind::Code      ? "code: " + joincode::Describe({in.host, in.port, in.pass, in.hostName})
                  : in.kind == JoinInput::Kind::Bad     ? "bad: " + in.message
                  : in.kind == JoinInput::Kind::Address ? "address " + in.host + ":" + std::to_string(in.port)
                                                        : std::string("empty"));

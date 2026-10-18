@@ -285,7 +285,14 @@ std::string RedactSecrets(std::string_view text) {
 }
 
 std::string Describe(const Fields& f) {
-    std::string s = f.ip + ":" + std::to_string(f.port) + ", host '" + f.name + "', ";
+    // A public address only ever reaches a log masked (97.x.x.166); LAN and tailnet addresses stay whole.
+    std::string ip = f.ip;
+    unsigned o[4] = {};
+    if (ParseIpv4(ip, o)) {
+        const bool lan = o[0] == 10 || (o[0] == 172 && o[1] >= 16 && o[1] <= 31) || (o[0] == 192 && o[1] == 168);
+        if (!lan && !IsTailnetIp(ip)) ip = std::to_string(o[0]) + ".x.x." + std::to_string(o[3]);
+    }
+    std::string s = ip + ":" + std::to_string(f.port) + ", host '" + f.name + "', ";
     s += f.pass.empty() ? "no password" : "password (" + std::to_string(f.pass.size()) + " chars)";
     return s;
 }
