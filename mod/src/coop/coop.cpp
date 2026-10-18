@@ -1022,7 +1022,11 @@ private:
         const bool health_ok = GuardedSet(set_attr_, profile, 9, health);
         const bool stamina_ok = full_stamina_ > 1.f && GuardedSet(set_attr_, profile, 5, full_stamina_);
 
-        const entity::Vec3 pos = place_near(lp.entity, host_state);
+        // A hunter still in its seat stays there (OnDie normally gets it out of the vehicle first).
+        int16_t seat_parent = -1;
+        core::safe_read(static_cast<char*>(lp.entity) + 0xA4, seat_parent);
+        const entity::Vec3 pos = seat_parent >= 0 ? entity::Vec3{lp.pos.x, lp.pos.y, lp.pos.z}
+                                                  : place_near(lp.entity, host_state);
         // "Death" is applied to every part. Idle on part 0 leaves the mesh in the death pose.
         GuardedSetAllParts(lp.entity, "Idle");
         entity::SetAnim(lp.entity, "idlenormalneutral");
@@ -1037,9 +1041,13 @@ private:
             std::memcpy(static_cast<char*>(lp.entity) + 0xC1, &marks, sizeof marks);
         }
         GuardedEndCamera(lp.entity);
+        // The host rides (MAP4A / MAP5 truck): the host's spot is a moving seat, so sit in our copy of the truck
+        // instead of standing on the road behind it (vehicles agent).
+        const bool seated = vehicles::RideWithHost("F9 respawn");
         spdlog::info(
-            "coop: F9 respawn at ({:.1f},{:.1f},{:.1f}) health {:.1f} ok={} stamina={} deadflag={} parts='{},{},{},{}'",
-            pos.x, pos.y, pos.z, health, health_ok, stamina_ok, dead_flag, entity::PartStateName(lp.entity, 0),
+            "coop: F9 respawn at ({:.1f},{:.1f},{:.1f}) health {:.1f} ok={} stamina={} deadflag={} seated={} "
+            "parts='{},{},{},{}'",
+            pos.x, pos.y, pos.z, health, health_ok, stamina_ok, dead_flag, seated, entity::PartStateName(lp.entity, 0),
             entity::PartStateName(lp.entity, 1), entity::PartStateName(lp.entity, 2), entity::PartStateName(lp.entity, 3));
     }
 
@@ -1422,6 +1430,9 @@ bool TeleportToHost(const char* why) {
         spdlog::info("coop: teleport to host ({}) skipped: the local player is a pilot", why ? why : "");
         return false;
     }
+    // A seated hunter stays in its seat (our truck copy follows the host's); when the host rides, sit in our copy
+    // instead of standing where the host's seat was a moment ago (vehicles agent).
+    if (vehicles::RideWithHost(why)) return true;
     const entity::Vec3 pos = place_near(lp.entity, host->second.last);
     spdlog::info("coop: teleport to host ({}) from ({:.1f},{:.1f},{:.1f}) to ({:.1f},{:.1f},{:.1f})", why ? why : "",
                  lp.pos.x, lp.pos.y, lp.pos.z, pos.x, pos.y, pos.z);

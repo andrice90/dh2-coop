@@ -71,6 +71,14 @@ constexpr uint16_t kAmmoState = 25;      // request. i0 = 1 while this client's 
 constexpr uint16_t kLevelNext = 26;      // commit (Send, not journaled). The host left its results/pause menu: i0 = 1
                                          // continue (key = "map|spawn", the profile's next map and the exit's spawn
                                          // point), 2 end-of-game movie, 3 retry (key = map), 4 main menu.
+
+// Vehicles (vehicles.cpp). Every process keeps its own copy of the truck; the host's copy drives (VehicleStates).
+constexpr uint16_t kVehicleSeat = 28;    // commit (journaled). subject = vehicle id, i0 = place | occupant id << 16
+                                         // (0xFFFF = empty), key = "p<place>=<id>#<serial>". An NPC (the driver) got
+                                         // in or out on the host; clients seat their copy of it the same way.
+constexpr uint16_t kVehicleBoard = 29;   // request. subject = vehicle id, i0 = driver NPC id (0xFFFF none), key = the
+                                         // waypoint the client's script drove to. A client's own script seated it while
+                                         // the host's hunter is not seated: the host boards too and drives.
 constexpr uint16_t kScaleMax = 40;       // commit (scale.cpp). subject = animal id, f0 = its new max health (+0x4C0),
                                          // key = "<factor> #<serial>". Player-count scaling of a boss / lone large animal.
 

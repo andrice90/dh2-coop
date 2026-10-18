@@ -2,11 +2,15 @@
 
 #include <windows.h>
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <string>
+#include <vector>
 
 #include <spdlog/spdlog.h>
 
@@ -19,6 +23,7 @@
 #include "core/log.h"
 #include "core/module.h"
 #include "core/safe_mem.h"
+#include "engine/console_cmds.h"
 
 namespace dh2::coop::vehicles {
 namespace {
@@ -66,6 +71,9 @@ struct Track {
     bool have_offset = false;
     bool frozen = false;
     bool logged_update = false;
+    int refrozen = 0;          // client: times something gave the copy its gravity back (DriveTo calls UnFreeze)
+    int seats[4] = {-1, -1, -1, -1};  // host: last seat occupants seen (+0x298), for kVehicleSeat
+    bool seats_known = false;
     // Smoothness diagnostics (client): per-frame step of the applied position, logged every 2 s for a minute.
     float last_applied[3] = {};
     bool have_applied = false;
@@ -208,6 +216,16 @@ void follow(Track& t, void* veh, uint32_t now) {
         t.frozen = true;
         spdlog::info("vehicles: id={} follows the host's truck (physics frozen)", id_of(veh));
     }
+    // cObjVehicle::DriveTo ends in vt +0x228 = UnFreeze (gravity back from +0x344). hk_DriveTo keeps a following
+    // copy from driving, but anything else that thaws it gets frozen again here.
+    if (t.frozen && g_freeze) {
+        char* b = nullptr;
+        uint32_t gravity = 0;
+        if (core::safe_read(phys + 4, b) && b && core::safe_read(b + 0x110, gravity) && gravity != 0) {
+            g_freeze(veh);
+            if (t.refrozen++ < 5) spdlog::info("vehicles: id={} had its gravity back (unfrozen); frozen again", id_of(veh));
+        }
+    }
     uint8_t flags = 0;
     if (core::safe_read(static_cast<char*>(veh) + kVehDriveFlags, flags) && (flags & kVehDriving))
         *(reinterpret_cast<uint8_t*>(veh) + kVehDriveFlags) = static_cast<uint8_t>(flags & ~kVehDriving);
@@ -265,6 +283,542 @@ void __fastcall hk_Update(void* self, void*, float dt) {
     g_update->unsafe_thiscall<void>(self, dt);
 }
 
+// ---- seats and boarding ----
+// cObjVehicle (CommonDll7): +0x298 int[4] = entity id sitting at place_N (-1 empty; CheckPlace / CheckUser / GetIn).
+// GetIn(character, place) attaches the character to tag "place_<place>" and sets its seat body state; GetOut
+// detaches it beside the vehicle. Script player.GetInCar(n) is GameDll7 cObjHunter::GetInCar 0x48d10: the app's
+// vehicle (*(0x1657f0)+0x104) vt +0x158 = cObjVehicle::Use(n, hunter) -> GetIn(hunter, n - 1), then hunter vt +0x284(1)
+// (the in-vehicle bit +0x4d8 & 4). cObjHunter::OnDie (0x50350) gets a seated hunter out (GetOut) before "Death".
+// re/notes/vehicles.md, decompiles re/notes/veh-*.c.
+constexpr uintptr_t kVehSeats = 0x298;
+constexpr int kPlaces = 4;
+constexpr uintptr_t kEntParent = 0xA4;   // int16 parent entity id (-1 = free in the world)
+constexpr uintptr_t kHunterDead = 0x6CC;
+constexpr uintptr_t kRvaGetInCar = 0x48d10;   // GameDll7, thiscall(hunter, int n)
+constexpr uintptr_t kRvaApp = 0x1657f0;       // GameDll7 app object pointer; +0x104 = the level's vehicle
+constexpr uintptr_t kAppVehicle = 0x104;
+constexpr int kPlayerSeat = 2;                // the scripts' player.GetInCar(2): place_1, beside the driver
+constexpr uintptr_t kRvaTryPlaySA = 0xcadf0;  // CommonDll7 cAIHuntTask_AttackBase::TryPlaySA, fastcall(task) -> int
+
+using GetInFn = int(__thiscall*)(void* veh, void* character, int place);
+using GetInCarFn = void(__thiscall*)(void* hunter, int n);
+GetInFn g_get_in = nullptr;
+GetInFn g_get_out = nullptr;
+GetInCarFn g_get_in_car = nullptr;
+safetyhook::InlineHook* g_driveto_hook = nullptr;
+safetyhook::InlineHook* g_trysa_hook = nullptr;
+uintptr_t g_game = 0;
+
+struct Cfg {
+    bool board_with_host = true;   // [Vehicles] BoardWithHost: client, seat our hunter when the host rides
+    bool seat_sync = true;         // [Vehicles] SeatSync: host NPC seats (the driver) mirrored on clients
+    bool board_request = true;     // [Vehicles] BoardRequest: a client's own boarding makes the host board
+    bool rider_targets = false;    // [Vehicles] RiderTargets: riders stay on the attack-target list (unverified: off)
+    bool rider_knock = true;       // [Vehicles] RiderKnock: a lion that would tackle a rider knocks its hunter down
+    bool split_riders = true;      // [Vehicles] SplitRiders: lions after someone in the truck are shared out
+    uint32_t rider_knock_ms = 2500;  // [Vehicles] RiderKnockMs: how long the truck knock keeps the rider down
+};
+Cfg g_cfg;
+
+int16_t parent_of(void* ent) {
+    int16_t p = -1;
+    if (ent) core::safe_read(static_cast<char*>(ent) + kEntParent, p);
+    return p;
+}
+
+bool hunter_dead(void* h) {
+    int d = 0;
+    return h && core::safe_read(static_cast<char*>(h) + kHunterDead, d) && d != 0;
+}
+
+int seat_of(void* veh, int place) {
+    int id = -1;
+    if (veh && place >= 0 && place < kPlaces) core::safe_read(static_cast<char*>(veh) + kVehSeats + place * 4, id);
+    return id;
+}
+
+void* level_vehicle() {
+    char* app = nullptr;
+    void* veh = nullptr;
+    if (!g_game || !core::safe_read(reinterpret_cast<char*>(g_game + kRvaApp), app) || !app) return nullptr;
+    core::safe_read(app + kAppVehicle, veh);
+    return veh;
+}
+
+bool driving(void* veh) {
+    uint8_t flags = 0;
+    return veh && core::safe_read(static_cast<char*>(veh) + kVehDriveFlags, flags) && (flags & kVehDriving);
+}
+
+// The local camera is on a cutscene rail (story.cpp PlayerInCutscene: the view more than 4 m from the feet).
+bool in_cutscene() {
+    const LocalPlayerSample& p = LocalPlayer();
+    if (!p.valid || !p.viewValid) return false;
+    const float dx = p.viewPos.x - p.pos.x, dy = p.viewPos.y - p.pos.y, dz = p.viewPos.z - p.pos.z;
+    return dx * dx + dy * dy + dz * dz > 16.f;
+}
+
+bool is_npc(int id) {
+    void* ent = id >= 0 ? EntityById(id) : nullptr;
+    if (!ent || ent == LocalPlayer().entity || puppets::Owns(ent)) return false;
+    const auto& npcs = Npcs();
+    return std::find(npcs.begin(), npcs.end(), ent) != npcs.end();
+}
+
+// Client: the host's last PlayerState flags.
+bool host_flags(uint16_t& flags) {
+    const SessionView v = Snapshot();
+    for (int i = 0; i < v.remoteCount; ++i) {
+        if (v.remotes[i].id == 0 && v.remotes[i].packets > 0) {
+            flags = v.remotes[i].flags;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool host_rides_now() {
+    uint16_t f = 0;
+    return host_flags(f) && (f & net::kFlagRiding) && !(f & net::kFlagDead);
+}
+
+bool guarded_get_in_car(void* hunter, int n) {
+    __try {
+        g_get_in_car(hunter, n);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+int guarded_seat(GetInFn fn, void* veh, void* character, int place) {
+    __try {
+        return fn(veh, character, place);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+
+int16_t g_last_parent = -1;  // the local hunter's parent last frame (boarding detection)
+bool g_host_rides = false;   // client: the host's hunter sat in a vehicle at the last seat pump
+
+// Seat the local hunter the way the boarding scripts do (player.GetInCar(2)), in this process's copy.
+bool seat_local(const char* why) {
+    void* h = LocalPlayer().entity;
+    if (!h || !g_get_in_car) return false;
+    if (parent_of(h) >= 0) return true;
+    if (hunter_dead(h)) {
+        spdlog::info("vehicles: seat ({}) skipped: our hunter is dead", why);
+        return false;
+    }
+    void* veh = level_vehicle();
+    if (!veh) {
+        spdlog::info("vehicles: seat ({}) skipped: this map has no vehicle", why);
+        return false;
+    }
+    const bool ok = guarded_get_in_car(h, kPlayerSeat);
+    const int16_t par = parent_of(h);
+    g_last_parent = par;  // not a boarding of our own script (pump_board_request)
+    spdlog::info("vehicles: seat our hunter ({}) in vehicle id={}: call ok={} parent={} place_1={}", why, id_of(veh), ok,
+                 par, seat_of(veh, 1));
+    return par >= 0;
+}
+
+// Client: the host rides and our hunter does not (a boarding cutscene that ran only on the host, a late join that
+// skipped the opening cutscene, a revive). Seat it once our copy follows the host's.
+uint32_t g_host_riding_since = 0;
+uint32_t g_board_try_ms = 0;
+int g_board_tries = 0;
+
+void pump_board_with_host(uint32_t now, bool host_rides) {
+    if (!g_cfg.board_with_host || NetIsHost() || !NetIsOnline() || !events::SameMapAsHost()) return;
+    if (!host_rides) {
+        g_host_riding_since = 0;
+        g_board_tries = 0;
+        return;
+    }
+    if (!g_host_riding_since) g_host_riding_since = now;
+    void* h = LocalPlayer().entity;
+    if (!h || parent_of(h) >= 0 || hunter_dead(h) || in_cutscene()) return;
+    if (now - g_host_riding_since < 2000 || now - g_board_try_ms < 3000 || g_board_tries >= 10) return;
+    void* veh = level_vehicle();
+    const auto it = veh ? g_tracks.find(static_cast<uint16_t>(id_of(veh))) : g_tracks.end();
+    if (it == g_tracks.end() || it->second.samples == 0) return;  // our copy does not follow the host's yet
+    g_board_try_ms = now;
+    ++g_board_tries;
+    seat_local("the host rides");
+}
+
+// Host: an NPC (the driver) got in or out: clients seat their copy of it the same way (kVehicleSeat, journaled, so a
+// late joiner seats it too). Players are not mirrored: each one sits in its own copy.
+uint32_t g_seat_serial = 0;
+
+void pump_seat_commits() {
+    if (!g_cfg.seat_sync || !NetIsHost()) return;
+    for (auto& [id, t] : g_tracks) {
+        if (!t.ent || EntityById(id) != t.ent) continue;
+        for (int p = 0; p < kPlaces; ++p) {
+            const int occ = seat_of(t.ent, p);
+            const int prev = t.seats_known ? t.seats[p] : -1;
+            if (t.seats_known && occ == prev) continue;
+            t.seats[p] = occ;
+            if (!is_npc(occ) && !(occ < 0 && is_npc(prev))) continue;
+            const std::string key = fmt::format("p{}={}#{}", p, occ, ++g_seat_serial);
+            const uint32_t packed = static_cast<uint32_t>(p & 0xFF) | (static_cast<uint32_t>(static_cast<uint16_t>(occ)) << 16);
+            events::Commit(events::kVehicleSeat, id, packed, 0.f, key, 0);
+            spdlog::info("vehicles: host seat commit vehicle id={} place_{} = {} (was {})", id, p, occ, prev);
+        }
+        t.seats_known = true;
+    }
+}
+
+// Client: the host's NPC seats, applied to our copies when they differ.
+struct WantSeat {
+    int occ = -1;
+    bool dirty = false;
+    int tries = 0;
+};
+std::map<uint16_t, std::array<WantSeat, kPlaces>> g_want;
+
+void OnSeatCommit(const net::GameEvent& ev) {
+    const int place = static_cast<int>(ev.i0 & 0xFF);
+    if (place < 0 || place >= kPlaces) return;
+    WantSeat& w = g_want[ev.subjectId][place];
+    w.occ = static_cast<int16_t>(ev.i0 >> 16);
+    w.dirty = true;
+    w.tries = 0;
+    spdlog::info("vehicles: host seat vehicle id={} place_{} = {} ('{}')", ev.subjectId, place, w.occ, ev.key);
+}
+
+void pump_seat_apply() {
+    if (NetIsHost() || !NetIsOnline() || !g_get_in || !g_get_out || in_cutscene()) return;
+    for (auto& [vid, seats] : g_want) {
+        void* veh = EntityById(vid);
+        if (!veh) continue;
+        for (int p = 0; p < kPlaces; ++p) {
+            WantSeat& w = seats[p];
+            if (!w.dirty) continue;
+            if (++w.tries > 20) {
+                w.dirty = false;
+                spdlog::warn("vehicles: gave up seating {} at place_{} of vehicle id={}", w.occ, p, vid);
+                continue;
+            }
+            const int have = seat_of(veh, p);
+            if (w.occ >= 0) {
+                void* ent = EntityById(w.occ);
+                if (!ent) continue;  // not spawned here yet
+                if (have == w.occ || parent_of(ent) == static_cast<int16_t>(vid)) {
+                    w.dirty = false;
+                    continue;
+                }
+                if (have >= 0 || ent == LocalPlayer().entity) {
+                    spdlog::warn("vehicles: place_{} of vehicle id={} holds {} here; not seating {}", p, vid, have, w.occ);
+                    w.dirty = false;
+                    continue;
+                }
+                const int r = guarded_seat(g_get_in, veh, ent, p);
+                spdlog::info("vehicles: seated {} at place_{} of our vehicle id={} -> {} (parent {})", w.occ, p, vid, r,
+                             parent_of(ent));
+                w.dirty = parent_of(ent) != static_cast<int16_t>(vid);
+            } else {
+                if (have >= 0 && is_npc(have)) {
+                    const int r = guarded_seat(g_get_out, veh, EntityById(have), p);
+                    spdlog::info("vehicles: {} got out of place_{} of our vehicle id={} -> {}", have, p, vid, r);
+                }
+                w.dirty = false;
+            }
+        }
+    }
+}
+
+// The last waypoint a script sent each vehicle to (cObjVehicle::DriveTo, CommonDll7 export, thiscall(veh, name)).
+// A copy that follows the host's never drives: DriveTo would set the drive bit and call UnFreeze (vt +0x228).
+std::map<uint16_t, std::string> g_drive_name;
+std::map<uint16_t, bool> g_host_drove;
+
+int __fastcall hk_DriveTo(void* veh, void*, const char* name) {
+    const int16_t id = id_of(veh);
+    const std::string wp = core::safe_cstr(name, 64);
+    if (id >= 0) g_drive_name[static_cast<uint16_t>(id)] = wp;
+    if (g_enabled && NetIsOnline() && !NetIsHost() && id >= 0) {
+        const auto it = g_tracks.find(static_cast<uint16_t>(id));
+        if (it != g_tracks.end() && it->second.samples > 0) {
+            spdlog::info("vehicles: our script drives vehicle id={} to '{}': not run, the host's copy drives", id, wp);
+            return 1;
+        }
+    }
+    if (NetIsHost() && id >= 0) g_host_drove[static_cast<uint16_t>(id)] = true;
+    spdlog::info("vehicles: vehicle id={} drives to '{}' ({})", id, wp, NetIsHost() ? "host" : (NetIsOnline() ? "client" : "offline"));
+    return g_driveto_hook->unsafe_thiscall<int>(veh, name);
+}
+
+// Client: our own script seated our hunter (it ran a boarding cutscene the host did not run, MAP5 cScrTask06 before
+// kTriggerHit) while the host's hunter is not seated. Without the host the truck never leaves: ask it to board.
+void pump_board_request(bool host_rides) {
+    if (NetIsHost() || !NetIsOnline()) return;
+    void* h = LocalPlayer().entity;
+    if (!h) return;
+    const int16_t par = parent_of(h);
+    if (par >= 0 && g_last_parent < 0 && g_cfg.board_request && !host_rides) {
+        void* veh = EntityById(par);
+        const int driver = seat_of(veh, 0);
+        const auto wp = g_drive_name.find(static_cast<uint16_t>(par));
+        const std::string name = wp != g_drive_name.end() ? wp->second : std::string();
+        events::Request(events::kVehicleBoard, static_cast<uint16_t>(par),
+                        static_cast<uint32_t>(static_cast<uint16_t>(driver)), 0.f, name);
+        spdlog::info("vehicles: our script seated us in vehicle id={} (driver {}, drive to '{}') before the host: asked "
+                     "the host to board",
+                     par, driver, name);
+    }
+    g_last_parent = par;
+}
+
+// Host: a client's script boarded before ours. Give our own script 5 s (the same boarding cutscene may be about to
+// end here), then do what it would have done: driver in, our hunter in, drive to the client's waypoint.
+struct BoardAsk {
+    uint16_t veh = 0;
+    int driver = -1;
+    std::string waypoint;
+    uint8_t player = 0;
+    uint32_t due = 0;
+    uint32_t since = 0;
+};
+std::vector<BoardAsk> g_board_asks;
+
+void OnBoardRequest(const net::GameEvent& ev) {
+    if (!g_cfg.board_request) return;
+    BoardAsk a;
+    a.veh = ev.subjectId;
+    a.driver = static_cast<int16_t>(ev.i0 & 0xFFFF);
+    a.waypoint = ev.key;
+    a.player = ev.actorId;
+    a.since = GetTickCount();
+    a.due = a.since + 5000;
+    spdlog::info("vehicles: player {} boarded vehicle id={} first (driver {}, drive to '{}'); boarding here in 5 s "
+                 "unless our own script does",
+                 a.player, a.veh, a.driver, a.waypoint);
+    g_board_asks.push_back(a);
+}
+
+void pump_board_asks(uint32_t now) {
+    for (auto it = g_board_asks.begin(); it != g_board_asks.end();) {
+        BoardAsk& a = *it;
+        if (static_cast<int32_t>(now - a.due) < 0) {
+            ++it;
+            continue;
+        }
+        void* h = LocalPlayer().entity;
+        void* veh = EntityById(a.veh);
+        if (!h || !veh || hunter_dead(h) || parent_of(h) >= 0 || now - a.since > 120000) {
+            spdlog::info("vehicles: board request of player {} done: host hunter {}", a.player,
+                         !h ? "missing" : (parent_of(h) >= 0 ? "seated" : "not seated (gave up)"));
+            it = g_board_asks.erase(it);
+            continue;
+        }
+        if (in_cutscene()) {  // our own boarding cutscene is running: let it finish
+            a.due = now + 2000;
+            ++it;
+            continue;
+        }
+        if (a.driver >= 0 && seat_of(veh, 0) < 0 && g_get_in) {
+            void* npc = EntityById(a.driver);
+            if (npc && parent_of(npc) < 0) {
+                const int r = guarded_seat(g_get_in, veh, npc, 0);
+                spdlog::info("vehicles: driver {} in place_0 of vehicle id={} -> {}", a.driver, a.veh, r);
+            }
+        }
+        seat_local("a client boarded first");
+        if (!a.waypoint.empty() && !driving(veh) && !g_host_drove[a.veh] && g_driveto_hook) {
+            g_host_drove[a.veh] = true;
+            const int r = g_driveto_hook->unsafe_thiscall<int>(veh, a.waypoint.c_str());
+            spdlog::info("vehicles: host drives vehicle id={} to '{}' for player {} -> {}", a.veh, a.waypoint, a.player, r);
+        }
+        it = g_board_asks.erase(it);
+    }
+}
+
+// ---- riders as targets (host) ----
+// A riding puppet is drawn in the bed of the host's truck and is not attached to it, so a sync attack on it took the
+// ground kind ("attack" -> pl_ln_syncattack1: TryPlaySA asks the target's GetCar), linked the puppet's legs to the
+// lion and left both on the road. A seated hunter takes the "truck" kind instead (the lion attaches to the truck at
+// the hunter's place). TryPlaySA (CommonDll7 0xcadf0) is where every attack task starts one: for a rider it does not
+// start; the rider's own hunter gets the truck clip from the host (kPlayerKnock "syncattacktruck", the clip the
+// MAP4A teen pak has) and claw hits keep arriving through ForwardPuppetHurt.
+constexpr uintptr_t kTaskBrain = 0x08;
+constexpr uintptr_t kBrainTargetId = 0x254;
+constexpr uintptr_t kBrainEntity = 0x68;
+constexpr float kTackleMetres = 4.f;
+constexpr uint32_t kTackleEveryMs = 8000;
+uint32_t g_blocked_sa = 0;
+std::map<uint8_t, uint32_t> g_tackle_ms;   // rider -> last knock sent
+std::map<uint8_t, uint32_t> g_tackle_end;  // rider -> when to send its kPlayerKnockEnd
+
+bool map_has_truck_clip() {
+    const std::string& m = events::CurrentMap();
+    return m == "MAP4A" || m == "MAP4B" || m == "MAP3C" || m == "MAPARENA";
+}
+
+void rider_tackle(void* brain, void* rider) {
+    const uint8_t who = puppets::PlayerOf(rider);
+    ++g_blocked_sa;
+    void* animal = nullptr;
+    core::safe_read(static_cast<char*>(brain) + kBrainEntity, animal);
+    float a[3] = {}, r[3] = {};
+    if (!animal || !core::safe_copy(static_cast<char*>(animal) + 0xE8, a, sizeof a) ||
+        !core::safe_copy(static_cast<char*>(rider) + 0xE8, r, sizeof r))
+        return;
+    const float dx = a[0] - r[0], dz = a[2] - r[2];
+    const float dist = std::sqrt(dx * dx + dz * dz);
+    const uint32_t now = GetTickCount();
+    const auto last = g_tackle_ms.find(who);
+    const bool due = last == g_tackle_ms.end() || now - last->second >= kTackleEveryMs;
+    if (g_blocked_sa <= 5 || g_blocked_sa % 200 == 0)
+        spdlog::info("vehicles: sync attack of animal id {} on rider {} not started ({:.1f} m, #{})", id_of(animal), who, dist,
+                     g_blocked_sa);
+    if (!g_cfg.rider_knock || !due || dist > kTackleMetres || !map_has_truck_clip()) return;
+    g_tackle_ms[who] = now;
+    g_tackle_end[who] = now + g_cfg.rider_knock_ms;
+    // The knock faces the attacker (combat.cpp StartKnock basis: yaw of the victim's forward).
+    const float yaw = std::atan2(dx, dz) * 57.2957795f;
+    spdlog::info("vehicles: animal id {} tackles rider {} in the truck ({:.1f} m): truck knock, yaw {:.1f}", id_of(animal),
+                 who, dist, yaw);
+    events::Send(events::kPlayerKnock, who, 0, yaw, "syncattacktruck", 0);
+}
+
+int __fastcall hk_TryPlaySA(void* task) {
+    if (g_cfg.rider_targets && NetIsHost()) {
+        void* brain = nullptr;
+        int tid = -1;
+        if (core::safe_read(static_cast<char*>(task) + kTaskBrain, brain) && brain &&
+            core::safe_read(static_cast<char*>(brain) + kBrainTargetId, tid) && tid >= 0) {
+            void* target = EntityById(tid);
+            if (target && puppets::IsRidingPuppet(target)) {
+                rider_tackle(brain, target);
+                return 0;
+            }
+        }
+    }
+    return g_trysa_hook->unsafe_fastcall<int>(task);
+}
+
+void pump_tackle_ends(uint32_t now) {
+    for (auto it = g_tackle_end.begin(); it != g_tackle_end.end();) {
+        if (static_cast<int32_t>(now - it->second) >= 0) {
+            events::Send(events::kPlayerKnockEnd, it->first, 0, 0.f, "", 0);
+            spdlog::info("vehicles: rider {} gets up", it->first);
+            it = g_tackle_end.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+// Host: the lions that go for someone in the truck are shared out between everyone in it (host and riders), by
+// animal id, instead of all on the host (an unattended host died twice on MAP4A: mission failed). The same switch as
+// combat.cpp RetargetToNearestPlayer and the engine's ProcessAttackStuck: task vt +0xf8(old, new) in task state 1,
+// then SetTarget. In a truck the players are 1-2 m apart, under combat.cpp's 3 m nearest-player margin, so the two
+// rules do not fight.
+using GetEntFn = void*(__thiscall*)(void* brain);
+using SetTargetFn = void(__thiscall*)(void* brain, void* ent, float f);
+GetEntFn g_get_target = nullptr;
+SetTargetFn g_set_target = nullptr;
+
+void* guarded_get(void* brain) {
+    __try {
+        return g_get_target(brain);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
+    }
+}
+
+bool guarded_switch(void* brain, void* task, void* from, void* to) {
+    __try {
+        if (task) {
+            using TaskSwitchFn = void(__thiscall*)(void* task, void* from, void* to);
+            reinterpret_cast<TaskSwitchFn>((*reinterpret_cast<void***>(task))[0xf8 / 4])(task, from, to);
+        }
+        g_set_target(brain, to, 0.1f);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+void split_riders() {
+    if (!g_cfg.split_riders || !g_cfg.rider_targets || !NetIsHost() || !g_get_target || !g_set_target) return;
+    void* host = LocalPlayer().entity;
+    if (!host || parent_of(host) < 0 || hunter_dead(host)) return;
+    std::vector<void*> crew{host};
+    for (uint8_t id = 1; id < 4; ++id) {
+        void* pe = puppets::EntityOf(id);
+        if (pe && puppets::IsRidingPuppet(pe)) crew.push_back(pe);
+    }
+    if (crew.size() < 2) return;
+    for (void* animal : Animals()) {
+        void* brain = nullptr;
+        if (!core::safe_read(static_cast<char*>(animal) + 0x200, brain) || !brain) continue;
+        void* cur = guarded_get(brain);
+        if (std::find(crew.begin(), crew.end(), cur) == crew.end()) continue;  // not after someone in the truck
+        const int16_t aid = id_of(animal);
+        void* want = crew[static_cast<uint16_t>(aid) % crew.size()];
+        if (want == cur) continue;
+        void* task = nullptr;
+        core::safe_read(static_cast<char*>(brain) + 0x158, task);
+        int state = 0;
+        if (task) core::safe_read(static_cast<char*>(task) + 4, state);
+        if (task && state != 1) continue;
+        const bool ok = guarded_switch(brain, task, cur, want);
+        const uint8_t who = want == host ? 0 : puppets::PlayerOf(want);
+        spdlog::info("vehicles: animal id {} goes for player {} in the truck (shared out, {} aboard) ok={}", aid, who,
+                     crew.size(), ok);
+    }
+}
+
+// ---- test commands ----
+void __cdecl cmd_board() { seat_local("coop_board"); }
+
+void __cdecl cmd_unboard() {
+    void* h = LocalPlayer().entity;
+    const int16_t par = parent_of(h);
+    void* veh = par >= 0 ? EntityById(par) : nullptr;
+    if (!veh || !g_get_out) {
+        spdlog::info("coop_unboard: not seated");
+        return;
+    }
+    const int r = guarded_seat(g_get_out, veh, h, 1);
+    spdlog::info("coop_unboard: out of vehicle id={} -> {} parent={}", par, r, parent_of(h));
+}
+
+// coop_rideknock <player id>: host sends the truck knock to that player as a lion tackle would.
+void __cdecl cmd_rideknock(const char* arg) {
+    const int who = std::atoi(core::safe_cstr(arg, 16).c_str());
+    if (!NetIsHost() || who <= 0 || who > 3) {
+        spdlog::warn("coop_rideknock: host only, usage coop_rideknock <player id 1-3>");
+        return;
+    }
+    const uint32_t now = GetTickCount();
+    g_tackle_ms[static_cast<uint8_t>(who)] = now;
+    g_tackle_end[static_cast<uint8_t>(who)] = now + g_cfg.rider_knock_ms;
+    events::Send(events::kPlayerKnock, static_cast<uint16_t>(who), 0, 0.f, "syncattacktruck", 0);
+    spdlog::info("coop_rideknock: truck knock to player {}", who);
+}
+
+void __cdecl cmd_vehinfo() {
+    void* h = LocalPlayer().entity;
+    spdlog::info("coop_vehinfo: level vehicle id={} our hunter parent={} dead={} host rides={} riders targets={}",
+                 level_vehicle() ? id_of(level_vehicle()) : -1, parent_of(h), hunter_dead(h), host_rides_now(),
+                 g_cfg.rider_targets);
+    for (auto& [id, t] : g_tracks) {
+        if (!t.ent || EntityById(id) != t.ent) continue;
+        float pos[3] = {};
+        char* body = body_of(t.ent);
+        if (body) core::safe_copy(body + kBodyPos, pos, sizeof pos);
+        spdlog::info("coop_vehinfo: vehicle id={} pos=({:.1f},{:.1f},{:.1f}) driving={} frozen={} samples={} seats {} {} {} {}",
+                     id, pos[0], pos[1], pos[2], driving(t.ent), t.frozen, t.samples, seat_of(t.ent, 0),
+                     seat_of(t.ent, 1), seat_of(t.ent, 2), seat_of(t.ent, 3));
+    }
+}
+
 class VehiclesModule : public dh2::Module {
 public:
     const char* Name() const override { return "vehicles"; }
@@ -273,7 +827,22 @@ public:
     void OnInit() override {
         const std::string ini = (core::self_dir() / "dh2coop.ini").string();
         g_enabled = GetPrivateProfileIntA("Coop", "VehicleSync", 1, ini.c_str()) != 0;
-        spdlog::info("vehicles: VehicleSync={}", g_enabled ? 1 : 0);
+        auto key = [&](const char* name, bool def) {
+            return GetPrivateProfileIntA("Vehicles", name, def ? 1 : 0, ini.c_str()) != 0;
+        };
+        g_cfg.board_with_host = key("BoardWithHost", true);
+        g_cfg.seat_sync = key("SeatSync", true);
+        g_cfg.board_request = key("BoardRequest", true);
+        g_cfg.rider_targets = key("RiderTargets", false);
+        g_cfg.rider_knock = key("RiderKnock", true);
+        g_cfg.split_riders = key("SplitRiders", true);
+        g_cfg.rider_knock_ms = static_cast<uint32_t>(GetPrivateProfileIntA("Vehicles", "RiderKnockMs", 2500, ini.c_str()));
+        events::SetHandler(events::kVehicleSeat, nullptr, &OnSeatCommit);
+        events::SetHandler(events::kVehicleBoard, &OnBoardRequest, nullptr);
+        spdlog::info("vehicles: VehicleSync={} BoardWithHost={} SeatSync={} BoardRequest={} RiderTargets={} RiderKnock={} "
+                     "({} ms) SplitRiders={}",
+                     g_enabled ? 1 : 0, g_cfg.board_with_host, g_cfg.seat_sync, g_cfg.board_request, g_cfg.rider_targets,
+                     g_cfg.rider_knock, g_cfg.rider_knock_ms, g_cfg.split_riders);
     }
 
     void OnEngineReady(HMODULE engine) override {
@@ -283,21 +852,62 @@ public:
             core::find_export(engine, "?SetOrientation@cPhysicsObject@@UAEXABUm3x3@@@Z"));
     }
 
-    void OnGameDllLoaded(HMODULE) override {
+    void OnGameDllLoaded(HMODULE game) override {
         HMODULE common = GetModuleHandleA("CommonDll7.dll");
         if (!common) {
             spdlog::error("vehicles: CommonDll7.dll not loaded; vehicle sync off");
             return;
         }
+        g_game = reinterpret_cast<uintptr_t>(game);
         g_freeze = reinterpret_cast<VehFreezeFn>(core::find_export(common, "?Freeze@cObjVehicle@@UAEXXZ"));
         g_update = core::install_hook("cObjVehicle::Update", core::find_export(common, "?Update@cObjVehicle@@UAEXM@Z"),
                                       reinterpret_cast<void*>(&hk_Update));
-        spdlog::info("vehicles: freeze={} setpos={} setrot={}", g_freeze != nullptr, g_set_pos != nullptr,
-                     g_set_rot != nullptr);
+        g_get_in = reinterpret_cast<GetInFn>(
+            core::find_export(common, "?GetIn@cObjVehicle@@QAEHPAVcObjCharacterEx@@H@Z"));
+        g_get_out = reinterpret_cast<GetInFn>(
+            core::find_export(common, "?GetOut@cObjVehicle@@QAEHPAVcObjCharacterEx@@H@Z"));
+        g_driveto_hook = core::install_hook("cObjVehicle::DriveTo",
+                                            core::find_export(common, "?DriveTo@cObjVehicle@@QAEHPBD@Z"),
+                                            reinterpret_cast<void*>(&hk_DriveTo));
+        g_get_target = reinterpret_cast<GetEntFn>(
+            core::find_export(common, "?GetTarget@cAIHuntBrain_Animal@@QBEPAVcObjEntity@@XZ"));
+        g_set_target = reinterpret_cast<SetTargetFn>(
+            core::find_export(common, "?SetTarget@cAIHuntBrain_Animal@@QAEXPAVcObjEntity@@M@Z"));
+        // Both bodies start with the standard SEH frame (v1.0 build 434); anything else is another build.
+        static const uint8_t kPrologue[5] = {0x55, 0x8b, 0xec, 0x6a, 0xff};
+        uint8_t got[5] = {};
+        void* gic = reinterpret_cast<char*>(game) + kRvaGetInCar;
+        if (core::safe_copy(gic, got, sizeof got) && std::memcmp(got, kPrologue, sizeof got) == 0)
+            g_get_in_car = reinterpret_cast<GetInCarFn>(gic);
+        else
+            spdlog::error("vehicles: GetInCar at GameDll7+{:#x} has unexpected bytes; no seating", kRvaGetInCar);
+        void* tsa = reinterpret_cast<char*>(common) + kRvaTryPlaySA;
+        if (core::safe_copy(tsa, got, sizeof got) && std::memcmp(got, kPrologue, sizeof got) == 0)
+            g_trysa_hook = core::install_hook("cAIHuntTask_AttackBase::TryPlaySA (0xcadf0)", tsa,
+                                              reinterpret_cast<void*>(&hk_TryPlaySA));
+        else
+            spdlog::error("vehicles: TryPlaySA at CommonDll7+{:#x} has unexpected bytes; riders not protected",
+                          kRvaTryPlaySA);
+        if (!g_trysa_hook) g_cfg.rider_targets = false;  // never a rider on the list without the guard
+        spdlog::info("vehicles: freeze={} setpos={} setrot={} getin={} getout={} getincar={} driveto={} trysa={}",
+                     g_freeze != nullptr, g_set_pos != nullptr, g_set_rot != nullptr, g_get_in != nullptr,
+                     g_get_out != nullptr, g_get_in_car != nullptr, g_driveto_hook != nullptr, g_trysa_hook != nullptr);
     }
 
-    void OnMapUnloading() override { g_tracks.clear(); }
-    void OnMapLoaded(const char*) override { g_tracks.clear(); }
+    static void ResetMap() {
+        g_tracks.clear();
+        g_want.clear();
+        g_board_asks.clear();
+        g_drive_name.clear();
+        g_host_drove.clear();
+        g_tackle_end.clear();
+        g_tackle_ms.clear();
+        g_last_parent = -1;
+        g_host_riding_since = 0;
+        g_board_tries = 0;
+    }
+    void OnMapUnloading() override { ResetMap(); }
+    void OnMapLoaded(const char*) override { ResetMap(); }
 
     // Ride diagnostics (both roles): how far each rider, puppet and NPC is from the chassis we ride, every 2 s.
     void LogRide(uint32_t now) {
@@ -330,9 +940,42 @@ public:
         spdlog::info("{}", line);
     }
 
+    // Seats, boarding and riders, 5 times a second.
+    void PumpSeats(uint32_t now) {
+        if (!commands_ && console_cmds::Ready()) {
+            commands_ = console_cmds::AddCommand0("coop_board", &cmd_board);
+            console_cmds::AddCommand0("coop_unboard", &cmd_unboard);
+            console_cmds::AddCommandStr("coop_rideknock", &cmd_rideknock);
+            console_cmds::AddCommand0("coop_vehinfo", &cmd_vehinfo);
+        }
+        if (!NetIsOnline()) {
+            g_last_parent = parent_of(LocalPlayer().entity);
+            return;
+        }
+        if (NetIsHost()) pump_tackle_ends(GetTickCount());
+        if (now - last_seat_pump_ < 200) return;
+        last_seat_pump_ = now;
+        if (NetIsHost()) {
+            pump_seat_commits();
+            pump_board_asks(GetTickCount());
+            if (now - last_split_ >= 1000) {
+                last_split_ = now;
+                split_riders();
+            }
+            g_last_parent = parent_of(LocalPlayer().entity);
+            return;
+        }
+        const bool host_rides = host_rides_now();
+        g_host_rides = host_rides;
+        pump_board_request(host_rides);
+        pump_board_with_host(now, host_rides);
+        pump_seat_apply();
+    }
+
     // Host: the chassis pose of every vehicle that updated this map, 30 times a second.
     void OnFrame(float) override {
         if (g_enabled && NetIsOnline()) LogRide(now_ms());
+        if (g_enabled) PumpSeats(now_ms());
         if (!g_enabled || !NetIsHost() || g_tracks.empty()) return;
         const uint32_t now = now_ms();
         if (now - g_last_send < kSendMs) return;
@@ -358,6 +1001,9 @@ public:
 private:
     uint32_t last_ride_log_ = 0;
     int ride_logs_ = 0;
+    uint32_t last_seat_pump_ = 0;
+    uint32_t last_split_ = 0;
+    bool commands_ = false;
 };
 
 DH2_MODULE(VehiclesModule)
@@ -382,5 +1028,22 @@ void OnStates(const net::VehicleStates& states, uint32_t localMs) {
         std::memcpy(p.pos, v.pos, sizeof v.pos);
     }
 }
+
+bool RideWithHost(const char* why) {
+    if (!g_enabled || NetIsHost() || !NetIsOnline()) return false;
+    void* h = LocalPlayer().entity;
+    if (!h) return false;
+    const int16_t par = parent_of(h);
+    if (par >= 0) {
+        spdlog::info("vehicles: {}: our hunter sits in vehicle id={}; not moved", why ? why : "", par);
+        return true;
+    }
+    if (!g_cfg.board_with_host || !host_rides_now()) return false;
+    return seat_local(why ? why : "ride with host");
+}
+
+bool HostRides() { return !NetIsHost() && NetIsOnline() && host_rides_now(); }
+
+bool RidersAreTargets() { return g_cfg.rider_targets; }
 
 }  // namespace dh2::coop::vehicles

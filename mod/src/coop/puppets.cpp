@@ -19,6 +19,7 @@
 #include "coop/hunter_nearest.h"
 #include "coop/player_tracker.h"
 #include "coop/puppet_models.h"
+#include "coop/vehicles.h"
 #include "core/hook.h"
 #include "core/lifecycle.h"
 #include "core/log.h"
@@ -79,6 +80,7 @@ struct Puppet {
     bool coll_off = false;       // riding: physics body collides with nothing (coll_saved holds the words)
     uint32_t coll_saved[3] = {};
     uint32_t gravity_saved = 0;  // body +0x110 while riding (zeroed, as cObjVehicle::Freeze does)
+    bool riding = false;         // last sample had kFlagRiding (the player sits in a vehicle on their machine)
 };
 
 // Riding (kFlagRiding: the remote hunter sits in a vehicle). Every machine drives its own copy of the MAP4A / MAP5
@@ -812,11 +814,14 @@ public:
                 const float speed = std::sqrt(s.velocity[0] * s.velocity[0] + s.velocity[2] * s.velocity[2]);
                 p.posture = (s.flags & net::kFlagCrouched) ? 0 : speed >= kRunSpeed ? 3 : speed >= kWalkSpeed ? 2 : 1;
             }
-            // A rider is not prey either: a lion's sync attack on a puppet we keep moving back into the truck bed
-            // left the lion waiting on its partner and threw the puppet off the truck (MAP4A host, 2026-10-18).
-            // Lions on a ride go for the host's own hunter; riders still shoot.
+            p.riding = riding;
+            // A lion's sync attack on a puppet we keep moving back into the truck bed linked the puppet's model to
+            // the lion, left it on the road and the lion waiting on its partner (MAP4A host, 2026-10-18), so riders
+            // were taken off the target list and every lion went for the host. [Vehicles] RiderTargets=1 keeps them
+            // on it: vehicles.cpp stops sync attacks on a rider before they start (claw hits still reach the rider's
+            // own hunter as kPlayerHurt) and splits the lions between everyone in the truck.
             // The script's player.SetCanBeAttacked(0) takes the host's hunter off the attack list; puppets follow it.
-            if (p.dead || riding || !combat::PlayersAttackable()) unregister_target(p);
+            if (p.dead || (riding && !vehicles::RidersAreTargets()) || !combat::PlayersAttackable()) unregister_target(p);
             else register_target(p);
             set_collision(p, !riding);
             entity::Vec3 spot{s.pos[0], s.pos[1] + g_y_offset, s.pos[2]};
@@ -1063,6 +1068,15 @@ bool IsLivingPuppet(void* ent) {
     for (const auto& [id, p] : g_puppets) {
         (void)id;
         if (p.entity == ent) return !p.dead;
+    }
+    return false;
+}
+
+bool IsRidingPuppet(void* ent) {
+    if (!ent) return false;
+    for (const auto& [id, p] : g_puppets) {
+        (void)id;
+        if (p.entity == ent) return p.riding && !p.dead;
     }
     return false;
 }

@@ -25,6 +25,8 @@ uint8_t PlayerOf(void* ent);
 void* EntityOf(uint8_t playerId);
 // True for a puppet body whose player is alive (not kFlagDead).
 bool IsLivingPuppet(void* ent);
+// True for a living puppet whose player sits in a vehicle (kFlagRiding): drawn in the bed of our own truck.
+bool IsRidingPuppet(void* ent);
 // The living puppet nearest to `pos` (world metres) and its squared distance, or null when none is closer than
 // `best_sq` on entry. Dead players (kFlagDead) are skipped.
 void* NearestLivingPuppet(const float pos[3], float& best_sq);
