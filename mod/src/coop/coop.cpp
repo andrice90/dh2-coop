@@ -1327,6 +1327,14 @@ void tell_everyone(const std::string& text) {
         events::Send(events::kHostNotice, 0, 0, 0.f, text.substr(0, net::kMaxGameEventKeyChars), 0);
 }
 
+void restart_through_menu(const std::string& map, bool announce) {
+    if (announce) tell_everyone(fmt::format("Host restarts {}", map));
+    g_jump.restart_map = map;
+    g_jump.restart_at = 0;
+    const int r = console::Exec("menumap menumap");
+    spdlog::info("coop: host restarts '{}' through the main menu -> {}", map, r);
+}
+
 }  // namespace
 
 bool HostRestartLevel() {
@@ -1334,11 +1342,17 @@ bool HostRestartLevel() {
     const std::string map = events::CurrentMap();
     if (map.empty() || map == "MENUMAP") return false;
     if (!confirm_level_jump(1, fmt::format("restart {} for everyone", map))) return false;
-    tell_everyone(fmt::format("Host restarts {}", map));
-    g_jump.restart_map = map;
-    g_jump.restart_at = 0;
-    const int r = console::Exec("menumap menumap");
-    spdlog::info("coop: host restarts '{}' through the main menu -> {}", map, r);
+    restart_through_menu(map, true);
+    return true;
+}
+
+// The host chose Restart in a game menu (flow.cpp): the menu itself is the confirmation. The game's own in-place
+// restart crashes cGuiManager::Update here (the same-map load frees what the open menu still uses), so it is this hop.
+bool HostRestartNow() {
+    if (!may_change_level()) return false;
+    const std::string map = events::CurrentMap();
+    if (map.empty() || map == "MENUMAP") return false;
+    restart_through_menu(map, false);
     return true;
 }
 

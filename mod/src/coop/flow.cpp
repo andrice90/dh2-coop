@@ -133,6 +133,7 @@ bool g_exit_asks_host = true;   // ClientExitAsksHost
 bool g_ammo_any = true;         // AmmoAnyPlayer
 bool g_sync_profile = true;     // SyncProfileMap
 bool g_follow_menu = true;      // FollowHostMenu
+bool g_retry_menu = true;       // RetryViaMenu: Restart / replay go through the main menu, not the game's in-place restart
 
 // Client state, reset on every map load.
 uint32_t g_host_choice = kNone;  // the host left its results/pause menu with this (kLevelNext)
@@ -302,6 +303,20 @@ bool guarded_native(safetyhook::InlineHook* h, bool takes_name, const char* arg)
 
 void OnNative(int i, const char* arg) {
     Native& n = g_natives[i];
+    // Retry on the host (or offline): the game restarts the loaded map in place, and with the same-map cleanup
+    // (lifecycle.cpp) the still open menu then faults in cGuiManager::Update (MAP2B, 2026-10-18). Close the menu and
+    // take the main-menu hop F5 uses; the clients follow its two kMapStart commits.
+    if (n.choice == kRetry && g_retry_menu && !g_in_native && (!NetIsOnline() || NetIsHost())) {
+        const std::string cur = events::CurrentMap();
+        if (!cur.empty() && cur != "MENUMAP") {
+            if (NetIsOnline()) events::Send(events::kLevelNext, 0, n.choice, 0.f, cur, 0);
+            spdlog::info("flow: {} chose retry ({}): restarting '{}' through the main menu", NetIsOnline() ? "host" : "player",
+                         n.name, cur);
+            ClearHudMenuCode();
+            console::Exec("closegamemenu");
+            if (HostRestartNow()) return;
+        }
+    }
     if (!NetIsOnline() || !g_follow_menu || g_in_native) {
         guarded_native(n.hook, n.takes_name, arg);
         return;
@@ -755,11 +770,12 @@ public:
         g_ammo_any = GetPrivateProfileIntA("Flow", "AmmoAnyPlayer", 1, ini.c_str()) != 0;
         g_sync_profile = GetPrivateProfileIntA("Flow", "SyncProfileMap", 1, ini.c_str()) != 0;
         g_follow_menu = GetPrivateProfileIntA("Flow", "FollowHostMenu", 1, ini.c_str()) != 0;
+        g_retry_menu = GetPrivateProfileIntA("Flow", "RetryViaMenu", 1, ini.c_str()) != 0;
         events::SetHandler(events::kLevelExit, &OnLevelExitRequest, nullptr);
         events::SetHandler(events::kAmmoState, &OnAmmoState, nullptr);
         events::SetHandler(events::kLevelNext, nullptr, &OnLevelNext);
-        spdlog::info("flow: ClientExitAsksHost={} AmmoAnyPlayer={} SyncProfileMap={} FollowHostMenu={}",
-                     g_exit_asks_host, g_ammo_any, g_sync_profile, g_follow_menu);
+        spdlog::info("flow: ClientExitAsksHost={} AmmoAnyPlayer={} SyncProfileMap={} FollowHostMenu={} RetryViaMenu={}",
+                     g_exit_asks_host, g_ammo_any, g_sync_profile, g_follow_menu, g_retry_menu);
     }
 
     void OnEngineReady(HMODULE) override {

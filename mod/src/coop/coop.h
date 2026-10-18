@@ -100,6 +100,8 @@ void LobbyLeave();
 // follow the map change. Returns false on a client or when there is nothing to do (main menu, last level).
 bool HostRestartLevel();
 bool HostNextLevel();
+// Restart without the second press, for flow.cpp's Restart / replay menu choice (same main-menu hop as F5).
+bool HostRestartNow();
 // Next story level after `map` ("" after MAP12C or for hunt / bonus maps).
 std::string NextStoryMap(const std::string& map);
 
