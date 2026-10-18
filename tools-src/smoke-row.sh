@@ -13,8 +13,8 @@
 #   lines/s     dh2coop.log lines per second, host / client: average (peak second)
 #   -1          SetBodyState ... -> -1 lines (all logs);  refused/mismatch lines (all logs)
 if [ -n "$SMOKE_HEADER" ]; then
-  echo '| map / run | alive H/C | welcome, sync | animals H/C (mirrored) | trig host arm/fire, client arm/fire/sent, defer | first-chance (not nvd3dum) | crash | fwd H/C | lines/s H / C avg(peak) | -1 | refused/mismatch | build | clients 3-4 |'
-  echo '|---|---|---|---|---|---|---|---|---|---|---|---|---|'
+  echo '| map / run | alive H/C | welcome, sync | animals H/C (mirrored) | trig host arm/fire, client arm/fire/sent, defer | first-chance (not nvd3dum) | crash | fwd H/C | lines/s H / C avg(peak) | -1 | refused/mismatch | host mission msg | build | clients 3-4 |'
+  echo '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|'
   exit 0
 fi
 norm() { tr -d '\r\357\273\277' < "$1" | sed 's/^\[[^]]*\] \[[a-z]*\] \[t[0-9]*\] //'; }
@@ -79,6 +79,12 @@ for d in "$@"; do
   cf=$(norm "$c1" 2>/dev/null | sed -n "s/^story: applied host fire '\([^']*\)'.*/\1/p; s/^story: host fire '\([^']*\)' (id [0-9]*) already ran here.*/\1/p; s/^story: \[\(client\|solo\)\] trigger FIRE id=[0-9]* name='\([^']*\)'.*/\2/p" | sort -u | wc -l)
   cs=$(cnt '^story: client fire ' "$c1")
   df=$(cnt '^story: defer host fire' "$c1")
+  # host mission message (code 6 = "Mission failed": the unattended host hunter was killed), seconds since the host log began
+  mline=$(norm "$h" | grep -m1 '^events: host mission message')
+  if [ -n "$mline" ]; then
+    mt=$(firstts 'events: host mission message' "$h"); t00=$(sed -n 's/^\[[0-9-]* \([0-9:.]*\)\].*/\1/p' "$h" | head -1)
+    mis="code $(echo "$mline" | sed -n 's/.*code=\([-0-9]*\).*/\1/p') '$(echo "$mline" | sed -n "s/.*text='\(.\{0,16\}\).*/\1/p")' +$(awk -v a="$(sec "$mt")" -v b="$(sec "$t00")" 'BEGIN { printf "%.0f", a - b }')s"
+  else mis="-"; fi
   # first-chance exceptions of every tree. nvd3dum.dll AVs at map load are known noise (counted, not listed). A site within
   # 3 s of the end of a log whose run ended ok is listed apart as "at shutdown" (the run script closes the windows then).
   fcrun=""; fcsd=""; nv=0
@@ -116,7 +122,7 @@ for d in "$@"; do
     extra="$extra$r: ${a3:-?}, welcome ${w3:-?}s, synced x$sy3, received ${rc3:-0}, rate $(rate "$cf3")${fc3:+, first-chance $fc3} | "
   done
   extra="${extra% | }"
-  printf '| %s | %s/%s%s%s | %ss, sync %s | %s/%s (%s+%s npc, %s cobra, %s bad) | %s/%s, %s/%s/%s, defer %s | %s | %s | %s/%s | %s / %s | %s | %s | %s | %s |\n' \
+  printf '| %s | %s/%s%s%s | %ss, sync %s | %s/%s (%s+%s npc, %s cobra, %s bad) | %s/%s, %s/%s/%s, defer %s | %s | %s | %s/%s | %s / %s | %s | %s | %s | %s | %s |\n' \
     "$name" "${ah:-?}" "${ac:-?}" "${ex:+ [$ex]}" "${st:+ <$st>}" "${wel:-?}" "$sync" "${hsnap:-0}" "${rcv:-0}" "$mirA" "$mirN" "$cob" "$bad" \
-    "$ha" "$hf" "$ca" "$cf" "$cs" "$df" "$fc" "$crash" "${fwh:-0}" "${fwc:-0}" "$rh" "$rc" "$n1" "$rf" "$bld" "$extra"
+    "$ha" "$hf" "$ca" "$cf" "$cs" "$df" "$fc" "$crash" "${fwh:-0}" "${fwc:-0}" "$rh" "$rc" "$n1" "$rf" "$mis" "$bld" "$extra"
 done

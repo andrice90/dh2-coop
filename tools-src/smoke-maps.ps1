@@ -5,7 +5,10 @@
 #             and one table row is produced (smoke-row.sh).
 #   restart   F5 test: 25 s after the last welcome, "coop_level restart" is written twice into game\Bin\dh2coop.cmd
 #             (1.2 s apart, inside the 3 s window of the F5 confirm). Run 120 s: do both windows come back to the map?
-#   next      F6 test: the same with "coop_level next" (MAP3C -> MAP4A).
+#             NOTE: one coop_level write already arms AND confirms (cmd_level calls HostRestartLevel twice), so the second
+#             write comes after the jump: harmless for restart (the map is the menu by then), but "next" then skips two
+#             levels in 1.1 s. -Once writes it a single time (dir restart-once / next-once).
+#   next      F6 test: the same with "coop_level next" (MAP3C -> MAP4A, with two writes -> MAP4B).
 #   players3  -Players 3 -Seconds 120 -Capture (the third window joins after the second one is welcomed).
 #   late3     -Players 3 -LateJoin 20 -Seconds 60 -Capture.
 #   walk      session without -Seconds; first tasks in script order and the exit task (8 s apart, captures after each):
@@ -28,7 +31,8 @@ param(
     [int]$Seconds = 120,
     [int]$KeepShots = 4,
     [int]$StepWait = 8,
-    [switch]$NoTp
+    [switch]$NoTp,
+    [switch]$Once
 )
 $ErrorActionPreference = 'Stop'
 # powershell -File passes "MAP1,MAP2A" as one string
@@ -422,14 +426,14 @@ foreach ($m in $Maps) {
         'restart' {
             # the command arms and confirms by itself (cmd_level calls HostRestartLevel twice); the second write is the
             # second "press" of the brief and lands while the host is already hopping through the main menu
-            Run-Timed-Retry $m 'restart' 2 $Seconds @(
-                @{ At = 25; Tree = 'game'; Line = 'coop_level restart' },
-                @{ At = 25; Tree = 'game'; Line = 'coop_level restart' })
+            $cmds = @(@{ At = 25; Tree = 'game'; Line = 'coop_level restart' })
+            if (-not $Once) { $cmds += @{ At = 25; Tree = 'game'; Line = 'coop_level restart' } }
+            Run-Timed-Retry $m $(if ($Once) { 'restart-once' } else { 'restart' }) 2 $Seconds $cmds
         }
         'next' {
-            Run-Timed-Retry $m 'next' 2 $Seconds @(
-                @{ At = 25; Tree = 'game'; Line = 'coop_level next' },
-                @{ At = 25; Tree = 'game'; Line = 'coop_level next' })
+            $cmds = @(@{ At = 25; Tree = 'game'; Line = 'coop_level next' })
+            if (-not $Once) { $cmds += @{ At = 25; Tree = 'game'; Line = 'coop_level next' } }
+            Run-Timed-Retry $m $(if ($Once) { 'next-once' } else { 'next' }) 2 $Seconds $cmds
         }
         'walk' {
             if (-not $walk.ContainsKey($m)) { Progress "[$m] no walk table"; continue }
