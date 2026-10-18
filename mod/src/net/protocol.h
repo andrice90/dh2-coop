@@ -19,7 +19,10 @@ namespace net {
 // kinds 7-16 and the NPC arms string without a bump.
 // v3 (2026-10-17 lobby): Hello + model, PlayerJoined + model (the puppet body each player picked).
 // v4 (2026-10-18): VehicleStates (the host's truck pose, MAP4A / MAP5).
-constexpr uint8_t kProtocolVersion = 4;
+// v5 (2026-10-18 playthrough wave): HeliStates (msg 12, MAP11A / MAP11C); event kinds 18 kTriggerHit, 20 kAnimalRevive,
+// 21 kScaleConfig, 22 kTranqHit, 24 kLevelExit, 25 kAmmoState, 26 kLevelNext; kAnimalDied i0 carries life / report;
+// AnimalHit.hitPos[0] carries the hit kind.
+constexpr uint8_t kProtocolVersion = 5;
 constexpr uint16_t kGameBuild = 434;
 constexpr uint16_t kDefaultPort = 27420;
 constexpr int kMaxPlayers = 4;
