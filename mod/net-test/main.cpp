@@ -977,6 +977,16 @@ void TestJoinCode(Tally& t) {
             "join code: MaskedCode");
     t.Check(jc::MaskKey("tskey-auth-kTEST1234-ABCDEFGH") == "tskey-auth-kTE\xE2\x80\xA6" && jc::MaskKey("") == "(none)",
             "join code: MaskKey");
+    {
+        const std::string line = std::string("coop_friendkey tskey-auth-kTEST1234-ABCDEFGH then ") + kVecFull + " done";
+        const std::string red = jc::RedactSecrets(line);
+        t.Check(red == "coop_friendkey tskey-auth-kTE\xE2\x80\xA6 then DH2-\xE2\x80\xA6(hidden) done" &&
+                    red.find("ABCDEFGH") == std::string::npos && red.find("djF8") == std::string::npos,
+                "join code: RedactSecrets masks keys and codes in a command line");
+        t.Check(jc::RedactSecrets("coop_lobby 100.64.0.1:27420 host") == "coop_lobby 100.64.0.1:27420 host" &&
+                    jc::RedactSecrets("DH2-") == "DH2-" && jc::RedactSecrets("") == "",
+                "join code: RedactSecrets leaves ordinary lines alone");
+    }
     t.Check(jc::IsAuthKey("tskey-auth-kTEST1234CNTRL-abcdefghijklmnopqrstuvwxyz12345678") && !jc::IsAuthKey("") &&
                 !jc::IsAuthKey("tskey-auth-k!"),
             "join code: IsAuthKey");

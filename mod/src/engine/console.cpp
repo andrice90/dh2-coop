@@ -4,6 +4,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include "coop/joincode.h"
 #include "core/config.h"
 #include "core/exports.h"
 #include "core/safe_mem.h"
@@ -69,7 +70,8 @@ int Exec(const char* line) {
     }
     // Flag 0: queue the line unchanged. Non-zero prefixes '%' and hits the dev/cheat gates.
     const int r = g_exec(self, buf, 0);
-    spdlog::info("console::Exec('{}') -> {}", buf, r);
+    // A line may carry a friend key or a join code (coop_friendkey / coop_joinfield): log it masked.
+    spdlog::info("console::Exec('{}') -> {}", coop::joincode::RedactSecrets(buf), r);
     return r;
 }
 
@@ -85,7 +87,7 @@ int RealExec(const char* line) {
         return -1;
     }
     const int r = g_real(self, buf);
-    spdlog::info("console::RealExec('{}') -> {}", buf, r);
+    spdlog::info("console::RealExec('{}') -> {}", coop::joincode::RedactSecrets(buf), r);
     return r;
 }
 

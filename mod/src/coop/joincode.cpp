@@ -250,6 +250,31 @@ bool Decode(std::string_view text, Fields& out, std::string* err) {
     return true;
 }
 
+std::string RedactSecrets(std::string_view text) {
+    auto token_char = [](char c) {
+        return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || is_digit(c) || c == '-' || c == '_';
+    };
+    std::string out;
+    size_t i = 0;
+    while (i < text.size()) {
+        if (!token_char(text[i])) {
+            out.push_back(text[i++]);
+            continue;
+        }
+        size_t j = i;
+        while (j < text.size() && token_char(text[j])) ++j;
+        const std::string_view tok = text.substr(i, j - i);
+        if (tok.size() > 6 && tok.substr(0, 6) == "tskey-")
+            out += MaskKey(tok);
+        else if (tok.size() > kPrefixLen + 3 && iequals_prefix(tok, kPrefix, kPrefixLen))
+            out += std::string(kPrefix) + kEllipsis + "(hidden)";
+        else
+            out += tok;
+        i = j;
+    }
+    return out;
+}
+
 std::string MaskKey(std::string_view key) {
     if (key.empty()) return "(none)";
     return std::string(key.substr(0, kMaskedKeyChars)) + kEllipsis;

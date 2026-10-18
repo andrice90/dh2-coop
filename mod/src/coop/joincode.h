@@ -37,6 +37,9 @@ bool Decode(std::string_view text, Fields& out, std::string* err = nullptr);
 // True when the text, after trimming, starts with "DH2-" (any case): it is meant to be a code, valid or not.
 bool LooksLikeCode(std::string_view text);
 
+// `text` with every tskey-... and DH2-... run masked (MaskKey / "DH2-…(hidden)"): for logging command lines.
+std::string RedactSecrets(std::string_view text);
+
 // For logs and screens: never the whole key, never the whole code.
 std::string MaskKey(std::string_view key);                  // "tskey-auth-kTE…" (first 14 chars)
 std::string Describe(const Fields& fields);                 // "100.x.y.z:27420, host 'Name', key tskey-auth-kTE… (N chars)"

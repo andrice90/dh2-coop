@@ -24,6 +24,7 @@
 #include "coop/animals.h"
 #include "coop/events.h"
 #include "coop/heli.h"
+#include "coop/joincode.h"
 #include "coop/player_tracker.h"
 #include "coop/puppet_models.h"
 #include "coop/puppets.h"
@@ -138,6 +139,8 @@ struct LocalAddrs {
 };
 LocalAddrs g_addrs;
 uint32_t g_addrs_ms = 0;
+std::string g_test_tailnet;  // [Coop] TestTailnetIp: tests pretend this PC has that tailnet address (join code checks)
+bool g_test_no_tailnet = false;  // [Coop] TestTailnetIp=none: ... or no tailnet address at all
 
 LocalAddrs scan_local_addresses() {
     LocalAddrs out;
@@ -180,6 +183,8 @@ void refresh_local_addresses() {
     const bool first = g_addrs_ms == 0;
     g_addrs_ms = now ? now : 1;
     LocalAddrs a = scan_local_addresses();
+    if (!g_test_tailnet.empty()) a.tailnet = g_test_tailnet;
+    if (g_test_no_tailnet) a.tailnet.clear();
     if (first || a.tailnet != g_addrs.tailnet) {
         spdlog::info("coop: tailnet address {} (other addresses: {})", a.tailnet.empty() ? "none" : a.tailnet,
                      a.others.empty() ? "none" : a.others);
@@ -220,6 +225,14 @@ void load_settings() {
     GetPrivateProfileStringA("Coop", "Password", "", buf, sizeof buf, ini.c_str());
     g_settings.password = buf;
     g_settings.model = static_cast<int>(GetPrivateProfileIntA("Coop", "PuppetModel", 0, ini.c_str()));
+    GetPrivateProfileStringA("Coop", "TestTailnetIp", "", buf, sizeof buf, ini.c_str());
+    if (joincode::IsTailnetIp(buf)) {
+        g_test_tailnet = buf;
+        spdlog::info("coop: [Coop] TestTailnetIp: this PC's tailnet address is pretended to be {}", g_test_tailnet);
+    } else if (std::string(buf) == "none") {
+        g_test_no_tailnet = true;
+        spdlog::info("coop: [Coop] TestTailnetIp=none: this PC is pretended to have no tailnet address");
+    }
     // run-coop-local writes 127.0.0.1 here: test copies then never ask Windows Firewall for network access.
     GetPrivateProfileStringA("Coop", "BindAddress", "", buf, sizeof buf, ini.c_str());
     net::Session::SetBindAddress(buf);
@@ -455,19 +468,28 @@ void __cdecl cmd_trigger(const char* arg) {
 // Test: the lobby buttons without a mouse (name / model from dh2coop-lobby.ini). Console commands take one word,
 // so: coop_lobby host | leave | <ip[:port]> (join).
 void __cdecl cmd_lobby(const char* arg) {
-    const std::string a = core::safe_cstr(arg, 96);
+    const std::string a = core::safe_cstr(arg, 400);
     const LobbyPrefs p = LoadLobbyPrefs();
     if (a == "host") {
         LobbyHost(p.name, p.model, p.host_port);
     } else if (a == "leave") {
         LobbyLeave();
+    } else if (joincode::LooksLikeCode(a)) {
+        // A join code works like pasting it into the JOIN field, then JOIN: address and port come from the code.
+        const JoinInput in = ParseJoinInput(a);
+        if (in.kind == JoinInput::Kind::Code) {
+            spdlog::info("coop_lobby: {}", in.message);
+            LobbyJoin(p.name, p.model, in.host, in.port);
+        } else {
+            spdlog::warn("coop_lobby: join code rejected: {}", in.message);
+        }
     } else if (!a.empty()) {
         std::string host;
         uint16_t port = p.join_port;
         split_host_port(a.c_str(), host, port);
         LobbyJoin(p.name, p.model, host, port);
     } else {
-        spdlog::warn("coop_lobby: usage coop_lobby host | leave | <ip[:port]>");
+        spdlog::warn("coop_lobby: usage coop_lobby host | leave | <ip[:port]> | <join code>");
     }
 }
 
@@ -534,7 +556,7 @@ void PollCommandFile() {
     std::filesystem::remove(path, ec);
     for (const std::string& l : lines) {
         const int r = console::Exec(l.c_str());
-        spdlog::info("coop: cmd file '{}' -> {}", l, r);
+        spdlog::info("coop: cmd file '{}' -> {}", joincode::RedactSecrets(l), r);  // a friend key or join code may be in it
     }
 }
 
@@ -619,6 +641,7 @@ public:
             console_cmds::AddCommandStr("coop_puppetmodel", &cmd_puppetmodel);
             console_cmds::AddCommandStr("coop_level", &cmd_level);
             console_cmds::AddCommandStr("coop_key", &cmd_key);
+            RegisterInviteCommands();
         }
         cmd_poll_ += dt;
         if (commands_registered_ && cmd_poll_ >= 0.5f) {
@@ -1232,6 +1255,8 @@ LobbyPrefs LoadLobbyPrefs() {
     if (hp > 0 && hp < 65536) p.host_port = static_cast<uint16_t>(hp);
     return p;
 }
+
+std::string LobbyIniPath() { return lobby_ini_path(); }
 
 void SaveLobbyPrefs(const LobbyPrefs& p) {
     const std::string ini = lobby_ini_path();
