@@ -4,14 +4,14 @@ How to scale story fights for 2, 3, and 4 players. This is the method to build. 
 
 Two rules, from the request:
 
-| Players | Extra players | Boss / special health | Extra bodies in a scripted attack |
+| Players | Extra players | One large animal, or a boss | Pack or smaller animal |
 |---|---|---|---|
-| 1 (solo, or co-op not connected) | 0 | unchanged | 0 |
-| 2 | 1 | ×1.25 | +1 |
-| 3 | 2 | ×1.50 | +2 |
-| 4 | 3 | ×1.75 | +3 |
+| 1 (solo, or co-op not connected) | 0 | unchanged | unchanged |
+| 2 | 1 | ×1.25 health, still one body | +1 body, health unchanged |
+| 3 | 2 | ×1.50 health, still one body | +2 bodies, health unchanged |
+| 4 | 3 | ×1.75 health, still one body | +3 bodies, health unchanged |
 
-`extra = connected - 1`. Health factor is `1 + 0.25 * extra`. MAP2A's opening is wolf1 and wolf2, so the pack becomes 3, 4, or 5 wolves.
+`extra = connected - 1`. Health factor is `1 + 0.25 * extra`. MAP2A's opening is wolf1 and wolf2, so the pack becomes 3, 4, or 5 wolves. MAP2B's grizzly stays one bear at 350 × the factor.
 
 Connected players are `1 + g_remotes.size()` in `mod/src/coop/coop.cpp`. The host's map holds clients. A client's map holds the host (player 0) and the other clients. Solo play leaves the map empty, so the factor stays 1.
 
@@ -68,37 +68,46 @@ The snapshot holds at most `kMaxAnimals` (32), and that 32 includes NPCs (`anima
 
 One new module, host-authoritative, same `AddAnimal` calls on every peer. Prologue-check every hook the way `events.cpp` already does.
 
-### 1. Boss and special health
+### 1. Health, one body
 
-**Who.** An animal whose entity `+0x3C0` becomes 1. That is `MakeBoss(TRUE)`. Today that is the yeti, hogzilla, and big grim. Keep a short name list next to the hook (empty by default) for a later special that never calls `MakeBoss`. Anything on that list uses this health path and is skipped by the body path.
+Three cases share this path. None of them gain a reserve animal.
 
-A grey wolf, including MAP2A `wolf3`'s later `SetHealth(600)`, stays on the body path. `SetHealth(600)` writes `+0x19C` only. `Make_Scared` sets 10000 on ordinary animals (`re/notes/assets.md`). A health threshold would mark those as bosses.
+1. **Boss.** Entity `+0x3C0` becomes 1. That is `MakeBoss(TRUE)`: yeti (2500), hogzilla (1500), big grim (1500).
+2. **One large animal.** The wave (section 2) contains exactly one script animal, and its species is large. MAP2B `cScrTask03` starts one `gbear` on `AIHuntTask_AttackBears`. MAP2C `cScrTask08` does the same. MAP2B's cougar is one `mlion1` on `AIHuntTask_AttackCats`. Each stays a single body.
+3. A large species in a wave of two or more is a pack. It takes the body path and does not also gain health. Two lions stay two lions plus the extra copies. One lion gains health.
 
-**When.** Hook `MakeBoss` `0x16d20`. On entry, read `+0x4C0` as the base max if this entity has no stored base yet. Set
+**Large species** (health when the wave size is 1): `ANIMAL_GBEAR` (350), `ANIMAL_BBEAR` (200), `ANIMAL_ABEAR` (350), `ANIMAL_PBEAR` (400), `ANIMAL_LION` (170), `ANIMAL_LIONESSE` (170), `ANIMAL_MOUNTAINLION` (80), `ANIMAL_PUMA` (100), `ANIMAL_BTIGER` (250), `ANIMAL_RHINO` (450), `ANIMAL_ELEPHANT` (500), `ANIMAL_HIPO` (400), `ANIMAL_SCRUBBULL` (500). Numbers are the `SetHealth` in each species `InitModel`.
+
+**Smaller and mid-game species** stay on the body path even when the wave is one animal: `ANIMAL_GWOLF` (50), `ANIMAL_HYENA` (40), `ANIMAL_DINGO` (30), `ANIMAL_LEOPARD` (150), `ANIMAL_WILDBOAR` (250), `ANIMAL_WILDBOAR3` (250), `ANIMAL_COBRA`. MAP2B's "kill 1 wolf" is still a wolf, so two players get two wolves. Classify by species id at entity `+0x434`, captured from `AddAnimal`. Do not classify by the current `+0x19C`. MAP2A `wolf3`'s `SetHealth(600)` is still a grey wolf. `Make_Scared` writes 10000 through `SetHealth` and would look like a boss if the test were the live value (`GBEAR.SCR`, `re/notes/assets.md`).
+
+**Base max.** At the end of spawn `0x1e170`, store `baseMax = +0x4C0`. That is the species health after the retail difficulty multiply, before a later `SetHealth(600)` or `Make_Scared`.
+
+**When.** Same write for bosses and for a one-large wave:
 
 ```
-max   = baseMax * (1 + 0.25 * extra)
+max    = baseMax * (1 + 0.25 * extra)
 +0x4C0 = max
-+0x19C = +0x19C * (max / oldMax)    // keeps the current ratio
++0x19C = baseMax == 0 ? max : +0x19C * (max / baseMax)
 ```
 
-Do this on every peer, from the same `extra`. The host's `+0x19C` is what the snapshot already broadcasts. The client's `+0x4C0` has to move too, because the bar divides locally.
+Use `baseMax` as the denominator, not whatever `+0x19C` was set to in the same trigger. Hook `MakeBoss` `0x16d20` and apply it there. For a one-large wave, apply it when the wave is classified (after `BeginCutScene`, or after `OnActivate` when the trigger has no `BeginCutScene`).
 
-`MoveToPos` / `0x14610` then restores `+0x19C` from the scaled `+0x4C0`. The cutscene respawn keeps the bonus.
+Also hook `0x14610`. If that animal is already marked, then after the original copies `+0x4C0` into `+0x19C`, write both fields from `baseMax * factor` again. MAP2B's bear calls `Make_Scared` in `OnActivate` (current health 10000) and `MoveToPos` in `BeginCutScene`. Retail `MoveToPos` already replaces the 10000 with `+0x4C0` (350 times the retail factor). The player fights that 350. The co-op factor multiplies that value: 437.5, 525, or 612.5 before the retail 1.0/1.1/1.2. Applying the factor to the 10000 and then letting `MoveToPos` restore an unscaled max would drop the bonus on the first frame of the fight.
 
-If `SetHealth` runs on that entity after `MakeBoss`, hook `0x15ff0` and, when `+0x3C0` is set or the name is on the list, write the scaled value into both `+0x19C` and `+0x4C0`. Species `InitModel` runs inside `0x1e170`, before `MakeBoss`, so the spawn-time `SetHealth(2500)` needs no special case.
+Do this on every peer, from the same `extra`. The host's `+0x19C` is what the snapshot already broadcasts. The client's `+0x4C0` has to move too, because a boss bar divides locally. A grizzly has no boss bar. Its current health still has to match, and the next `MoveToPos` reads `+0x4C0`.
 
-**Join and leave.** Store `baseMax` per entity id. On `PlayerJoined` / `PlayerLeft`, recompute max from `baseMax` and scale current health by `newFactor / oldFactor`. A join during the fight does not reset the boss to full. Do not scale a second time inside `MakeBoss` if `baseMax` is already stored.
+If `SetHealth` runs on a marked animal after that, hook `0x15ff0` and write the scaled value into both `+0x19C` and `+0x4C0`, and update `baseMax` to the script's unscaled argument times the retail factor. Species `InitModel` runs inside `0x1e170`, before either hook, so the spawn-time `SetHealth(350)` or `SetHealth(2500)` needs no special case.
 
-A boss gets no extra body.
+**Join and leave.** On `PlayerJoined` / `PlayerLeft`, recompute max from `baseMax` and scale current health by `newFactor / oldFactor`. A join during the fight does not refill the bar. Do not scale a second time inside `MakeBoss` or the wave classifier if `baseMax` is already stored and the factor has been applied for this `extra`.
 
 ### 2. Extra animals for scripted attacks
 
 **Pool.** After the map script's own `AddAnimal`s, each peer calls `AddAnimal` again for a reserve pool. Do it from `OnMapLoaded`, before puppets are created, in the same order on every process. Those calls append entity ids. Matching order is what already makes cobra ids 49–51 match on MAP3B (`re/notes/snake-sync.md`).
 
-For each species the map's `AddAnimal` list contains, create `3` reserves (the 4-player maximum), except:
+Create `3` reserves (the 4-player maximum) for each smaller or mid-game species the map's `AddAnimal` list contains. Also create them for a large species when that map starts an attack on two or more of that species in one trigger. A map whose only bear is one `gbear` creates no bear reserves.
 
-- Skip a species that is only used as a boss (yeti, hogzilla, big grim). One body, scaled health.
+- Skip yeti, hogzilla, and big grim. One body, scaled health.
+- Skip a large species that this map only ever sends in alone. The grizzly and the MAP2B cougar are this case.
 - Skip `ANIMAL_WATERCROCODILE` and `ANIMAL_CROCODILE` until those classes are mirrored. Local-only extras would fight each client alone.
 - Name them `coop_<species>_<0..2>` so `FindEntScrObject("wolf1")` still finds the script wolf.
 
@@ -122,7 +131,7 @@ MAP2B's siege calls `SpawnWolves` repeatedly and recycles wolf1–3 with `CanBeR
 
 **Release (host only).** After `BeginCutScene` returns, or after `OnActivate` if the trigger's `+0x210` is 0:
 
-1. Group the wave by species. Remember each animal's `StartTask` name and the `SetTaskParam` pairs that followed it (`target`, `state`, `surpriseid`, `health`, `dmgint`, …). Wolf1's target and wolf2's target differ. Give each reserve one template, round-robin.
+1. Group the wave by species. A group of one large animal is section 1: mark it, scale `baseMax`, release nothing. Remember each other animal's `StartTask` name and the `SetTaskParam` pairs that followed it (`target`, `state`, `surpriseid`, `health`, `dmgint`, …). Wolf1's target and wolf2's target differ. Give each reserve one template, round-robin.
 2. Take the first parked reserve of that species.
 3. Call `FUN_10014610(reserve, 3, 0)` so it gets a fresh max health, `IdleAttack`, and an unfrozen brain, the same path as script `MoveToPos`.
 4. Copy the template's position and yaw. Offset x/z by about 1.5 m times the reserve index so they do not stack in one capsule.
@@ -146,18 +155,20 @@ Leaving the flag unset makes extras count as `ANIMAL_GWOLF` and shortens shoot t
 
 ## MAP2A opening, end to end
 
-1. Load. Both peers already have wolf1, wolf2, wolf3. `OnMapLoaded` adds `coop_GWOLF_0..2`, `coop_MOUNTAINLION_0..2`, `coop_GBEAR_0..2`, parked. Ids match in the two logs. Snapshot count is 6 + 9 animals, plus Hugh, under 32.
+1. Load. Both peers already have wolf1, wolf2, wolf3, mlion1, mlion2, and gbear. `OnMapLoaded` adds `coop_GWOLF_0..2` only. The mountain lion and the bear are large and this map attacks them one at a time (`mlion2`'s start is commented out, and `gbear` is not started). Ids match in the two logs. Snapshot count is 6 + 3 animals, plus Hugh, under 32.
 2. Two players are connected. `extra = 1`.
 3. Host crosses `cScrTask02`. `OnActivate` starts both wolves. `BeginCutScene` places wolf1.
 4. After `BeginCutScene`, wolf1 and wolf2 are the wave. One reserve is unparked beside the template (wolf1's target `"hunter"`, or wolf2's `"hugs2a"` if the round-robin lands there), `AIHuntTask_AttackDogs`, species health still 50 × the retail factor.
 5. The client snapshot moves that id off the sentinel. The client shows three wolves. The client's own script still only knows wolf1 and wolf2.
 6. `cScrTask03` starts the same two script wolves again. The reserve is already active, so the pack stays at three.
-7. Later, `cScrTask04` unparks `mlion1` into `AIHuntTask_AttackCats`. One extra lion. `mlion2` stays the map's unused lion. The reserve does not take its name.
-8. MAP12C: the yeti hits `MakeBoss`, `+0x3C0 = 1`, health 2500 → 3125 with two players, 3750 with three, 4375 with four. No second yeti. `BeginCutScene`'s `MoveToPos` restores the scaled max.
+7. Later, `cScrTask04` unparks one `mlion1` into `AIHuntTask_AttackCats`. That is a single mountain lion. Health becomes 80 × 1.25 = 100, times the retail factor. No second lion.
+8. MAP2B `cScrTask03`: one grizzly. After `BeginCutScene`'s `MoveToPos`, health is 350 × the factor (437.5 / 525 / 612.5) times the retail factor. The log shows no `coop_GBEAR_*` leaving the sentinel. MAP2B's single `mlion1` is the same kind of fight at base 80. MAP2B's single wolf is not: it gains a body.
+9. MAP12C: the yeti hits `MakeBoss`, `+0x3C0 = 1`, health 2500 → 3125 with two players, 3750 with three, 4375 with four. No second yeti. `BeginCutScene`'s `MoveToPos` restores the scaled max.
 
 ## Test
 
 - `run-coop-local.ps1 -Map MAP2A -Players 2`, then 3, then 4. After `cScrTask02`, the host log shows one, two, or three `coop_GWOLF_*` leaving y=-10000, and each client mirror line for those ids has the same position within a step. Pack on screen is 3, 4, 5. Wolf health stays 50 (times the retail 1.0/1.1/1.2).
+- `Players 2` on MAP2B through the grizzly (`cScrTask03`) and the cougar. One `gbear`, `+0x19C` and `+0x4C0` at 437.5 after the cutscene `MoveToPos`. One `mlion1` at 100. No reserve id for either species. The opening single wolf still adds one `coop_GWOLF_*`.
 - `Players 2` on MAP12C. Yeti `+0x19C` and `+0x4C0` are 3125 after `MakeBoss`, and still 3125 after the cutscene `MoveToPos`. The client boss bar matches the host ratio.
 - Kill only the reserves on MAP2A before task 5. The "kill 3 wolves" task stays open until wolf1–3 die.
 - MAP2B siege (`cScrTask08` `SpawnWolves`): the extra count stays at `extra` while the script keeps recycling three wolves. It does not climb by one per recycle.
@@ -173,7 +184,8 @@ Leaving the flag unset makes extras count as `ANIMAL_GWOLF` and shortens shoot t
 | Retail factors 1.0 / 1.1 / 1.2 | High | `0xa530` × float `0.1` at RVA `0xFC46C`. |
 | Player count | High | `g_remotes` is what the 4-player session already uses. |
 | `AddAnimal` creates a real parked `cScrAnimal`, mirrored if both peers call it in order | High | `0x8d970` decompile. Cobra ids matched across processes. Tracker scans the vtable, not a fixed list. |
-| Wave rule (release `extra` once while that species is in an attack, not on every `StartTask`) | High as a design, untested in game | The call sites and the MAP2A / MAP2B scripts are verified. The grouping has not been logged on a live trigger. |
+| One large animal scales health and adds no body | High as a design, untested in game | MAP2B `cScrTask03` is one `gbear` and `AttackBears`. MAP2C `cScrTask08` is the same. MAP2B's cougar is one `mlion1`. Species `SetHealth` values are in the species scripts. The live factor has not been logged. |
+| Wave rule (release `extra` once while a smaller species is in an attack, not on every `StartTask`) | High as a design, untested in game | The call sites and the MAP2A / MAP2B scripts are verified. The grouping has not been logged on a live trigger. |
 | Skipping `0x91e80` keeps shoot-task quotas | Medium-high | The death report and the task fields are verified. The decrement site was not decompiled. The MAP2A task-5 test is the check. |
 | Crocodile extras | Out of scope | Those entities are not mirrored. |
 
