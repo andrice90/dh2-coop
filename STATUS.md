@@ -30,6 +30,9 @@ Merged by the lead 09:4x:
 
 Running now (Sonnet, 14:5x): triggers-test, flow-test, smoke (from before); new: vehicles-test (`dh2coop-truck`, port 27650), beasts-test (`dh2coop-beasts`, 27630, also wires the clip checks into `ApplyMirror`), bosses-test (`dh2coop-yeti`, 27680, writes `yeti-bosses.md`).
 
+### Install / join / VPN (16:2x): Tailscale **join code** (user decision)
+Host signs in to Tailscale once, saves a reusable friend auth key (Reusable, Ephemeral, `tag:dh2friend`, 90 days) and an ACL that lets `tag:dh2friend` reach only the host's tailnet IP on port 27420; the lobby's "Copy join code" gives `DH2-<base64url(v1|ip|port|key|name)>`. Friends run the installer and paste the code: it installs Tailscale silently (winget), runs `tailscale up --auth-key ... --unattended` (no account, no browser), adds a firewall rule (Main7.exe, UDP, from 100.64.0.0/10) and prefills JOIN. Agent **joincode** (Sonnet, `dh2coop-truck` / branch `joincode`, port 27650) is building it; it must never change this PC's Tailscale login or touch the clipboard (`-DryRun`, fake keys, file output).
+
 ### Wave wrap-up (16:1x): vehicles + bosses merged, all agents done, kit rebuilt 16:1x
 The user asked to stop the remaining agents (repeated runs, games getting less stable). Both stopped and reported.
 - **vehicles** `aaf1244`..`fc57cd2`: MAP5 boarding for every player (host first or client first: client seated in its own truck copy, puppet in the bed), MAP4A late join seated, F9 / `coop_tohost` while seated (direct `GetIn` when `cObjVehicle::Use` defers), host NPC seats mirrored (`kVehicleSeat` 28, `kVehicleBoard` 29). Rollover guard `[Vehicles] Upright=0` (unstable, off). Open: the **host's own truck sometimes flips on the MAP4A ramp after PathNode23** (3 of 17 rides, also host-only) — not fixed.
