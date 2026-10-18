@@ -1,6 +1,9 @@
 # STATUS — resume here
 
-**Last updated:** 2026-10-17 evening by Grok. Display section first, then the fan-out, then the earlier 2026-10-17 session.
+**Last updated:** 2026-10-17 night by Grok. The retail Bin now has the display build of the mod. Kit launchers below, then the earlier evening notes.
+
+## Launchers (2026-10-17 night)
+`host.bat` and `join.bat` still only start `Main7.exe +mod data`. Desktop resolution and the wide FOV are the mod's `[Display]` block, which the morning ASI in the retail Bin did not contain. That Bin now has `mod\build\dh2coop.asi` (9:38 PM) and `dh2coop.ini` with `[Display]` (`PlayerName=panjypoo` kept). `tools-src\kit\host_dlss5.bat` is the same host launch after checking for ReShade's `dxgi.dll`, the feeder, and dgVoodoo2 2.83.2 `D3D8.dll`. Those wrapper files are in the retail Bin (`OutputAPI = d3d11_fl11_0`, `VRAM = 1024`). Desktop shortcut: `DH2 HOST DLSS`.
 
 ## Helicopter arena (scoped only, 2026-10-17)
 Not built. `re/notes/heli-arena.md`: copied MAPARENA, host-moved helicopter orbiting the nearest player, bombs via `kPlayerHurt`, full-auto gun is a new `autogun_1st` that reuses the handgun 3 viewmodel. Story insert waits until `-spmap` playtests pass.

@@ -31,4 +31,5 @@ if "%HOSTIP%"=="" (
 set MAP=%~2
 if "%MAP%"=="" set MAP=HUNTMAP4
 echo Joining %HOSTIP%:27420 (retries every few seconds until the host is up).
+rem Resolution and FOV come from the mod: [Display] in dh2coop.ini (desktop size, wide horizontal FOV, 4:3 HUD).
 start "" Main7.exe +mod data -nointro -developper -cheats -spmap %MAP% -coopjoin %HOSTIP%

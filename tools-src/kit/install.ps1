@@ -15,9 +15,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $kit = $PSScriptRoot
-$modFiles = @('dinput8.dll', 'dh2coop.asi', 'dh2coop.ini', 'host.bat', 'join.bat')
+$modFiles = @('dinput8.dll', 'dh2coop.asi', 'dh2coop.ini', 'host.bat', 'join.bat', 'host_dlss5.bat')
 $tail = 'Activision Value\Magic Wand\DNGH2\Bin'
-$shortcuts = @('DH2 HOST', 'DH2 JOIN')
+$shortcuts = @('DH2 HOST', 'DH2 JOIN', 'DH2 HOST DLSS')
 
 function Find-GameBins {
     $found = New-Object System.Collections.Generic.List[string]
@@ -121,7 +121,7 @@ if (-not (Test-Writable $bin)) {
 }
 
 if ($Uninstall) {
-    foreach ($f in @('dh2coop.asi', 'dh2coop.ini', 'host.bat', 'join.bat', 'dh2coop.log', 'dh2coop.cmd',
+    foreach ($f in @('dh2coop.asi', 'dh2coop.ini', 'host.bat', 'join.bat', 'host_dlss5.bat', 'dh2coop.log', 'dh2coop.cmd',
                      'dh2coop-lastmap.txt', 'dh2coop-lasthost.txt', 'dh2coop-classes.txt')) {
         Remove-Item -LiteralPath (Join-Path $bin $f) -Force -ErrorAction SilentlyContinue
     }
@@ -165,6 +165,7 @@ $exe = Join-Path $bin 'Main7.exe'
 New-Item -ItemType Directory -Force $desk | Out-Null
 New-Shortcut (Join-Path $desk 'DH2 HOST.lnk') (Join-Path $bin 'host.bat') $bin $exe 'Host a Dangerous Hunts 2 co-op game'
 New-Shortcut (Join-Path $desk 'DH2 JOIN.lnk') (Join-Path $bin 'join.bat') $bin $exe 'Join a Dangerous Hunts 2 co-op game'
+New-Shortcut (Join-Path $desk 'DH2 HOST DLSS.lnk') (Join-Path $bin 'host_dlss5.bat') $bin $exe 'Host a co-op game with the desktop resolution, wide FOV, and DLSS 5'
 
 Write-Host ''
 Write-Host "Installed for player '$PlayerName' in $bin"

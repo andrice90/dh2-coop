@@ -22,4 +22,5 @@ if "%MAP%"=="" set MAP=%LAST%
 :run
 >"%STORE%\lastmap.txt" echo %MAP%
 echo Hosting co-op on UDP 27420, map %MAP%. Tell your friends your VPN IP address.
+rem Resolution and FOV come from the mod: [Display] in dh2coop.ini (desktop size, wide horizontal FOV, 4:3 HUD).
 start "" Main7.exe +mod data -nointro -developper -cheats -spmap %MAP% -coophost
