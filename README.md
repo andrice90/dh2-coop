@@ -1,6 +1,6 @@
 # Cabela's Dangerous Hunts 2 Coop Mod
 
-Online co-op for 2 to 4 players, added to a 2005 single-player PC hunting game: Cabela's Dangerous Hunts 2 Coop Mod. You and your friends play the story campaign and the free-hunt map together: you see each other, the animals are the same for everyone, and the host's story progress (trigger zones, cutscenes, guide characters, map changes) runs on every PC.
+Online co-op for 2 to 4 players, added to a 2005 single-player PC hunting game: Cabela's Dangerous Hunts 2. You and your friends play the story campaign and the free-hunt map together: you see each other, the animals are the same for everyone, and the host's story progress (trigger zones, cutscenes, guide characters, map changes) runs on every PC.
 
 The mod is an ASI plugin (`dh2coop.asi`) that loads into the unmodified retail game. No game files are changed or included, and every player needs their own copy of the game.
 
