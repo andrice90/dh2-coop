@@ -30,7 +30,10 @@ Merged by the lead 09:4x:
 
 Running now (Sonnet, 14:5x): triggers-test, flow-test, smoke (from before); new: vehicles-test (`dh2coop-truck`, port 27650), beasts-test (`dh2coop-beasts`, 27630, also wires the clip checks into `ApplyMirror`), bosses-test (`dh2coop-yeti`, 27680, writes `yeti-bosses.md`).
 
-### Public README (18:xx)
+### game-modding skill (18:xx)
+User: collect what worked here into a `/game-modding` skill for other games. Written to `C:\Users\andri\.claude\skills\game-modding\` (outside this repo): `SKILL.md` (intake, ground rules, phases with exit criteria, top lessons), `reference/01..10` (project setup, recon, injection/hooking, render/input/display, multiplayer sync, internet play, testing, distribution, orchestration, Windows pitfalls), `reference/reference-implementation.md` (capability → file in this repo), `templates/` (CLAUDE/STATUS/PLAN/MEMORY/learnings, worker rules, wave brief, .gitignore, CMakeLists, build.ps1). Sources: `docs/mod-learnings.md`, `MEMORY.md`, `PLAN.md`, `re/jobs/_claude-rules.md`, `_wave-playthrough.md`, `re/notes/coop-checklist.md`, `review-2026-10-17.md`, `upnp.md`, `docs/research-packet.md`. New lessons from this project should also go into the skill.
+
+### Public README (18:xx): `2eacdb1`, pushed
 User: set the repo up as a game mod repo for others. `README.md` at the root: summary, features, requirements, install (kit + manual), play and keys, connecting (Internet/UPnP + join code, Tailnet, LAN, password, no-UPnP fallback), settings, uninstall, troubleshooting (Smart App Control), known issues, how it works (loader, RE, own ENet protocol, puppets, shared world, overlay, testing, AI-assisted development), building from source, layout, credits with licenses, disclaimer. The game is named once (Requirements, nominative); the project name stays neutral. Install step 1 points at GitHub Releases, which has no release yet. Open for the user: a LICENSE for the repo; a release with `dh2coop-kit.zip`; third-party notices in the kit (Ultimate ASI Loader, ENet, ImGui, spdlog, Zydis are MIT).
 
 ### Display fixes (17:5x-18:0x): `bb2c9cb`, `75475f7`, kit rebuilt
