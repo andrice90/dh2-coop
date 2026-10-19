@@ -30,6 +30,11 @@ Merged by the lead 09:4x:
 
 Running now (Sonnet, 14:5x): triggers-test, flow-test, smoke (from before); new: vehicles-test (`dh2coop-truck`, port 27650), beasts-test (`dh2coop-beasts`, 27630, also wires the clip checks into `ApplyMirror`), bosses-test (`dh2coop-yeti`, 27680, writes `yeti-bosses.md`).
 
+### MIT license + public release v0.2.0 (18:xx): `5e92608`
+User: add MIT and publish the release. `LICENSE` (MIT, "Andrew Rice", as in the user's dh2013-ultrawide repo; GitHub detects MIT). Kit now ships `LICENSE.txt` and `THIRD-PARTY-NOTICES.txt` (Ultimate ASI Loader, ENet, Dear ImGui, spdlog, {fmt}, safetyhook BSL-1.0, Zydis, Zycore; texts from the pinned `_deps` sources); kit README names the version and the repo. `tools-src/kit/package.ps1` builds `dist\dh2coop-kit.zip` (flat). Same `dh2coop.asi` as the earlier kit (built at `75475f7`, SHA-256 `6A29B0E3...`; no code change since), so existing installs and release downloads join each other. installer-test passes.
+- **Pre-release `v0.2.0`** "DH2 Co-op 0.2.0 (test build)" on `5e92608`: https://github.com/andrice90/dh2-coop/releases/tag/v0.2.0, asset `dh2coop-kit.zip` 5,068,154 bytes, SHA-256 `0F21EFC2...CE68` (downloaded back, matches). Notes: install, what works, known issues (Smart App Control first), checksum, disclaimer.
+- Next kit: run `.\mod\build.ps1`, `.\tools-src\kit\package.ps1`, bump the version in the kit README / `dllmain.cpp`, new tag.
+
 ### game-modding skill (18:xx)
 User: collect what worked here into a `/game-modding` skill for other games. Written to `C:\Users\andri\.claude\skills\game-modding\` (outside this repo): `SKILL.md` (intake, ground rules, phases with exit criteria, top lessons), `reference/01..10` (project setup, recon, injection/hooking, render/input/display, multiplayer sync, internet play, testing, distribution, orchestration, Windows pitfalls), `reference/reference-implementation.md` (capability → file in this repo), `templates/` (CLAUDE/STATUS/PLAN/MEMORY/learnings, worker rules, wave brief, .gitignore, CMakeLists, build.ps1). Sources: `docs/mod-learnings.md`, `MEMORY.md`, `PLAN.md`, `re/jobs/_claude-rules.md`, `_wave-playthrough.md`, `re/notes/coop-checklist.md`, `review-2026-10-17.md`, `upnp.md`, `docs/research-packet.md`. New lessons from this project should also go into the skill.
 
