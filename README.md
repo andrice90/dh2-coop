@@ -20,6 +20,7 @@ The mod is an ASI plugin (`dh2coop.asi`) that loads into the unmodified retail g
 - [How it works](#how-it-works)
 - [Building from source](#building-from-source)
 - [Repository layout](#repository-layout)
+- [License](#license)
 - [Credits](#credits)
 - [Disclaimer](#disclaimer)
 
@@ -253,7 +254,11 @@ Never test against your real install. Copy your game folder to `game\` in the re
 
 ### Build the player kit
 
-Copy into one folder: the files in `tools-src\kit\`, `mod\build\dh2coop.asi`, `mod\dh2coop.ini` and Ultimate ASI Loader's `dinput8.dll`. Zip that folder as `dh2coop-kit.zip`.
+```powershell
+.\tools-src\kit\package.ps1
+```
+
+This copies the kit files from `tools-src\kit\`, `mod\build\dh2coop.asi`, `mod\dh2coop.ini`, Ultimate ASI Loader's `dinput8.dll` (from `game\Bin`) and `LICENSE` into `dist\dh2coop-kit\`, and zips them as `dist\dh2coop-kit.zip`.
 
 ## Repository layout
 
@@ -271,13 +276,17 @@ Copy into one folder: the files in `tools-src\kit\`, `mod\build\dh2coop.asi`, `m
 
 No game binaries, assets, extracted archives or decompiled code are in the repo.
 
+## License
+
+The mod's own code and documentation are released under the [MIT License](LICENSE). The license does not cover the game or anything from it. Third-party components keep their own licenses; their full texts ship in the kit as `THIRD-PARTY-NOTICES.txt`.
+
 ## Credits
 
 - [Ultimate ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader) by ThirteenAG (MIT), shipped in the kit as `dinput8.dll`.
-- [safetyhook](https://github.com/cursey/safetyhook) by cursey (BSL-1.0), with [Zydis](https://github.com/zyantific/zydis) (MIT).
+- [safetyhook](https://github.com/cursey/safetyhook) by cursey (BSL-1.0), with [Zydis](https://github.com/zyantific/zydis) and [Zycore](https://github.com/zyantific/zycore-c) (MIT).
 - [ENet](https://github.com/lsalzman/enet) by Lee Salzman (MIT).
 - [Dear ImGui](https://github.com/ocornut/imgui) by Omar Cornut (MIT).
-- [spdlog](https://github.com/gabime/spdlog) by Gabi Melman (MIT).
+- [spdlog](https://github.com/gabime/spdlog) by Gabi Melman (MIT), with [{fmt}](https://github.com/fmtlib/fmt) (MIT).
 - [Ghidra](https://ghidra-sre.org) (Apache 2.0), for the analysis.
 
 ## Disclaimer

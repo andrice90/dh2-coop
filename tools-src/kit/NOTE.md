@@ -1,5 +1,9 @@
 # Friends' kit (text files)
 
-install.ps1 holds the PowerShell twin of the join code format (mod/src/coop/joincode.cpp): `install.ps1 -SelfTest` checks it against the vectors in mod/net-test. `-DryRun` shows the Tailscale, winget and firewall steps without running them; `-Simulate <json>` (tests only) fakes Tailscale's answers.
+Source of the player kit. `package.ps1` builds it: these files (without this note and `package.ps1`), `mod\build\dh2coop.asi`, `mod\dh2coop.ini`, the Ultimate ASI Loader `dinput8.dll` (from `game\Bin`) and the repo `LICENSE` (as `LICENSE.txt`) go into `dist\dh2coop-kit\` (gitignored), zipped to `dist\dh2coop-kit.zip`.
 
-Source of the files in `dist\dh2coop-kit\` (gitignored). To build the kit: copy these files, `mod\build\dh2coop.asi`, `mod\dh2coop.ini` and the Ultimate ASI Loader `dinput8.dll` (from `game\Bin`) into `dist\dh2coop-kit\`, then zip it to `dist\dh2coop-kit.zip`.
+- `install.ps1` / `install.bat`: finds the game, copies the mod, shortcut, one firewall rule; `-DryRun`, `-FindOnly`, `-Uninstall`, `-Yes`.
+- `uninstall.ps1` / `uninstall.bat`: removes every version's files, settings, shortcuts, firewall rules and a leftover router forward; `-DryRun`.
+- `host.bat`, `join.bat`: start the game hosting / joining without the lobby.
+- `README.txt`: the players' guide. `THIRD-PARTY-NOTICES.txt`: license texts of the loader and the libraries in the ASI.
+- Tests: `tools-src\kit-test\installer-test.ps1`.

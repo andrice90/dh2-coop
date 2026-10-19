@@ -1,5 +1,6 @@
-DH2 co-op mod: test kit (build 2026-10-18)
+DH2 co-op mod 0.2.0: test kit (build 2026-10-18)
 ==================================================
+Source, updates and full guide: https://github.com/andrice90/dh2-coop
 
 Needs: the retail game, v1.0 (build 434), installed and starting normally on its own.
 All players need the same game version and the same kit.
@@ -87,3 +88,8 @@ Send the log files from both players. They are in the game's Bin folder, or, whe
 under Program Files, in %LOCALAPPDATA%\dh2coop (paste that into the Explorer address bar):
   dh2coop.log, debug.1.log (this run's engine log is debug.log in Bin), and after a crash and a restart also
   dh2coop.1.log (the run before) and debug.2.log.
+
+LICENSE
+The mod is MIT licensed (LICENSE.txt). It is an unofficial fan project, not affiliated with the game's
+publisher or developer, and contains no game files. The ASI loader (dinput8.dll) and the libraries built
+into dh2coop.asi keep their own licenses: see THIRD-PARTY-NOTICES.txt.
